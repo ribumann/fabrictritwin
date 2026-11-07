@@ -62,8 +62,21 @@ jobs:
         if: ${{ always() && !cancelled() }}
         run: npm run lint
       - name: Check TypeScript formatting
+        id: format-check
         if: ${{ always() && !cancelled() }}
         run: npm run format
+      - name: Generate formatting repair patch
+        if: ${{ failure() && steps.format-check.outcome == 'failure' }}
+        run: |
+          npm run format:fix
+          git diff --binary > "${RUNNER_TEMP}/formatting-repair.patch"
+      - name: Upload formatting repair patch
+        if: ${{ failure() && steps.format-check.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatting-repair
+          path: ${{ runner.temp }}/formatting-repair.patch
+          if-no-files-found: error
       - name: Compile infrastructure without deploying
         if: ${{ always() && !cancelled() }}
         shell: bash
