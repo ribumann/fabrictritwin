@@ -56,11 +56,12 @@ For a local Linux/amd64 Docker daemon, from the repository root:
 ```powershell
 ./tests/containers/Test-BuildContext.ps1
 $revision = git rev-parse HEAD
-docker build --pull --platform linux/amd64 --file apps/cockpit/Containerfile --tag "local/cockpit:$revision" .
+bash ./scripts/deploy/build-container-image.sh cockpit $revision "local/cockpit:$revision"
 ./tests/containers/Test-ContainerImage.ps1 -App cockpit -Image "local/cockpit:$revision"
 ```
 
-Registry publishing is distinct future work: agree a dedicated protected
-environment, prove an environment-bound least-privileged push identity, and review
-immutable manifest-digest evidence before enabling any registry writes. Passing
-this workflow neither enables publishing nor authorizes live deployment.
+The separately gated publication workflow reuses this build helper, context
+verification and smoke test. See [the publication contract](../../scripts/deploy/README.md)
+for its protected environment, read-only identity preflight, permissions and
+digest handoff. Passing this build-only workflow neither enables publishing nor
+authorizes live deployment.
