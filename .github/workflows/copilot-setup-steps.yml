@@ -62,25 +62,8 @@ jobs:
         if: ${{ always() && !cancelled() }}
         run: npm run lint
       - name: Check TypeScript formatting
-        id: format-check
         if: ${{ always() && !cancelled() }}
         run: npm run format
-      - name: Capture exact formatter tooling and stable repair
-        if: ${{ failure() && steps.format-check.outcome == 'failure' }}
-        run: |
-          npm run format:fix
-          npm run format
-          git diff --binary > "${RUNNER_TEMP}/formatting-repair.patch"
-          tar -czf "${RUNNER_TEMP}/prettier-tooling.tar.gz" -C node_modules prettier
-      - name: Upload formatter diagnostics
-        if: ${{ failure() && steps.format-check.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: formatter-diagnostics
-          path: |
-            ${{ runner.temp }}/formatting-repair.patch
-            ${{ runner.temp }}/prettier-tooling.tar.gz
-          if-no-files-found: error
       - name: Compile infrastructure without deploying
         if: ${{ always() && !cancelled() }}
         shell: bash

@@ -111,14 +111,12 @@ export function createAssistantRouter(options: AssistantProxyOptions): Router {
         return;
       }
       if (!contentType.includes("application/json")) {
-        res
-          .status(502)
-          .json({
-            error: {
-              code: "assistant_ask_proxy_failed",
-              message: "Assistant returned an unexpected response.",
-            },
-          });
+        res.status(502).json({
+          error: {
+            code: "assistant_ask_proxy_failed",
+            message: "Assistant returned an unexpected response.",
+          },
+        });
         return;
       }
       const challenge = upstream.headers.get("www-authenticate");
