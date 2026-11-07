@@ -17,6 +17,15 @@ $metadata = ($inspection | ConvertFrom-Json)[0]
 if ($metadata.Config.User -cne 'node' -or $metadata.Os -cne 'linux' -or $metadata.Architecture -cne 'amd64') {
     throw 'Expected a non-root Linux amd64 production image.'
 }
+$runtimeArguments = @('--network', 'none')
+if ($App -eq 'streaming-backend') {
+    # Match its existing health-test startup contract without cloud access.
+    $runtimeArguments += @(
+        '--env', 'LAKEHOUSE_ONELAKE_ACCOUNT_URL=https://onelake.example.invalid',
+        '--env', 'LAKEHOUSE_ONELAKE_FILESYSTEM=synthetic-workspace',
+        '--env', 'LAKEHOUSE_ONELAKE_PATH=synthetic-lakehouse'
+    )
+}
 $assertProduction = @'
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -32,7 +41,7 @@ assert.ok(!existsSync('/workspace/.git'));
 assert.ok(!existsSync('/workspace/.env'));
 await import('./dist/index.js');
 '@
-docker run --rm --network none --entrypoint node $Image --input-type=module -e $assertProduction
+docker run --rm @runtimeArguments --entrypoint node $Image --input-type=module -e $assertProduction
 if ($LASTEXITCODE -ne 0) { throw "Production dependency/import checks failed for $App." }
 
 if ($App -eq 'simulator') {
@@ -43,7 +52,7 @@ if ($App -eq 'simulator') {
 }
 
 $ports = @{ cockpit = 3300; 'streaming-backend' = 3000; 'mcp-tools' = 3100; console = 3200 }
-$container = docker run --detach --network none $Image
+$container = docker run --detach @runtimeArguments $Image
 if ($LASTEXITCODE -ne 0) { throw "Could not start $App." }
 try {
     $probe = @'

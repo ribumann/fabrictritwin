@@ -44,7 +44,10 @@ network: production imports must resolve, TypeScript/Vitest must be absent, each
 HTTP entry point must return its exact `/healthz` service response, and Cockpit's
 packaged static/vendor assets must be served. Simulator is imported and its
 default no-op library entry point is run; no daily generation, telemetry or cloud
-job is invoked. Existing full credential-free unit tests remain in `CI`. These
+job is invoked. Backend startup requires three OneLake settings even for health
+checks: the test container receives synthetic workspace/lakehouse names and an
+`example.invalid` URL, never credentials or a real target. Network isolation is
+still enforced. Existing full credential-free unit tests remain in `CI`. These
 checks prove image packaging/startup, not live Azure/Fabric integration or complete
 Cockpit/Console feature parity.
 
