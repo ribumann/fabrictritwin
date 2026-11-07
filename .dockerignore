@@ -1,18 +1,24 @@
-.git
-.github
-.specify
-node_modules
-**/node_modules
-dist
-**/dist
-coverage
-**/coverage
-docs
-infra
-scripts
-specs
-tests
-apps/*/tests
-*.log
-README.md
+# Allow only inputs required by the five production Containerfiles.
+**
+!package.json
+!package-lock.json
+!tsconfig.base.json
+!apps/
+!apps/*/
+apps/*/*
+!apps/*/package.json
+!apps/*/tsconfig.json
+!apps/*/src/
+!apps/*/src/**
 
+# These exclusions must follow the source allowlist.
+**/node_modules
+**/dist
+**/.env*
+**/.npmrc
+**/.git
+**/*.pem
+**/*.key
+**/*.pfx
+**/*.p12
+**/*.log
