@@ -1,0 +1,71 @@
+name: Container images (build only)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-images-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  context:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Test build and publication helpers without credentials
+        shell: bash
+        run: bash ./tests/containers/Test-PublicationHelpers.sh
+      - name: Verify actual Docker context exclusions
+        shell: pwsh
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-anonymous
+        run: ./tests/containers/Test-BuildContext.ps1
+
+  build:
+    needs: context
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [simulator, cockpit, streaming-backend, mcp-tools, console]
+    env:
+      APP: ${{ matrix.app }}
+      IMAGE_REVISION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Build production image from locked dependencies
+        shell: bash
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-anonymous
+        run: |
+          set -euo pipefail
+          mkdir -p "$DOCKER_CONFIG"
+          bash ./scripts/deploy/build-container-image.sh "$APP" "$IMAGE_REVISION" "local/$APP:$IMAGE_REVISION"
+      - name: Test production image without credentials or external networking
+        shell: pwsh
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-anonymous
+        run: ./tests/containers/Test-ContainerImage.ps1 -App $env:APP -Image "local/$($env:APP):$($env:IMAGE_REVISION)"
+      - name: Record local image evidence (not a registry digest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            printf '### %s (linux/amd64)\n\n' "$APP"
+            printf 'Source revision: `%s`\n\n' "$IMAGE_REVISION"
+            docker image inspect "local/$APP:$IMAGE_REVISION" \
+              --format 'Local image config ID: `{{.Id}}`'
+            printf '\nBuilt and smoke-tested only; not pushed or deployed.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
