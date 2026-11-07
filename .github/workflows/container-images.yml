@@ -21,6 +21,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
         with:
           persist-credentials: false
+      - name: Test build and publication helpers without credentials
+        shell: bash
+        run: bash ./tests/containers/Test-PublicationHelpers.sh
       - name: Verify actual Docker context exclusions
         shell: pwsh
         env:
@@ -49,10 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$DOCKER_CONFIG"
-          docker build --pull --platform linux/amd64 \
-            --label "org.opencontainers.image.revision=$IMAGE_REVISION" \
-            --tag "local/$APP:$IMAGE_REVISION" \
-            --file "apps/$APP/Containerfile" .
+          bash ./scripts/deploy/build-container-image.sh "$APP" "$IMAGE_REVISION" "local/$APP:$IMAGE_REVISION"
       - name: Test production image without credentials or external networking
         shell: pwsh
         env:

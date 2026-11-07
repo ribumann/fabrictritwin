@@ -12,6 +12,58 @@ production images on PRs, main pushes and manual dispatch. See
 push, Azure identity or deployment step; Console remains in the image matrix until
 UI parity and its retirement are separately reviewed.
 
+`Publish one approved app image` is a **manual, main-only** workflow using the
+separate `azure-build` environment. `publish: false` verifies the actual OIDC
+subject, exchanges the token and reads ACR metadata, without building, logging
+into the registry or requiring push permission. It works while `PUBLISH_ENABLED`
+is unset or `false`. `publish: true` additionally requires `PUBLISH_ENABLED` to be
+exactly `true` and environment approval for each job. The selected image is built
+and smoke-tested before Azure login, then pushed to its matching repository with
+the full main commit SHA as its tag. Console is not publishable here.
+
+The summary records the source revision, app and digest returned by Docker's
+push. Supply that digest, not the tag or local image ID, to the deployment
+workflow. Tags can be moved and a revision label is not a signed attestation;
+review the run, source and digest together. Never assume a rebuild is
+byte-identical. If a push succeeds but digest capture fails, inspect the registry
+before retrying; failure is not proof that no manifest was written.
+
+### Build environment prerequisites
+
+Before any dispatch, create `azure-build` with required independent reviewers,
+no self-approval or administrator bypass where available, and protected `main`
+as its only allowed deployment branch. Protect main with required checks and
+independent review. If the repository plan cannot enforce these controls, do
+not enable publication. Environment naming alone is not protection.
+
+Set `AZURE_BUILD_CLIENT_ID`, `AZURE_BUILD_TENANT_ID`,
+`AZURE_BUILD_SUBSCRIPTION_ID`, and `AZURE_BUILD_REGISTRY_NAME` as environment
+variables. Set `PUBLISH_ENABLED` to exact `true` only after the actual preflight,
+review and explicit authorization; leave it unset or `false` otherwise.
+No client secret or registry admin credential is used.
+
+Configure a separate identity with issuer
+`https://token.actions.githubusercontent.com`, audience
+`api://AzureADTokenExchange`, and the exact immutable subject
+`repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-build`.
+Run and review `publish: false` first; it checks the actual subject and Azure
+exchange rather than assuming a name-only subject. A successful exchange does
+not establish write access. Registry metadata lookup requires ARM read on the
+specific existing ACR and may additionally require subscription-level registry
+discovery/read metadata, depending on Azure CLI behavior and policy; diagnose a
+denial rather than broadening permissions blindly.
+
+After preflight and separate approval, propose `AcrPush` at the exact registry
+for an RBAC registry, or a repository-conditioned
+`Container Registry Repository Writer` for an ABAC registry, scoped to approved
+app repositories. Check the registry's permission mode and applicable role
+requirements first. No registry admin, Owner, Contributor, runtime deployment,
+Fabric or Entra write permissions are required. The workflow never deploys,
+starts jobs or creates infrastructure. The protected environment and trusted
+main source remain security boundaries because registry write access can also
+modify tags. Both jobs use the same build identity: after write access is granted,
+the preflight still performs only reads but its token is no longer read-only.
+
 `Deploy one existing app image` is a **manual, main-only** workflow. Its default
 `deploy: false` performs read-only preflight; an update also requires
 `deploy: true`, an enabled environment and environment approval. It updates one

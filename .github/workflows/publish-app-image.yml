@@ -1,0 +1,180 @@
+name: Publish one approved app image
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Application image to publish
+        required: true
+        type: choice
+        options:
+          - cockpit
+          - streaming-backend
+          - mcp-tools
+          - simulator
+      publish:
+        description: Explicitly authorize a push; false only verifies identity and registry metadata
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: azure-app-image-publication
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
+    environment: azure-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CORE_OUTPUT: none
+      CLIENT_ID: ${{ vars.AZURE_BUILD_CLIENT_ID }}
+      TENANT_ID: ${{ vars.AZURE_BUILD_TENANT_ID }}
+      SUBSCRIPTION_ID: ${{ vars.AZURE_BUILD_SUBSCRIPTION_ID }}
+      REGISTRY_NAME: ${{ vars.AZURE_BUILD_REGISTRY_NAME }}
+      PUBLISH_ENABLED: ${{ vars.PUBLISH_ENABLED }}
+      PUBLISH: ${{ inputs.publish }}
+      APP: ${{ inputs.app }}
+    steps:
+      - name: Validate configuration and publication gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in CLIENT_ID TENANT_ID SUBSCRIPTION_ID; do
+            value="${!name}"
+            if [[ ! "$value" =~ ^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$ ]]; then
+              printf 'Invalid or missing %s.\n' "$name" >&2
+              exit 1
+            fi
+            echo "::add-mask::$value"
+          done
+          if [[ ! "$REGISTRY_NAME" =~ ^[a-z0-9]{5,50}$ ]]; then
+            echo 'Invalid or missing registry name.' >&2; exit 1
+          fi
+          echo "::add-mask::$REGISTRY_NAME"
+          echo "::add-mask::$REGISTRY_NAME.azurecr.io"
+          case "$APP" in cockpit|streaming-backend|mcp-tools|simulator) ;; *) echo 'Invalid app.' >&2; exit 1 ;; esac
+          if [[ "$PUBLISH" != true && "$PUBLISH" != false ]]; then
+            echo 'Invalid publish input.' >&2; exit 1
+          fi
+          if [[ "$PUBLISH" == true && "$PUBLISH_ENABLED" != true ]]; then
+            echo 'Publication is not explicitly enabled.' >&2; exit 1
+          fi
+      - name: Verify actual environment OIDC subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api%3A%2F%2FAzureADTokenExchange")"
+          python3 -c '
+          import base64, json, sys
+          token = json.load(sys.stdin)["value"]
+          payload = token.split(".")[1]
+          claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+          expected = "repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-build"
+          if claims.get("iss") != "https://token.actions.githubusercontent.com" or claims.get("aud") != "api://AzureADTokenExchange" or claims.get("sub") != expected:
+              sys.exit("Unexpected OIDC issuer, audience or subject.")
+          print("Actual OIDC subject: " + claims["sub"])
+          ' <<< "$response"
+      - name: Exchange environment OIDC token for Azure access
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ env.CLIENT_ID }}
+          tenant-id: ${{ env.TENANT_ID }}
+          subscription-id: ${{ env.SUBSCRIPTION_ID }}
+      - name: Read registry metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          server="$(az acr show --subscription "$SUBSCRIPTION_ID" --name "$REGISTRY_NAME" --query loginServer --output tsv --only-show-errors)"
+          if [[ "$server" != "$REGISTRY_NAME.azurecr.io" ]]; then
+            echo 'Registry login server does not match the approved public Azure registry.' >&2; exit 1
+          fi
+          echo 'Read-only registry metadata preflight succeeded; no image was pushed.'
+
+  publish:
+    needs: preflight
+    if: inputs.publish == true
+    environment: azure-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CORE_OUTPUT: none
+      APP: ${{ inputs.app }}
+      IMAGE_REVISION: ${{ github.sha }}
+      REGISTRY_NAME: ${{ vars.AZURE_BUILD_REGISTRY_NAME }}
+      CLIENT_ID: ${{ vars.AZURE_BUILD_CLIENT_ID }}
+      TENANT_ID: ${{ vars.AZURE_BUILD_TENANT_ID }}
+      SUBSCRIPTION_ID: ${{ vars.AZURE_BUILD_SUBSCRIPTION_ID }}
+      PUBLISH_ENABLED: ${{ vars.PUBLISH_ENABLED }}
+      DOCKER_CONFIG: ${{ runner.temp }}/docker-publish
+    steps:
+      - name: Recheck publication authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PUBLISH_ENABLED" == true ]] || { echo 'Publication is not explicitly enabled.' >&2; exit 1; }
+          case "$APP" in cockpit|streaming-backend|mcp-tools|simulator) ;; *) echo 'Invalid app.' >&2; exit 1 ;; esac
+          [[ "$REGISTRY_NAME" =~ ^[a-z0-9]{5,50}$ ]] || { echo 'Invalid registry name.' >&2; exit 1; }
+          [[ "$IMAGE_REVISION" =~ ^[a-f0-9]{40}$ ]] || { echo 'Invalid source revision.' >&2; exit 1; }
+          for name in CLIENT_ID TENANT_ID SUBSCRIPTION_ID; do
+            value="${!name}"
+            [[ "$value" =~ ^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$ ]] || { echo "Invalid $name." >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+          echo "::add-mask::$REGISTRY_NAME"
+          echo "::add-mask::$REGISTRY_NAME.azurecr.io"
+          mkdir -p "$DOCKER_CONFIG"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Verify actual Docker context exclusions
+        shell: pwsh
+        run: ./tests/containers/Test-BuildContext.ps1
+      - name: Build production image
+        shell: bash
+        run: bash ./scripts/deploy/build-container-image.sh "$APP" "$IMAGE_REVISION" "local/$APP:$IMAGE_REVISION"
+      - name: Smoke-test production image without credentials or external networking
+        shell: pwsh
+        run: ./tests/containers/Test-ContainerImage.ps1 -App $env:APP -Image "local/$($env:APP):$($env:IMAGE_REVISION)"
+      - name: Exchange environment OIDC token for Azure access
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ env.CLIENT_ID }}
+          tenant-id: ${{ env.TENANT_ID }}
+          subscription-id: ${{ env.SUBSCRIPTION_ID }}
+      - name: Authenticate to ACR and push the tested image
+        shell: bash
+        run: |
+          set -euo pipefail
+          server="$REGISTRY_NAME.azurecr.io"
+          az acr login --subscription "$SUBSCRIPTION_ID" --name "$REGISTRY_NAME" --expose-token --query accessToken --output tsv --only-show-errors |
+            docker login "$server" --username 00000000-0000-0000-0000-000000000000 --password-stdin > /dev/null
+          docker tag "local/$APP:$IMAGE_REVISION" "$server/$APP:$IMAGE_REVISION"
+          output="$RUNNER_TEMP/push-output"
+          if ! docker push "$server/$APP:$IMAGE_REVISION" > "$output" 2>&1; then
+            echo 'Image push failed; inspect the registry before retrying.' >&2; exit 1
+          fi
+          digest="$(bash ./scripts/deploy/read-push-digest.sh "$output")"
+          {
+            printf '### Published image\n\n'
+            printf 'App: `%s`\n\nSource revision and tag: `%s`\n\n' "$APP" "$IMAGE_REVISION"
+            printf 'Manifest digest: `%s`\n\n' "$digest"
+            echo 'Use this digest with the separate approved image deployment workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove temporary Docker credentials
+        if: always()
+        shell: bash
+        run: rm -f "$DOCKER_CONFIG/config.json" "$RUNNER_TEMP/push-output"
