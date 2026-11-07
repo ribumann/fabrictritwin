@@ -1,0 +1,47 @@
+name: Azure deploy identity read-only OIDC proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify-oidc:
+    if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: azure-deploy
+    timeout-minutes: 10
+    env:
+      AZURE_CORE_OUTPUT: none
+      AZURE_DEPLOY_CLIENT_ID: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+      AZURE_DEPLOY_TENANT_ID: ${{ vars.AZURE_DEPLOY_TENANT_ID }}
+      AZURE_DEPLOY_SUBSCRIPTION_ID: ${{ vars.AZURE_DEPLOY_SUBSCRIPTION_ID }}
+      AZURE_DEPLOY_RESOURCE_GROUP: ${{ vars.AZURE_DEPLOY_RESOURCE_GROUP }}
+    steps:
+      - name: Validate deploy identity configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AZURE_DEPLOY_CLIENT_ID AZURE_DEPLOY_TENANT_ID AZURE_DEPLOY_SUBSCRIPTION_ID AZURE_DEPLOY_RESOURCE_GROUP; do
+            if [[ -z "${!name}" ]]; then
+              printf 'Missing required environment variable %s\n' "$name" >&2
+              exit 1
+            fi
+          done
+      - name: Exchange GitHub OIDC token for Azure access
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_DEPLOY_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_DEPLOY_SUBSCRIPTION_ID }}
+      - name: Read configured resource group
+        shell: bash
+        run: |
+          set -euo pipefail
+          az group show \
+            --subscription "$AZURE_DEPLOY_SUBSCRIPTION_ID" \
+            --name "$AZURE_DEPLOY_RESOURCE_GROUP" \
+            --output none
+          printf 'Read-only deploy identity resource group lookup succeeded.\n'
