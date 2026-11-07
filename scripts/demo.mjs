@@ -86,9 +86,9 @@ try {
           console.error(`[demo] A service exited (${signal ?? code}); stopping both services.`);
           stop(1);
         }
-        console.log("[demo] Starting both services; waiting up to 60 seconds for each health check.");
       });
     }
+    console.log("[demo] Starting both services; waiting up to 60 seconds for each health check.");
     await Promise.all([
       waitForReady(backend, 3000, "streaming-backend"),
       waitForReady(cockpit, 3300, "cockpit"),
