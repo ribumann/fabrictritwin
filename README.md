@@ -23,8 +23,11 @@ pwsh -File tests/pester/Run-Tests.ps1
 
 The default Pester runner excludes live `Integration` tests. Azure CLI and Bicep
 are required for infrastructure compilation; Docker is required for image builds.
-Cloud validation results will be recorded in the first Copilot setup pull request.
-These commands are not a claim that the baseline currently passes every check.
+The Copilot setup pull request records cloud validation results. These commands
+are not a claim that every optional live integration is ready.
+See [contributing guidance](CONTRIBUTING.md) and the
+[dependency, configuration, identity, network, and resource inventory](docs/dependencies-and-configuration.md)
+before attempting a live deployment.
 
 ## Publication safety
 
@@ -45,13 +48,14 @@ resources or resetting runtime configuration. PR/push CI has no cloud credential
 Nonpublic tooling, development provenance, private deployment notes and
 account identifiers have been excluded. Test identifiers and hostnames are fictional.
 See [third-party notices](THIRD_PARTY_NOTICES.md) for dependency licensing.
+See [security reporting guidance](SECURITY.md) for vulnerability disclosures.
 
 ## Release checklist
 
 - [x] Publish fresh history with MIT licensing and dependency notices.
 - [x] Keep imported cloud automation inactive and remove private deployment defaults.
 - [ ] Land and verify Copilot cloud setup, reporting unavailable tools and baseline failures.
-- [ ] Publish the complete portable configuration/identity inventory and contributor/security guidance.
+- [x] Publish the portable configuration/identity inventory and contributor/security guidance.
 - [ ] Add safe Actions CI and prove protected deployment before application changes.
 - [ ] Provide an account-free synthetic demo using the same Cockpit.
 - [ ] Consolidate the Console into the Cockpit with bounded anonymous race controls.
