@@ -110,7 +110,7 @@ interface LakehouseSeedPayload {
   equipment: Equipment[];
 }
 
-interface SeedHistoryDataset extends LakehouseSeedPayload {
+export interface SeedHistoryDataset extends LakehouseSeedPayload {
   referenceDate: IsoDate;
   sessionMetrics: SessionMetric[];
   anomalies: InjectedAnomaly[];
@@ -382,6 +382,32 @@ function buildSeedDataset(options: SeedHistoryOptions): SeedHistoryDataset {
     anomalies: withAnomalies.anomalies,
     referenceDate,
   };
+}
+
+/**
+ * Generates history without persistence, publishing, credentials, or wall-clock defaults.
+ * The live seeding service uses the same dataset builder.
+ */
+export function generateSeedHistoryDataset(
+  options: Omit<SeedHistoryOptions, "referenceDate" | "environment"> & { referenceDate: IsoDate },
+): SeedHistoryDataset {
+  if (!options.athleteId.trim()) {
+    throw new Error("athleteId must not be empty.");
+  }
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(options.referenceDate) ||
+    !Number.isFinite(Date.parse(options.referenceDate)) ||
+    new Date(options.referenceDate).toISOString().slice(0, 10) !== options.referenceDate
+  ) {
+    throw new Error("referenceDate must be a valid YYYY-MM-DD date.");
+  }
+  if (
+    options.seed !== undefined &&
+    (!Number.isSafeInteger(options.seed) || options.seed < 0 || options.seed > 0xffff_ffff)
+  ) {
+    throw new Error("seed must be an unsigned 32-bit integer.");
+  }
+  return buildSeedDataset(options);
 }
 
 export class OneLakeFilesSeedHistoryStore implements SeedHistoryStore {

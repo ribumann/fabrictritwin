@@ -5,8 +5,11 @@ import {
   ClientRequestProperties,
   KustoConnectionStringBuilder,
 } from "azure-kusto-data";
+import { resolveRuntimeProfile } from "./runtime-profile.js";
+import { SyntheticInsightsService, type SyntheticProvenance } from "./synthetic-insights.js";
 
 export interface AthleteAnalysesResponse {
+  provenance?: SyntheticProvenance;
   acuteChronicWorkloadRatio: number | null;
   recoveryScore: number | null;
   nutritionAdequacy: number | null;
@@ -28,6 +31,7 @@ export interface ActiveAlert {
 
 export interface ActiveAlertsResponse {
   alerts: ActiveAlert[];
+  provenance?: SyntheticProvenance;
 }
 
 export interface AthleteAnalysesService {
@@ -408,5 +412,11 @@ class KustoRealtimeInsightsService implements RealtimeInsightsService {
 export function createRealtimeInsightsService(
   options: CreateRealtimeInsightsServiceOptions = {},
 ): RealtimeInsightsService {
+  if (resolveRuntimeProfile() === "synthetic") {
+    if (options.queryExecutor) {
+      throw new Error("A live query executor cannot be supplied with DEMO_PROFILE=synthetic.");
+    }
+    return new SyntheticInsightsService();
+  }
   return new KustoRealtimeInsightsService(options.queryExecutor ?? getDefaultQueryExecutor());
 }

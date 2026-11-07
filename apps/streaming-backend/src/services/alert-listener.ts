@@ -5,6 +5,7 @@ import {
   type ActiveAlertsService,
 } from "./realtime-insights.js";
 import { realtimeStreamBroker, type RealtimeStreamBroker } from "./realtime-stream.js";
+import { resolveRuntimeProfile } from "./runtime-profile.js";
 
 export interface CreateAlertListenerOptions {
   alertsService?: ActiveAlertsService;
@@ -121,7 +122,11 @@ export function createDefaultAlertListener(
   options: CreateAlertListenerOptions = {},
 ): PollingAlertListener | undefined {
   const athleteIds = [...(options.athleteIds ?? resolveConfiguredAthleteIds())];
-  if (!options.alertsService && (!isRealtimeInsightsConfigured() || athleteIds.length === 0)) {
+  const profile = resolveRuntimeProfile();
+  if (
+    !options.alertsService &&
+    ((profile === "live" && !isRealtimeInsightsConfigured()) || athleteIds.length === 0)
+  ) {
     return undefined;
   }
 
