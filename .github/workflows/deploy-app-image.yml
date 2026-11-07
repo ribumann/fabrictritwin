@@ -1,0 +1,96 @@
+name: Deploy one existing app image
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Existing workload to update (no Console or infrastructure deployment)
+        required: true
+        type: choice
+        options:
+          - cockpit
+          - streaming-backend
+          - mcp-tools
+          - simulator
+      image_digest:
+        description: Approved existing ACR sha256 digest (sha256 plus 64 lowercase hex characters)
+        required: true
+        type: string
+      deploy:
+        description: Explicitly authorize the image update; false performs read-only preflight
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: azure-app-image-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
+    environment: azure-deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require approved environment configuration
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENABLED: ${{ vars.DEPLOYMENT_ENABLED }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_DEPLOY_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_DEPLOY_SUBSCRIPTION_ID }}
+          RESOURCE_GROUP: ${{ vars.AZURE_DEPLOY_RESOURCE_GROUP }}
+          NAME_PREFIX: ${{ vars.AZURE_DEPLOY_NAME_PREFIX }}
+          REGISTRY_NAME: ${{ vars.AZURE_DEPLOY_REGISTRY_NAME }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:DEPLOYMENT_ENABLED -cne 'true') { throw 'Deployment environment is not explicitly enabled.' }
+          foreach ($name in @('AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID')) {
+            if ([Environment]::GetEnvironmentVariable($name) -notmatch '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') {
+              throw "Missing or invalid environment variable: $name"
+            }
+          }
+          if ($env:RESOURCE_GROUP -notmatch '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,89}$' -or
+              $env:NAME_PREFIX -notmatch '^[a-z][a-z0-9-]{0,30}[a-z0-9]$' -or
+              $env:REGISTRY_NAME -notmatch '^[a-z0-9]{5,50}$' -or
+              $env:IMAGE_DIGEST -cnotmatch '^sha256:[a-f0-9]{64}$') {
+            throw 'Invalid approved resource scope or immutable image digest.'
+          }
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_DEPLOY_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_DEPLOY_SUBSCRIPTION_ID }}
+      - name: Preflight or update exactly one image
+        shell: pwsh
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_DEPLOY_SUBSCRIPTION_ID }}
+          RESOURCE_GROUP: ${{ vars.AZURE_DEPLOY_RESOURCE_GROUP }}
+          NAME_PREFIX: ${{ vars.AZURE_DEPLOY_NAME_PREFIX }}
+          REGISTRY_NAME: ${{ vars.AZURE_DEPLOY_REGISTRY_NAME }}
+          APP: ${{ inputs.app }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          APPLY_DEPLOYMENT: ${{ inputs.deploy }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parameters = @{
+            SubscriptionId = $env:AZURE_SUBSCRIPTION_ID
+            ResourceGroupName = $env:RESOURCE_GROUP
+            NamePrefix = $env:NAME_PREFIX
+            RegistryName = $env:REGISTRY_NAME
+            App = $env:APP
+            ImageDigest = $env:IMAGE_DIGEST
+            WhatIf = ($env:APPLY_DEPLOYMENT -cne 'true')
+          }
+          ./scripts/deploy/update-app-image.ps1 @parameters
