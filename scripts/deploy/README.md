@@ -6,6 +6,12 @@ and main pushes without Azure credentials. Existing PowerShell scripts remain
 reusable; imported provisioning, teardown, image-build and scheduling workflows
 remain quarantined. This foundation intentionally does not enable them.
 
+`Container images (build only)` separately builds and smoke-tests all five current
+production images on PRs, main pushes and manual dispatch. See
+[the build-only contract](../../tests/containers/README.md). It has no registry
+push, Azure identity or deployment step; Console remains in the image matrix until
+UI parity and its retirement are separately reviewed.
+
 `Deploy one existing app image` is a **manual, main-only** workflow. Its default
 `deploy: false` performs read-only preflight; an update also requires
 `deploy: true`, an enabled environment and environment approval. It updates one
