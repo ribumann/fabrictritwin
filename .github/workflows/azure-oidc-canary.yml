@@ -1,0 +1,50 @@
+name: Azure OIDC read-only canary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify-oidc:
+    runs-on: ubuntu-latest
+    environment: azure-canary
+    timeout-minutes: 10
+    env:
+      AZURE_CORE_OUTPUT: none
+    steps:
+      - name: Validate canary configuration
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CANARY_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_CANARY_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_CANARY_SUBSCRIPTION_ID }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_CANARY_RESOURCE_GROUP }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_RESOURCE_GROUP; do
+            if [[ -z "${!name}" ]]; then
+              printf 'Missing required environment variable %s\n' "$name" >&2
+              exit 1
+            fi
+          done
+      - name: Exchange GitHub OIDC token for Azure access
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CANARY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_CANARY_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_CANARY_SUBSCRIPTION_ID }}
+      - name: Read configured resource group
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_CANARY_SUBSCRIPTION_ID }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_CANARY_RESOURCE_GROUP }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          az group show \
+            --subscription "$AZURE_SUBSCRIPTION_ID" \
+            --name "$AZURE_RESOURCE_GROUP" \
+            --output none
+          printf 'Read-only resource group lookup succeeded.\n'
