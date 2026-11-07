@@ -4,10 +4,7 @@ import {
   type ActiveAlert,
   type ActiveAlertsService,
 } from "./realtime-insights.js";
-import {
-  realtimeStreamBroker,
-  type RealtimeStreamBroker,
-} from "./realtime-stream.js";
+import { realtimeStreamBroker, type RealtimeStreamBroker } from "./realtime-stream.js";
 
 export interface CreateAlertListenerOptions {
   alertsService?: ActiveAlertsService;
@@ -36,7 +33,13 @@ function resolveConfiguredAthleteIds(env: NodeJS.ProcessEnv = process.env): stri
       return [];
     }
 
-    return [...new Set(Object.values(parsed).filter((value): value is string => typeof value === "string" && value.length > 0))];
+    return [
+      ...new Set(
+        Object.values(parsed).filter(
+          (value): value is string => typeof value === "string" && value.length > 0,
+        ),
+      ),
+    ];
   } catch {
     return [];
   }
@@ -129,4 +132,3 @@ export function createDefaultAlertListener(
     options.pollIntervalMs ?? getPollIntervalMs(),
   );
 }
-

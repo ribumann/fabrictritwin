@@ -47,10 +47,7 @@ export async function proxyStreamingBackendGet(
     res.status(502).json({
       error: {
         code: errorCode,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to reach the Streaming Backend.",
+        message: error instanceof Error ? error.message : "Failed to reach the Streaming Backend.",
       },
     });
   }
@@ -83,10 +80,7 @@ export async function proxyStreamingBackendPost(
     res.status(502).json({
       error: {
         code: errorCode,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to reach the Streaming Backend.",
+        message: error instanceof Error ? error.message : "Failed to reach the Streaming Backend.",
       },
     });
   }

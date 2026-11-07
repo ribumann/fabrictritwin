@@ -58,7 +58,9 @@ export function enumerateDates(startDate: IsoDate, endDate: IsoDate): IsoDate[] 
  * Returns the number of inclusive whole days in the range.
  */
 export function getInclusiveDayCount(startDate: IsoDate, endDate: IsoDate): number {
-  return Math.floor((toUtcDate(endDate).getTime() - toUtcDate(startDate).getTime()) / DAY_IN_MS) + 1;
+  return (
+    Math.floor((toUtcDate(endDate).getTime() - toUtcDate(startDate).getTime()) / DAY_IN_MS) + 1
+  );
 }
 
 /**

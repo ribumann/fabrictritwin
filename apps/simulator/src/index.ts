@@ -18,7 +18,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return dailyGenerateMain(argv);
   }
 
-  console.log("[simulator] generator library loaded; invoke a specific CLI or set SIMULATOR_MODE=daily-generation.");
+  console.log(
+    "[simulator] generator library loaded; invoke a specific CLI or set SIMULATOR_MODE=daily-generation.",
+  );
   return 0;
 }
 

@@ -2,12 +2,17 @@ import type { Request } from "express";
 
 export class AssistantSignInError extends Error {
   constructor(
-    public readonly code: "assistant_authentication_required" | "assistant_token_expired" | "assistant_auth_configuration_error",
+    public readonly code:
+      | "assistant_authentication_required"
+      | "assistant_token_expired"
+      | "assistant_auth_configuration_error",
     public readonly status: 401 | 503,
   ) {
-    super(code === "assistant_auth_configuration_error"
-      ? "Assistant authentication is not configured correctly. Contact the demo operator."
-      : "Sign in to use Athlete Assistant with your Fabric permissions.");
+    super(
+      code === "assistant_auth_configuration_error"
+        ? "Assistant authentication is not configured correctly. Contact the demo operator."
+        : "Sign in to use Athlete Assistant with your Fabric permissions.",
+    );
     this.name = "AssistantSignInError";
   }
 }
@@ -29,9 +34,10 @@ export function buildAssistantUserHeaders(req: Request): Record<string, string> 
   let claims: Record<string, unknown>;
   try {
     const parts = token.split(".");
-    const parsed: unknown = parts.length === 3 && token.length <= 16_384
-      ? JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"))
-      : undefined;
+    const parsed: unknown =
+      parts.length === 3 && token.length <= 16_384
+        ? JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"))
+        : undefined;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("Invalid access token");
     }

@@ -15,11 +15,14 @@ type AssistantAuthCode =
   | "assistant_auth_configuration_error";
 
 const messages: Record<AssistantAuthCode, string> = {
-  assistant_authentication_required: "Sign in to use Athlete Assistant with your Fabric permissions.",
+  assistant_authentication_required:
+    "Sign in to use Athlete Assistant with your Fabric permissions.",
   assistant_token_expired: "Your sign-in needs to be refreshed.",
-  assistant_interaction_required: "Sign in again to complete the authentication or consent required by Fabric.",
+  assistant_interaction_required:
+    "Sign in again to complete the authentication or consent required by Fabric.",
   assistant_access_denied: "Your account does not have the required Assistant or Fabric access.",
-  assistant_auth_configuration_error: "Assistant authentication is not configured correctly. Contact the demo operator.",
+  assistant_auth_configuration_error:
+    "Assistant authentication is not configured correctly. Contact the demo operator.",
 };
 
 export class AssistantAuthError extends Error {

@@ -17,7 +17,9 @@ function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
     return undefined;
   }
   try {
-    const payload = Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const payload = Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(
+      "utf8",
+    );
     return JSON.parse(payload) as Record<string, unknown>;
   } catch {
     return undefined;
@@ -45,7 +47,10 @@ export function createServiceAuthDebugAction(options: ServiceAuthDebugOptions = 
         idtyp: claims?.idtyp ?? null,
         roles: claims?.roles ?? null,
         scopes: claims?.scp ?? null,
-        expiresAt: typeof claims?.exp === "number" ? new Date((claims.exp as number) * 1000).toISOString() : null,
+        expiresAt:
+          typeof claims?.exp === "number"
+            ? new Date((claims.exp as number) * 1000).toISOString()
+            : null,
       });
     } catch (error) {
       res.status(500).json({

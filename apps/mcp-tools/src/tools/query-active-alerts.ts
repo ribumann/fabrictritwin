@@ -44,6 +44,7 @@ export function registerQueryActiveAlertsTool(
         athleteId: z.string().uuid(),
       },
     },
-    async (args, extra) => toToolResult(await executeQueryActiveAlertsTool(args, extra, dataService)),
+    async (args, extra) =>
+      toToolResult(await executeQueryActiveAlertsTool(args, extra, dataService)),
   );
 }

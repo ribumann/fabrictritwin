@@ -40,7 +40,8 @@ export function registerQueryRaceSplitsTool(
     "query_race_splits",
     {
       title: "Query race splits",
-      description: "Returns live or historical race splits plus a projected finish time for the authorized athlete.",
+      description:
+        "Returns live or historical race splits plus a projected finish time for the authorized athlete.",
       inputSchema: {
         athleteId: z.string().uuid(),
         raceId: z.string().min(1),

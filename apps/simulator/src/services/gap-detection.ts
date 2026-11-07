@@ -27,7 +27,10 @@ export function detectDailyGenerationGap(args: {
   targetDate: IsoDate;
 }): GapDetectionResult {
   const nextExpectedDate = formatDate(addDays(args.lastGeneratedDate, 1));
-  const deltaDays = Math.floor((toUtcDate(args.targetDate).getTime() - toUtcDate(args.lastGeneratedDate).getTime()) / 86_400_000);
+  const deltaDays = Math.floor(
+    (toUtcDate(args.targetDate).getTime() - toUtcDate(args.lastGeneratedDate).getTime()) /
+      86_400_000,
+  );
 
   if (deltaDays <= 0) {
     return {
@@ -63,7 +66,10 @@ export function detectDailyGenerationGap(args: {
   };
 }
 
-export function toGapRecord(result: GapDetectionResult, detectedOn: IsoDate): DailyGenerationGapRecord | null {
+export function toGapRecord(
+  result: GapDetectionResult,
+  detectedOn: IsoDate,
+): DailyGenerationGapRecord | null {
   if (result.status !== "gap-detected") {
     return null;
   }
@@ -91,6 +97,8 @@ export function mergeGapRecords(
     return [...existing];
   }
 
-  const alreadyTracked = existing.some((candidate) => candidate.fromDate === record.fromDate && candidate.toDate === record.toDate);
+  const alreadyTracked = existing.some(
+    (candidate) => candidate.fromDate === record.fromDate && candidate.toDate === record.toDate,
+  );
   return alreadyTracked ? [...existing] : [...existing, record];
 }

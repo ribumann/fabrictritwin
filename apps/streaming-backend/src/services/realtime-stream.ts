@@ -71,11 +71,7 @@ export class RealtimeStreamBroker {
     });
   }
 
-  publishSessionStatus(
-    athleteId: string,
-    sessionId: string,
-    status: "completed" | "missed",
-  ): void {
+  publishSessionStatus(athleteId: string, sessionId: string, status: "completed" | "missed"): void {
     this.publish({
       athleteId,
       frame: {

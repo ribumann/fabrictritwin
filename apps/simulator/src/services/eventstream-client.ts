@@ -39,7 +39,10 @@ interface EventstreamBatch {
   tryAdd(event: EventstreamEnvelope<EventstreamEntityType>): boolean;
 }
 
-type EventstreamProducerClient = Pick<EventHubProducerClient, "createBatch" | "sendBatch" | "close">;
+type EventstreamProducerClient = Pick<
+  EventHubProducerClient,
+  "createBatch" | "sendBatch" | "close"
+>;
 
 export const EVENTSTREAM_ROUTE = "eventstream-custom-endpoint" as const;
 export const SESSIONMETRIC_MAPPING_NAME = "sessionmetric_json_map" as const;
@@ -108,7 +111,10 @@ function getEntityId(record: SessionMetric | RaceSplit): string {
 export class EventstreamTelemetryPublisher implements EventstreamPublisher {
   private readonly client: EventstreamProducerClient;
 
-  constructor(private readonly config: EventstreamConfig, client?: EventstreamProducerClient) {
+  constructor(
+    private readonly config: EventstreamConfig,
+    client?: EventstreamProducerClient,
+  ) {
     this.client = client ?? new EventHubProducerClient(config.connectionString);
   }
 
@@ -151,7 +157,9 @@ export class EventstreamTelemetryPublisher implements EventstreamPublisher {
         batch = (await this.client.createBatch()) as EventstreamBatch;
 
         if (!batch.tryAdd(event)) {
-          throw new Error(`${entityType} event for ${getEntityId(record)} exceeded the Event Hubs batch size.`);
+          throw new Error(
+            `${entityType} event for ${getEntityId(record)} exceeded the Event Hubs batch size.`,
+          );
         }
       }
 

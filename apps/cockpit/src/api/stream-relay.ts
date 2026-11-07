@@ -72,12 +72,7 @@ export function attachCockpitStreamRelay(
   server.on("upgrade", (request, socket, head) => {
     const athleteId = getRequestedAthleteIdFromUrl(request.url);
     if (!athleteId) {
-      writeUpgradeRejection(
-        socket,
-        404,
-        "not_found",
-        "Unknown stream endpoint.",
-      );
+      writeUpgradeRejection(socket, 404, "not_found", "Unknown stream endpoint.");
       return;
     }
 
@@ -130,31 +125,26 @@ export function attachCockpitStreamRelay(
                 JSON.stringify({
                   type: "proxyError",
                   message:
-                    error instanceof Error
-                      ? error.message
-                      : "Streaming Backend socket failed.",
+                    error instanceof Error ? error.message : "Streaming Backend socket failed.",
                 }),
               );
               clientSocket.close(1011, "Upstream socket failed");
             }
           });
-          upstream.on(
-            "unexpected-response",
-            (_request, response: IncomingMessage) => {
-              void readUnexpectedResponseBody(response).then((body) => {
-                if (clientSocket.readyState === WebSocket.OPEN) {
-                  clientSocket.send(
-                    JSON.stringify({
-                      type: "proxyError",
-                      status: response.statusCode ?? 502,
-                      body,
-                    }),
-                  );
-                  clientSocket.close(1011, "Upstream rejected upgrade");
-                }
-              });
-            },
-          );
+          upstream.on("unexpected-response", (_request, response: IncomingMessage) => {
+            void readUnexpectedResponseBody(response).then((body) => {
+              if (clientSocket.readyState === WebSocket.OPEN) {
+                clientSocket.send(
+                  JSON.stringify({
+                    type: "proxyError",
+                    status: response.statusCode ?? 502,
+                    body,
+                  }),
+                );
+                clientSocket.close(1011, "Upstream rejected upgrade");
+              }
+            });
+          });
 
           webSocketServer.emit("connection", clientSocket, request);
         });
@@ -163,9 +153,7 @@ export function attachCockpitStreamRelay(
           socket,
           502,
           "stream_proxy_failed",
-          error instanceof Error
-            ? error.message
-            : "Failed to initialize the stream relay.",
+          error instanceof Error ? error.message : "Failed to initialize the stream relay.",
         );
       }
     })();

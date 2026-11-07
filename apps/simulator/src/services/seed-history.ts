@@ -1,8 +1,4 @@
-
-import {
-  DataLakeFileSystemClient,
-  DataLakeServiceClient,
-} from "@azure/storage-file-datalake";
+import { DataLakeFileSystemClient, DataLakeServiceClient } from "@azure/storage-file-datalake";
 import { DefaultAzureCredential } from "@azure/identity";
 import { randomUUID } from "node:crypto";
 import type {
@@ -341,7 +337,8 @@ function buildSeedDataset(options: SeedHistoryOptions): SeedHistoryDataset {
   const referenceDate = resolveReferenceDate(options.referenceDate);
   const baseSeed = deriveSeed(options.seed ?? DEFAULT_HISTORY_SEED, options.athleteId);
   const athlete = buildDefaultAthlete(options.athleteId, referenceDate);
-  const goalRaceId = options.goalRaceId ?? deriveGoalRaceId(options.athleteId, options.seed ?? DEFAULT_HISTORY_SEED);
+  const goalRaceId =
+    options.goalRaceId ?? deriveGoalRaceId(options.athleteId, options.seed ?? DEFAULT_HISTORY_SEED);
   const plan = generatePeriodizedTrainingPlan({
     athleteId: options.athleteId,
     goalRaceId,
@@ -371,7 +368,13 @@ function buildSeedDataset(options: SeedHistoryOptions): SeedHistoryDataset {
     recoveryMetrics: withAnomalies.recoveryMetrics,
     nutritionLogs: withAnomalies.nutritionLogs,
     sleepSessions: withAnomalies.sleepSessions,
-    races: buildSeedRaces(options.athleteId, goalRaceId, referenceDate, plan.trainingBlock, baseSeed),
+    races: buildSeedRaces(
+      options.athleteId,
+      goalRaceId,
+      referenceDate,
+      plan.trainingBlock,
+      baseSeed,
+    ),
     equipment: buildSeedEquipment(options.athleteId, baseSeed),
     sessionMetrics: generateSessionMetricsForSessions(withAnomalies.trainingSessions, {
       seed: deriveSeed(baseSeed, "session-metrics"),
@@ -384,14 +387,23 @@ function buildSeedDataset(options: SeedHistoryOptions): SeedHistoryDataset {
 export class OneLakeFilesSeedHistoryStore implements SeedHistoryStore {
   protected readonly fileSystemClient: DataLakeFileSystemClient;
 
-  constructor(protected readonly config: OneLakeConfig, credential: DefaultAzureCredential = new DefaultAzureCredential()) {
-    this.fileSystemClient = new DataLakeServiceClient(config.accountUrl, credential).getFileSystemClient(
-      config.fileSystem,
-    );
+  constructor(
+    protected readonly config: OneLakeConfig,
+    credential: DefaultAzureCredential = new DefaultAzureCredential(),
+  ) {
+    this.fileSystemClient = new DataLakeServiceClient(
+      config.accountUrl,
+      credential,
+    ).getFileSystemClient(config.fileSystem);
   }
 
-  async getExistingSeed(athleteId: string, environment: string): Promise<SeedHistoryFreshResult | null> {
-    const manifestClient = this.fileSystemClient.getFileClient(this.getManifestPath(athleteId, environment));
+  async getExistingSeed(
+    athleteId: string,
+    environment: string,
+  ): Promise<SeedHistoryFreshResult | null> {
+    const manifestClient = this.fileSystemClient.getFileClient(
+      this.getManifestPath(athleteId, environment),
+    );
     if (!(await manifestClient.exists())) {
       return null;
     }
@@ -566,7 +578,8 @@ export async function seedHistory(
   options: SeedHistoryOptions,
   dependencies: SeedHistoryDependencies = {},
 ): Promise<SeedHistoryResult> {
-  const environment = options.environment ?? process.env.SIMULATOR_ENVIRONMENT ?? DEFAULT_ENVIRONMENT;
+  const environment =
+    options.environment ?? process.env.SIMULATOR_ENVIRONMENT ?? DEFAULT_ENVIRONMENT;
   const inFlightKey = `${environment}:${options.athleteId}`;
 
   const existingRun = inFlightSeedRuns.get(inFlightKey);
@@ -592,7 +605,9 @@ async function seedHistoryUncoalesced(
 ): Promise<SeedHistoryResult> {
   const store = dependencies.store ?? createDefaultSeedHistoryStore();
   const publisher = dependencies.sessionMetricPublisher ?? createDefaultSessionMetricPublisher();
-  const closePublisher = dependencies.sessionMetricPublisher ? undefined : publisher.close?.bind(publisher);
+  const closePublisher = dependencies.sessionMetricPublisher
+    ? undefined
+    : publisher.close?.bind(publisher);
 
   try {
     const existing = await store.getExistingSeed(options.athleteId, environment);

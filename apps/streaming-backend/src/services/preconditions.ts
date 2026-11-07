@@ -1,7 +1,4 @@
-import {
-  createDefaultSeedHistoryStore,
-  type SeedHistoryStore,
-} from "@triathlon-twin/simulator";
+import { createDefaultSeedHistoryStore, type SeedHistoryStore } from "@triathlon-twin/simulator";
 
 export interface SeededHistoryPreconditionChecker {
   hasSeededHistory(athleteId: string, environment: string): Promise<boolean>;

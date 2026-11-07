@@ -45,6 +45,7 @@ export function registerQueryTrainingLoadTool(
         athleteId: z.string().uuid(),
       },
     },
-    async (args, extra) => toToolResult(await executeQueryTrainingLoadTool(args, extra, dataService)),
+    async (args, extra) =>
+      toToolResult(await executeQueryTrainingLoadTool(args, extra, dataService)),
   );
 }

@@ -76,7 +76,9 @@ function getEventhouseConfig(): EventhouseConfig {
     queryUri: requireNonEmptyEnv("EVENTHOUSE_QUERY_URI"),
     databaseName: requireNonEmptyEnv("EVENTHOUSE_DATABASE_NAME"),
     queryTimeoutMs:
-      Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : DEFAULT_QUERY_TIMEOUT_MS,
+      Number.isFinite(parsedTimeout) && parsedTimeout > 0
+        ? parsedTimeout
+        : DEFAULT_QUERY_TIMEOUT_MS,
   };
 }
 
@@ -164,7 +166,10 @@ function buildActiveAlert(
 class DefaultQueryExecutor implements QueryExecutor {
   private readonly client: KustoClient;
 
-  constructor(private readonly config: EventhouseConfig, credential: TokenCredential) {
+  constructor(
+    private readonly config: EventhouseConfig,
+    credential: TokenCredential,
+  ) {
     this.client = new KustoClient(
       KustoConnectionStringBuilder.withTokenCredential(config.queryUri, credential),
     );
@@ -210,18 +215,12 @@ function computeRecoveryScore(
   const rhrComponent = ((rhrDeltaCapped + 10) / 20) * 100;
 
   return round(
-    0.35 * hrvComponent +
-      0.25 * sleepScore +
-      0.2 * inverseSorenessComponent +
-      0.2 * rhrComponent,
+    0.35 * hrvComponent + 0.25 * sleepScore + 0.2 * inverseSorenessComponent + 0.2 * rhrComponent,
     1,
   );
 }
 
-function computeSleepDebt(
-  targetDate: string,
-  sleepByDate: ReadonlyMap<string, number>,
-): number {
+function computeSleepDebt(targetDate: string, sleepByDate: ReadonlyMap<string, number>): number {
   const anchor = new Date(`${targetDate}T00:00:00.000Z`);
   const samples: number[] = [];
 
@@ -247,9 +246,13 @@ function normalizePhase(value: string | null): TrainingLoadResponse["currentPhas
   return SAFE_PHASES.find((phase) => phase === value) ?? "Base";
 }
 
-function inferRaceTotalDistanceMeters(splits: ReadonlyArray<{ plannedPaceSecPerKm: number }>): number | null {
+function inferRaceTotalDistanceMeters(
+  splits: ReadonlyArray<{ plannedPaceSecPerKm: number }>,
+): number | null {
   for (const split of splits) {
-    const inferred = RACE_DISTANCE_TOTALS_BY_PLANNED_PACE.get(Math.round(split.plannedPaceSecPerKm));
+    const inferred = RACE_DISTANCE_TOTALS_BY_PLANNED_PACE.get(
+      Math.round(split.plannedPaceSecPerKm),
+    );
     if (typeof inferred === "number") {
       return inferred;
     }
@@ -561,7 +564,10 @@ class KustoAthleteAssistantDataService implements AthleteAssistantDataService {
     let previousDistanceMeters = 0;
 
     for (const split of splits) {
-      const segmentDistanceMeters = Math.max(0, split.distanceCoveredMeters - previousDistanceMeters);
+      const segmentDistanceMeters = Math.max(
+        0,
+        split.distanceCoveredMeters - previousDistanceMeters,
+      );
       elapsedSeconds += (segmentDistanceMeters / 1_000) * split.currentPaceSecPerKm;
       previousDistanceMeters = split.distanceCoveredMeters;
     }

@@ -1,9 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import {
-  proxyStreamingBackendGet,
-  type StreamingBackendProxyOptions,
-} from "./proxy.js";
+import { proxyStreamingBackendGet, type StreamingBackendProxyOptions } from "./proxy.js";
 
 function getRequestedRaceId(req: Request): string | undefined {
   return typeof req.params.raceId === "string" ? req.params.raceId : undefined;
@@ -28,7 +25,8 @@ export function createRaceRouter(options: StreamingBackendProxyOptions): Router 
       req,
       res,
       options,
-      () => new URL(`/api/race/${encodeURIComponent(raceId)}/live`, options.streamingBackendBaseUrl),
+      () =>
+        new URL(`/api/race/${encodeURIComponent(raceId)}/live`, options.streamingBackendBaseUrl),
       "race_live_proxy_failed",
     );
   });
@@ -49,7 +47,8 @@ export function createRaceRouter(options: StreamingBackendProxyOptions): Router 
       req,
       res,
       options,
-      () => new URL(`/api/race/${encodeURIComponent(raceId)}/summary`, options.streamingBackendBaseUrl),
+      () =>
+        new URL(`/api/race/${encodeURIComponent(raceId)}/summary`, options.streamingBackendBaseUrl),
       "race_summary_proxy_failed",
     );
   });

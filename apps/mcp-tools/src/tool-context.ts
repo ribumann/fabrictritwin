@@ -31,7 +31,9 @@ export function getHeaderValue(
 export function resolveAuthorizedAthleteId(
   extra?: Pick<RequestHandlerExtra<Request, Notification>, "requestInfo">,
 ): string | undefined {
-  return getHeaderValue(extra?.requestInfo?.headers, AUTHORIZED_ATHLETE_HEADER)?.trim() || undefined;
+  return (
+    getHeaderValue(extra?.requestInfo?.headers, AUTHORIZED_ATHLETE_HEADER)?.trim() || undefined
+  );
 }
 
 export function authorizeToolCall(

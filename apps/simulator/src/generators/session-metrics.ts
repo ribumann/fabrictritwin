@@ -137,7 +137,10 @@ export function generateSessionMetrics(
   for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
     const progress = sampleIndex / (sampleCount - 1);
     const effortCurve = Math.sin(progress * Math.PI);
-    const intervalPulse = session.targetZone === "Z4" || session.targetZone === "Z5" ? Math.sin(progress * Math.PI * 5) * 0.08 : 0;
+    const intervalPulse =
+      session.targetZone === "Z4" || session.targetZone === "Z5"
+        ? Math.sin(progress * Math.PI * 5) * 0.08
+        : 0;
     const fatigueDrift = progress * (session.discipline === "strength" ? 0.03 : 0.06);
     const heartRate = clamp(
       Math.round(
@@ -196,7 +199,9 @@ export function generateSessionMetrics(
       BASE_LONGITUDE + sessionOffsetLon + (radiusKm / longitudeScale) * Math.sin(angle),
       6,
     );
-    const timestamp = new Date(baseDate.getTime() + sampleIndex * sampleIntervalMinutes * 60_000).toISOString();
+    const timestamp = new Date(
+      baseDate.getTime() + sampleIndex * sampleIntervalMinutes * 60_000,
+    ).toISOString();
 
     metrics.push({
       sessionId: session.sessionId,

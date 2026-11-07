@@ -14,8 +14,7 @@ function getOptionalQueryString(req: Request, name: string): string | undefined 
 export function createContextAction() {
   return (req: Request, res: Response): void => {
     const defaultAthleteId = getTrimmedEnv("DEFAULT_ATHLETE_ID") ?? null;
-    const selectedAthleteId =
-      getOptionalQueryString(req, "athleteId") ?? defaultAthleteId;
+    const selectedAthleteId = getOptionalQueryString(req, "athleteId") ?? defaultAthleteId;
     const defaultRaceId = defaultAthleteId ? deriveGoalRaceId(defaultAthleteId) : null;
     const selectedRaceId =
       getOptionalQueryString(req, "raceId") ??

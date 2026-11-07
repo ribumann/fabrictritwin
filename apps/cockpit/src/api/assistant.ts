@@ -7,10 +7,7 @@ import {
   isSupportedMcpToolName,
   type SupportedMcpToolName,
 } from "../agent/assistant-client.js";
-import {
-  proxyStreamingBackendPost,
-  type StreamingBackendProxyOptions,
-} from "./proxy.js";
+import { proxyStreamingBackendPost, type StreamingBackendProxyOptions } from "./proxy.js";
 
 function getTrimmedString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
@@ -100,8 +97,10 @@ export function createAssistantRouter(options: AssistantProxyOptions): Router {
         redirect: "manual",
       });
       const contentType = upstream.headers.get("content-type") ?? "";
-      if ((upstream.status >= 300 && upstream.status < 400) ||
-        (upstream.status === 401 && !contentType.includes("application/json"))) {
+      if (
+        (upstream.status >= 300 && upstream.status < 400) ||
+        (upstream.status === 401 && !contentType.includes("application/json"))
+      ) {
         res.status(401).json({
           error: {
             code: "assistant_authentication_required",
@@ -112,24 +111,41 @@ export function createAssistantRouter(options: AssistantProxyOptions): Router {
         return;
       }
       if (!contentType.includes("application/json")) {
-        res.status(502).json({ error: { code: "assistant_ask_proxy_failed", message: "Assistant returned an unexpected response." } });
+        res
+          .status(502)
+          .json({
+            error: {
+              code: "assistant_ask_proxy_failed",
+              message: "Assistant returned an unexpected response.",
+            },
+          });
         return;
       }
       const challenge = upstream.headers.get("www-authenticate");
-      if (upstream.status === 401 && challenge?.startsWith('Bearer error="insufficient_claims"') &&
-        challenge.length <= 12_000) {
+      if (
+        upstream.status === 401 &&
+        challenge?.startsWith('Bearer error="insufficient_claims"') &&
+        challenge.length <= 12_000
+      ) {
         res.setHeader("www-authenticate", challenge);
       }
       res.status(upstream.status).json(await upstream.json());
     } catch (error) {
       if (error instanceof AssistantSignInError) {
         res.status(error.status).json({
-          error: { code: error.code, message: error.message, canRefresh: error.code === "assistant_token_expired" },
+          error: {
+            code: error.code,
+            message: error.message,
+            canRefresh: error.code === "assistant_token_expired",
+          },
         });
         return;
       }
       res.status(502).json({
-        error: { code: "assistant_ask_proxy_failed", message: "Could not reach Athlete Assistant. Try again." },
+        error: {
+          code: "assistant_ask_proxy_failed",
+          message: "Could not reach Athlete Assistant. Try again.",
+        },
       });
     }
   });
@@ -137,11 +153,13 @@ export function createAssistantRouter(options: AssistantProxyOptions): Router {
   router.post("/mcp-query", async (req: Request, res: Response): Promise<void> => {
     const body = getMcpQueryRequestBody(req);
     if (!body) {
-      res.status(400).json(
-        invalidRequestBody(
-          "Request body must include a supported tool name and arguments object.",
-        ),
-      );
+      res
+        .status(400)
+        .json(
+          invalidRequestBody(
+            "Request body must include a supported tool name and arguments object.",
+          ),
+        );
       return;
     }
 

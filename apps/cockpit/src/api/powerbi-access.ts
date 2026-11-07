@@ -29,22 +29,37 @@ export function powerBiCaller(req: Request): { objectId: string; tenantId: strin
   } catch {
     return undefined;
   }
-  if (!principal || principal.auth_typ !== "aad" || !Array.isArray(principal.claims)) return undefined;
-  const claims = principal.claims.filter((claim): claim is { typ: string; val: string } =>
-    typeof claim === "object" && claim !== null &&
-    typeof claim.typ === "string" && typeof claim.val === "string");
+  if (!principal || principal.auth_typ !== "aad" || !Array.isArray(principal.claims))
+    return undefined;
+  const claims = principal.claims.filter(
+    (claim): claim is { typ: string; val: string } =>
+      typeof claim === "object" &&
+      claim !== null &&
+      typeof claim.typ === "string" &&
+      typeof claim.val === "string",
+  );
   function claimValue(types: string[]) {
-    const values = new Set(claims.filter((claim) => types.includes(claim.typ)).map((claim) => claim.val.toLowerCase()));
+    const values = new Set(
+      claims.filter((claim) => types.includes(claim.typ)).map((claim) => claim.val.toLowerCase()),
+    );
     return values.size === 1 ? [...values][0] : undefined;
   }
-  const objectId = claimValue(["oid", "http://schemas.microsoft.com/identity/claims/objectidentifier"]);
+  const objectId = claimValue([
+    "oid",
+    "http://schemas.microsoft.com/identity/claims/objectidentifier",
+  ]);
   const tenantId = claimValue(["tid", "http://schemas.microsoft.com/identity/claims/tenantid"]);
   const directId = req.get("x-ms-client-principal-id")?.toLowerCase();
   if (!objectId || !tenantId || (directId && directId !== objectId)) return undefined;
   return { objectId, tenantId };
 }
 
-export function canViewPowerBi(caller: { objectId: string; tenantId: string }, config: PowerBiConfig): boolean {
-  return caller.tenantId === config.tenantId.toLowerCase() &&
-    config.allowedPrincipalIds.includes(caller.objectId);
+export function canViewPowerBi(
+  caller: { objectId: string; tenantId: string },
+  config: PowerBiConfig,
+): boolean {
+  return (
+    caller.tenantId === config.tenantId.toLowerCase() &&
+    config.allowedPrincipalIds.includes(caller.objectId)
+  );
 }

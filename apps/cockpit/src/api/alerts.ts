@@ -1,9 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import {
-  proxyStreamingBackendGet,
-  type StreamingBackendProxyOptions,
-} from "./proxy.js";
+import { proxyStreamingBackendGet, type StreamingBackendProxyOptions } from "./proxy.js";
 
 function getRequestedAthleteId(req: Request): string | undefined {
   return typeof req.params.athleteId === "string" ? req.params.athleteId : undefined;
@@ -24,17 +21,23 @@ export function createAlertsRouter(options: StreamingBackendProxyOptions): Route
       return;
     }
 
-    await proxyStreamingBackendGet(req, res, options, () => {
-      const upstream = new URL(
-        `/api/alerts/${encodeURIComponent(athleteId)}`,
-        options.streamingBackendBaseUrl,
-      );
-      upstream.searchParams.set(
-        "active",
-        typeof req.query.active === "string" ? req.query.active : "true",
-      );
-      return upstream;
-    }, "alerts_proxy_failed");
+    await proxyStreamingBackendGet(
+      req,
+      res,
+      options,
+      () => {
+        const upstream = new URL(
+          `/api/alerts/${encodeURIComponent(athleteId)}`,
+          options.streamingBackendBaseUrl,
+        );
+        upstream.searchParams.set(
+          "active",
+          typeof req.query.active === "string" ? req.query.active : "true",
+        );
+        return upstream;
+      },
+      "alerts_proxy_failed",
+    );
   });
 
   return router;

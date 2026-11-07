@@ -1,4 +1,10 @@
-import type { IsoDate, NutritionLog, RecoveryMetrics, SleepSession, TrainingSession } from "../models/index.js";
+import type {
+  IsoDate,
+  NutritionLog,
+  RecoveryMetrics,
+  SleepSession,
+  TrainingSession,
+} from "../models/index.js";
 import { enumerateDates, getDatePortion, getInclusiveDayCount, withUtcTime } from "./date-utils.js";
 import { createSeededRandom, deriveSeed } from "./random.js";
 
@@ -101,8 +107,13 @@ function buildSessionSummaryByDate(
       date,
       sessionCount: existing.sessionCount + 1,
       totalDurationMinutes: existing.totalDurationMinutes + session.plannedDurationMinutes,
-      totalTrainingLoad: existing.totalTrainingLoad + session.plannedDurationMinutes * estimateTrainingLoadRpe(session),
-      longestSessionMinutes: Math.max(existing.longestSessionMinutes, session.plannedDurationMinutes),
+      totalTrainingLoad:
+        existing.totalTrainingLoad +
+        session.plannedDurationMinutes * estimateTrainingLoadRpe(session),
+      longestSessionMinutes: Math.max(
+        existing.longestSessionMinutes,
+        session.plannedDurationMinutes,
+      ),
     });
   }
 
@@ -117,7 +128,11 @@ function getBodyWeightKg(dayIndex: number, baseBodyWeightKg: number, seed: numbe
   return round(baseBodyWeightKg + slowTrend + noise, 1);
 }
 
-function getSleepProfile(dayIndex: number, summary: DailySessionSummary, seed: number): SleepProfile {
+function getSleepProfile(
+  dayIndex: number,
+  summary: DailySessionSummary,
+  seed: number,
+): SleepProfile {
   const random = createSeededRandom(deriveSeed(seed, `sleep-${summary.date}`));
   const trainingBonus = Math.min(45, summary.totalDurationMinutes * 0.16);
   const totalSleepMinutes = clamp(
@@ -171,7 +186,11 @@ export function generateRecoveryMetrics(options: DailyMetricsGeneratorOptions): 
     const summary = summaryByDate.get(date)!;
     const random = createSeededRandom(deriveSeed(seed, `recovery-${date}`));
     const sleepProfile = getSleepProfile(dayIndex, summary, seed);
-    const bodyWeightKg = getBodyWeightKg(dayIndex, options.baseBodyWeightKg ?? DEFAULT_BODY_WEIGHT_KG, seed);
+    const bodyWeightKg = getBodyWeightKg(
+      dayIndex,
+      options.baseBodyWeightKg ?? DEFAULT_BODY_WEIGHT_KG,
+      seed,
+    );
     const hrv = clamp(
       round(78 - summary.totalTrainingLoad / 115 + (random.next() - 0.5) * 7, 1),
       48,
@@ -241,12 +260,22 @@ export function generateNutritionLogs(options: DailyMetricsGeneratorOptions): Nu
     const dayIndex = getInclusiveDayCount(anchorStartDate, date) - 1;
     const summary = summaryByDate.get(date)!;
     const random = createSeededRandom(deriveSeed(seed, `nutrition-${date}`));
-    const bodyWeightKg = getBodyWeightKg(dayIndex, options.baseBodyWeightKg ?? DEFAULT_BODY_WEIGHT_KG, seed);
+    const bodyWeightKg = getBodyWeightKg(
+      dayIndex,
+      options.baseBodyWeightKg ?? DEFAULT_BODY_WEIGHT_KG,
+      seed,
+    );
     const carbTargetPerKg = getDailyCarbTargetPerKg(summary);
     const totalCarbs = round(bodyWeightKg * carbTargetPerKg * (0.94 + random.next() * 0.12));
-    const totalProtein = round(bodyWeightKg * (1.7 + Math.min(0.35, summary.totalDurationMinutes / 500)));
-    const totalFat = round(clamp(65 + summary.totalDurationMinutes * 0.12 + (random.next() - 0.5) * 12, 55, 105));
-    const totalHydrationMl = round(clamp(2200 + summary.totalDurationMinutes * 10 + summary.sessionCount * 180, 2200, 5200));
+    const totalProtein = round(
+      bodyWeightKg * (1.7 + Math.min(0.35, summary.totalDurationMinutes / 500)),
+    );
+    const totalFat = round(
+      clamp(65 + summary.totalDurationMinutes * 0.12 + (random.next() - 0.5) * 12, 55, 105),
+    );
+    const totalHydrationMl = round(
+      clamp(2200 + summary.totalDurationMinutes * 10 + summary.sessionCount * 180, 2200, 5200),
+    );
 
     const mealPlan = [
       { mealType: "breakfast", time: [7, 15], share: 0.24 },
@@ -272,7 +301,9 @@ export function generateNutritionLogs(options: DailyMetricsGeneratorOptions): Nu
       const fatGrams = round(
         Math.max(
           0,
-          totalFat * normalizedShare * (meal.mealType === "during-session" ? 0.25 : meal.mealType === "recovery" ? 0.6 : 1),
+          totalFat *
+            normalizedShare *
+            (meal.mealType === "during-session" ? 0.25 : meal.mealType === "recovery" ? 0.6 : 1),
         ),
       );
       const hydrationMl = round(
@@ -303,7 +334,9 @@ export function generateNutritionLogs(options: DailyMetricsGeneratorOptions): Nu
 /**
  * Generates the full daily recovery, sleep, and nutrition bundle for a seeded history window.
  */
-export function generateDailyMetricsBundle(options: DailyMetricsGeneratorOptions): DailyMetricsBundle {
+export function generateDailyMetricsBundle(
+  options: DailyMetricsGeneratorOptions,
+): DailyMetricsBundle {
   return {
     recoveryMetrics: generateRecoveryMetrics(options),
     sleepSessions: generateSleepSessions(options),

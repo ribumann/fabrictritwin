@@ -12,10 +12,7 @@ const TOTAL_DISTANCE_METERS: Record<RaceDistance, number> = {
 };
 
 interface RaceReadStore {
-  readLakehousePayload(
-    athleteId: string,
-    environment: string,
-  ): Promise<{ races: Race[] } | null>;
+  readLakehousePayload(athleteId: string, environment: string): Promise<{ races: Race[] } | null>;
 }
 
 export interface RaceCatalog {
@@ -69,10 +66,7 @@ function resolveEnvironment(environment?: string): string {
 }
 
 function computeProgressPct(distance: RaceDistance, coveredMeters: number): number {
-  return Math.min(
-    100,
-    Math.max(0, (coveredMeters / TOTAL_DISTANCE_METERS[distance]) * 100),
-  );
+  return Math.min(100, Math.max(0, (coveredMeters / TOTAL_DISTANCE_METERS[distance]) * 100));
 }
 
 function computePacingEvennessStdDev(splits: readonly RaceSplit[]): number | null {
@@ -80,12 +74,9 @@ function computePacingEvennessStdDev(splits: readonly RaceSplit[]): number | nul
     return null;
   }
 
-  const deltas = splits.map(
-    (split) => split.currentPaceSecPerKm - split.plannedPaceSecPerKm,
-  );
+  const deltas = splits.map((split) => split.currentPaceSecPerKm - split.plannedPaceSecPerKm);
   const mean = deltas.reduce((sum, value) => sum + value, 0) / deltas.length;
-  const variance =
-    deltas.reduce((sum, value) => sum + (value - mean) ** 2, 0) / deltas.length;
+  const variance = deltas.reduce((sum, value) => sum + (value - mean) ** 2, 0) / deltas.length;
   return Math.round(Math.sqrt(variance) * 100) / 100;
 }
 
@@ -217,9 +208,7 @@ export class RaceStateStore {
   }
 }
 
-export function createRaceCatalog(
-  options: CreateRaceCatalogOptions = {},
-): RaceCatalog {
+export function createRaceCatalog(options: CreateRaceCatalogOptions = {}): RaceCatalog {
   return new OneLakeRaceCatalog(
     resolveEnvironment(options.environment),
     options.store ?? createDefaultDailyGenerationStore(),

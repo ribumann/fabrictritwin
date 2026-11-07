@@ -1,4 +1,10 @@
-import type { IsoDate, NutritionLog, RecoveryMetrics, SleepSession, TrainingSession } from "../models/index.js";
+import type {
+  IsoDate,
+  NutritionLog,
+  RecoveryMetrics,
+  SleepSession,
+  TrainingSession,
+} from "../models/index.js";
 import { enumerateDates } from "./date-utils.js";
 import { createSeededRandom, deriveSeed } from "./random.js";
 
@@ -54,11 +60,18 @@ function getCandidateDates(recoveryMetrics: readonly RecoveryMetrics[]): IsoDate
     return [];
   }
 
-  const orderedDates = enumerateDates(recoveryMetrics[0].date, recoveryMetrics[recoveryMetrics.length - 1].date);
+  const orderedDates = enumerateDates(
+    recoveryMetrics[0].date,
+    recoveryMetrics[recoveryMetrics.length - 1].date,
+  );
   return orderedDates.slice(EDGE_BUFFER_DAYS, orderedDates.length - EDGE_BUFFER_DAYS);
 }
 
-function pickDistinctDate(randomSeed: number, candidates: readonly IsoDate[], excludedDates: ReadonlySet<IsoDate>): IsoDate {
+function pickDistinctDate(
+  randomSeed: number,
+  candidates: readonly IsoDate[],
+  excludedDates: ReadonlySet<IsoDate>,
+): IsoDate {
   const available = candidates.filter((candidate) => !excludedDates.has(candidate));
 
   if (available.length === 0) {
@@ -87,13 +100,19 @@ export function injectAnomalies(input: AnomalyInjectionInput): AnomalyInjectionR
   }
 
   const safeDates = getCandidateDates(recoveryMetrics);
-  const singleSessionDates = safeDates.filter((date) => (sessionsByDate.get(date)?.length ?? 0) === 1);
+  const singleSessionDates = safeDates.filter(
+    (date) => (sessionsByDate.get(date)?.length ?? 0) === 1,
+  );
 
   if (singleSessionDates.length < 2 || safeDates.length < 3) {
     throw new Error("Insufficient seeded history to inject the required anomalies.");
   }
 
-  const sickDate = pickDistinctDate(deriveSeed(seed, "sick-day"), singleSessionDates, new Set<IsoDate>());
+  const sickDate = pickDistinctDate(
+    deriveSeed(seed, "sick-day"),
+    singleSessionDates,
+    new Set<IsoDate>(),
+  );
   const missedSessionDate = pickDistinctDate(
     deriveSeed(seed, "missed-session"),
     singleSessionDates.filter((date) => date !== sickDate),
@@ -122,7 +141,11 @@ export function injectAnomalies(input: AnomalyInjectionInput): AnomalyInjectionR
 
   const sickRandom = createSeededRandom(deriveSeed(seed, "sick-day-values"));
   sickRecovery.hrv = sickRandom.int(28, 40);
-  sickRecovery.restingHeartRate = clamp(sickRecovery.restingHeartRate + sickRandom.int(10, 16), 30, 220);
+  sickRecovery.restingHeartRate = clamp(
+    sickRecovery.restingHeartRate + sickRandom.int(10, 16),
+    30,
+    220,
+  );
   sickRecovery.sleepScore = sickRandom.int(42, 56);
   sickRecovery.sorenessScore = Number((7.8 + sickRandom.next() * 1.5).toFixed(1));
   sickSession.status = "missed";

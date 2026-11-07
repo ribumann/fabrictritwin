@@ -18,10 +18,7 @@ export interface JsonRpcToolCallRequest {
 }
 
 export function isSupportedMcpToolName(value: unknown): value is SupportedMcpToolName {
-  return (
-    typeof value === "string" &&
-    supportedMcpTools.includes(value as SupportedMcpToolName)
-  );
+  return typeof value === "string" && supportedMcpTools.includes(value as SupportedMcpToolName);
 }
 
 export function buildMcpToolCallRequest(
