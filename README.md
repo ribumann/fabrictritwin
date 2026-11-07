@@ -37,6 +37,11 @@ New simulator jobs default to manual execution. Daily cloud scheduling requires
 the explicit Bicep `enableSimulatorSchedule` opt-in after deployment configuration.
 Supply your own Fabric capacity administrator; no tenant identity is preconfigured.
 
+The new [protected image-update pipeline](scripts/deploy/README.md) is manual,
+main-only and disabled until an administrator configures and enables its protected
+environment. It deploys one approved existing ACR digest without reprovisioning
+resources or resetting runtime configuration. PR/push CI has no cloud credentials.
+
 Nonpublic tooling, development provenance, private deployment notes and
 account identifiers have been excluded. Test identifiers and hostnames are fictional.
 See [third-party notices](THIRD_PARTY_NOTICES.md) for dependency licensing.
