@@ -19,7 +19,8 @@ node scripts/demo.mjs
 ```
 
 The launcher restores the locked dependencies, builds the apps, starts one
-synthetic backend and the **real Cockpit**, and waits for both health checks.
+synthetic backend and the **real Cockpit**, and waits up to 60 seconds per service
+for both health checks.
 Open **http://localhost:3300**. No Azure/Fabric/Foundry credentials, Docker,
 PowerShell, sign-in, or cloud resources are needed. Initial package restoration
 needs internet access. Ports 3000 and 3300 must be free. Ctrl+C stops both services;

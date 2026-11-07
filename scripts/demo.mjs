@@ -51,7 +51,8 @@ async function requireFreePort(port) {
 }
 
 async function waitForReady(child, port, service) {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 60_000;
+  let lastError;
   while (!stopping && child.exitCode === null && child.signalCode === null && Date.now() < deadline) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/healthz`, {
@@ -60,11 +61,11 @@ async function waitForReady(child, port, service) {
       const health = await response.json();
       if (response.ok && health.service === service) return;
     } catch (error) {
-      if (Date.now() >= deadline) throw error;
+      lastError = error;
     }
     await delay(200);
   }
-  throw new Error(`${service} did not become ready on port ${port}.`);
+  throw new Error(`${service} did not become ready on port ${port} within 60 seconds.${lastError ? ` Last health check: ${lastError.message}` : ""}`);
 }
 
 try {
@@ -85,6 +86,7 @@ try {
           console.error(`[demo] A service exited (${signal ?? code}); stopping both services.`);
           stop(1);
         }
+        console.log("[demo] Starting both services; waiting up to 60 seconds for each health check.");
       });
     }
     await Promise.all([
