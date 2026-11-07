@@ -23,6 +23,8 @@ jobs:
           persist-credentials: false
       - name: Verify actual Docker context exclusions
         shell: pwsh
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-anonymous
         run: ./tests/containers/Test-BuildContext.ps1
 
   build:
@@ -36,13 +38,14 @@ jobs:
     env:
       APP: ${{ matrix.app }}
       IMAGE_REVISION: ${{ github.sha }}
-      DOCKER_CONFIG: ${{ runner.temp }}/docker-anonymous
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
         with:
           persist-credentials: false
       - name: Build production image from locked dependencies
         shell: bash
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-anonymous
         run: |
           set -euo pipefail
           mkdir -p "$DOCKER_CONFIG"
@@ -52,6 +55,8 @@ jobs:
             --file "apps/$APP/Containerfile" .
       - name: Test production image without credentials or external networking
         shell: pwsh
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-anonymous
         run: ./tests/containers/Test-ContainerImage.ps1 -App $env:APP -Image "local/$($env:APP):$($env:IMAGE_REVISION)"
       - name: Record local image evidence (not a registry digest)
         shell: bash
