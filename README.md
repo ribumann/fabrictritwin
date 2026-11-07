@@ -3,10 +3,43 @@
 A Microsoft Fabric triathlon-training digital twin, with synthetic telemetry,
 training analyses, alerts, and a Cockpit operator interface.
 
-This is the initial public-release bootstrap, not the completed account-free
-demo. Live execution currently requires your own Azure, Fabric and optional
-Foundry/Power BI configuration. The Console is retained until a later, reviewed
-Cockpit consolidation. No private deployment history or operational data is included.
+The same Cockpit supports an account-free synthetic demo and protected live
+execution. Live execution requires your own Azure, Fabric and optional
+Foundry/Power BI configuration. The legacy Console remains for a following,
+narrow cleanup; no separate UI is needed for the synthetic demo.
+No private deployment history or operational data is included.
+
+## Account-free demo
+
+Install Node.js 24 or newer (with npm), clone this repository, and run this one
+command from its root on Windows, macOS, or Linux:
+
+```text
+node scripts/demo.mjs
+```
+
+The launcher restores the locked dependencies, builds the apps, starts one
+synthetic backend and the **real Cockpit**, and waits for both health checks.
+Open **http://localhost:3300**. No Azure/Fabric/Foundry credentials, Docker,
+PowerShell, sign-in, or cloud resources are needed. Initial package restoration
+needs internet access. Ports 3000 and 3300 must be free. Ctrl+C stops both services;
+a startup or runtime process failure stops its companion and exits unsuccessfully.
+
+Read the labelled synthetic training chart, analyses and alerts; choose **Start
+session** or **Start race**, watch streamed telemetry, and read the completion
+summary. All visitors share one active run, with no queue and at most two starts
+per minute. A conflict or rate limit gives retry feedback. **Cancel run** ends a
+synthetic run without fabricating a finished race summary. The assistant is a
+labelled deterministic explanation, not a Foundry model/LLM. Power BI and MCP are
+live-only, not hidden synthetic substitutes.
+
+State and limits are local to **one backend process**. This is not distributed
+admission control: never deploy multiple synthetic backend replicas without
+first adding shared admission/storage. Restart resets runs, limits, and seeded
+history. There is no resume, replay queue, cloud ingestion or durable result
+storage. `DEMO_PROFILE=synthetic` is an exact opt-in for both services; unset
+preserves live defaults and authorization. See
+[synthetic runtime details](docs/synthetic-runtime-foundation.md).
 
 ## Development
 
@@ -57,7 +90,7 @@ See [security reporting guidance](SECURITY.md) for vulnerability disclosures.
 - [ ] Land and verify Copilot cloud setup, reporting unavailable tools and baseline failures.
 - [x] Publish the portable configuration/identity inventory and contributor/security guidance.
 - [ ] Add safe Actions CI and prove protected deployment before application changes.
-- [ ] Provide an account-free synthetic demo using the same Cockpit.
+- [x] Provide an account-free synthetic demo using the same Cockpit.
 - [ ] Consolidate the Console into the Cockpit with bounded anonymous race controls.
 - [ ] Verify live Fabric/Foundry paths and document human consent/platform gates.
 - [ ] Complete portable architecture, costs, recovery, demo and operator documentation.

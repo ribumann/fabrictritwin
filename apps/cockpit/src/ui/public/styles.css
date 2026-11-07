@@ -38,10 +38,83 @@
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.5;
   background: var(--bg);
   color: var(--text);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.provenance {
+  background: var(--info-soft);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+#simulation-feedback {
+  margin-block: 1rem 0;
+  overflow-wrap: anywhere;
+}
+
+#simulation-progress {
+  inline-size: 100%;
+  margin-block-start: 1rem;
+  accent-color: var(--accent);
+}
+
+.history-chart svg {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  color: var(--text-muted);
+}
+
+.history-chart text {
+  fill: currentColor;
+  font: 14px system-ui, sans-serif;
+}
+
+.history-chart .chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.history-chart .chart-axis {
+  stroke: var(--border-strong);
+}
+
+.history-table {
+  overflow-x: auto;
+  max-block-size: 20rem;
+  margin-block-start: 1rem;
+}
+
+details summary {
+  cursor: pointer;
+}
+
+.card, .panel-field {
+  min-inline-size: 0;
+}
+
+@media (max-width: 600px) {
+  .context-form {
+    grid-template-columns: minmax(0, 1fr);
+    inline-size: 100%;
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 1rem;
+  }
+
+  .page-header, .status-strip {
+    padding-inline: 1rem;
+  }
 }
 
 .page-header,
@@ -423,6 +496,16 @@ h2 {
 .panel-form-inline {
   grid-template-columns: 1fr auto;
   align-items: end;
+}
+
+#simulation-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+#simulation-form .panel-field {
+  flex: 1 1 180px;
 }
 
 .panel-form button,

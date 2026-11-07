@@ -3,9 +3,11 @@ import type { Request } from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { forbiddenBody, resolveAuthorizedAthleteId } from "../auth/authorization.js";
 import { realtimeStreamBroker, type RealtimeStreamBroker } from "../services/realtime-stream.js";
+import { SYNTHETIC_ATHLETE_ID } from "../services/synthetic-insights.js";
 
 interface AttachStreamServerOptions {
   broker?: RealtimeStreamBroker;
+  synthetic?: boolean;
 }
 
 interface UpgradeSocket {
@@ -59,7 +61,10 @@ export function attachStreamServer(
       return;
     }
 
-    if (resolveUpgradeAuthorizedAthleteId(request) !== athleteId) {
+    if (
+      (options.synthetic ? SYNTHETIC_ATHLETE_ID : resolveUpgradeAuthorizedAthleteId(request)) !==
+      athleteId
+    ) {
       writeUpgradeRejection(socket, 403, forbiddenBody());
       return;
     }
