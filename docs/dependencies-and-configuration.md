@@ -24,6 +24,9 @@ independent examples, not universal availability guarantees. Confirm service,
 model, capacity, and preview-feature availability in the chosen tenant and
 regions before deployment.
 
+For live freshness checks and operator-controlled recovery, see
+[Live runtime operations](live-runtime-operations.md).
+
 ## Configuration inventory
 
 The deployment entry point is `infra/bicep/main.bicep`; its modules and the
