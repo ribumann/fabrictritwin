@@ -1,0 +1,68 @@
+{
+  "displayName": "{{NAME_PREFIX}}-dataagent",
+  "description": "Triathlon Training Twin Fabric Data Agent",
+  "definition": {
+    "parts": [
+      {
+        "path": "Files/Config/data_agent.json",
+        "payload": "{{DATA_AGENT_CONFIG_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/draft/stage_config.json",
+        "payload": "{{DATA_AGENT_DRAFT_STAGE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/published/stage_config.json",
+        "payload": "{{DATA_AGENT_PUBLISHED_STAGE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/draft/lakehouse_tables-triathlon-lakehouse/datasource.json",
+        "payload": "{{DATA_AGENT_DRAFT_LAKEHOUSE_DS_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/draft/lakehouse_tables-triathlon-lakehouse/fewshots.json",
+        "payload": "{{DATA_AGENT_DRAFT_LAKEHOUSE_FEWSHOTS_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/draft/kusto-triathlon-eventhouse/datasource.json",
+        "payload": "{{DATA_AGENT_DRAFT_KUSTO_DS_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/draft/kusto-triathlon-eventhouse/fewshots.json",
+        "payload": "{{DATA_AGENT_DRAFT_KUSTO_FEWSHOTS_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/published/lakehouse_tables-triathlon-lakehouse/datasource.json",
+        "payload": "{{DATA_AGENT_PUBLISHED_LAKEHOUSE_DS_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/published/lakehouse_tables-triathlon-lakehouse/fewshots.json",
+        "payload": "{{DATA_AGENT_PUBLISHED_LAKEHOUSE_FEWSHOTS_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/published/kusto-triathlon-eventhouse/datasource.json",
+        "payload": "{{DATA_AGENT_PUBLISHED_KUSTO_DS_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/published/kusto-triathlon-eventhouse/fewshots.json",
+        "payload": "{{DATA_AGENT_PUBLISHED_KUSTO_FEWSHOTS_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "Files/Config/publish_info.json",
+        "payload": "{{DATA_AGENT_PUBLISH_INFO_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

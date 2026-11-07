@@ -1,0 +1,49 @@
+FROM node:24-alpine AS build
+
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+COPY apps/console/package.json apps/console/package.json
+COPY apps/streaming-backend/package.json apps/streaming-backend/package.json
+COPY apps/mcp-tools/package.json apps/mcp-tools/package.json
+COPY apps/cockpit/package.json apps/cockpit/package.json
+COPY apps/simulator/package.json apps/simulator/package.json
+
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+
+RUN npm run build --workspace apps/mcp-tools
+
+FROM node:24-alpine AS prod-deps
+
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+COPY apps/console/package.json apps/console/package.json
+COPY apps/streaming-backend/package.json apps/streaming-backend/package.json
+COPY apps/mcp-tools/package.json apps/mcp-tools/package.json
+COPY apps/cockpit/package.json apps/cockpit/package.json
+COPY apps/simulator/package.json apps/simulator/package.json
+
+RUN npm ci --omit=dev --workspace apps/mcp-tools --include-workspace-root=false --no-audit --no-fund
+
+FROM node:24-alpine AS runtime
+
+ENV NODE_ENV=production \
+    PORT=3100
+
+WORKDIR /workspace
+
+COPY --from=prod-deps --chown=node:node /workspace/package.json /workspace/package.json
+COPY --from=prod-deps --chown=node:node /workspace/node_modules /workspace/node_modules
+COPY --from=build --chown=node:node /workspace/apps/mcp-tools/package.json /workspace/apps/mcp-tools/package.json
+COPY --from=build --chown=node:node /workspace/apps/mcp-tools/dist /workspace/apps/mcp-tools/dist
+
+WORKDIR /workspace/apps/mcp-tools
+
+EXPOSE 3100
+
+USER node
+
+CMD ["node", "dist/index.js"]

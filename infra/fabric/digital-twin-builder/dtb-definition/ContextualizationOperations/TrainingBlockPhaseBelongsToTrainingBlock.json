@@ -1,0 +1,16 @@
+{
+  "OperationId": "{{DTB_CTX_TRAININGBLOCKPHASEBELONGSTOTRAININGBLOCK_ID}}",
+  "DisplayName": "TrainingBlockPhaseBelongsToTrainingBlock_contextualization",
+  "OperationType": "Contextualization",
+  "EntityTypeRelationshipId": "30000000000002",
+  "JoinColumns": {
+    "FirstColumn": {
+      "EntityId": "20000000000003",
+      "AttributeName": "trainingBlockId"
+    },
+    "SecondColumn": {
+      "EntityId": "20000000000002",
+      "AttributeName": "trainingBlockId"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "namespace": "usertypes",
+  "id": "30000000000003",
+  "name": "TrainingSessionBelongsToTrainingBlock",
+  "namespaceType": "Custom",
+  "source": {
+    "entityTypeId": "20000000000004"
+  },
+  "target": {
+    "entityTypeId": "20000000000002"
+  }
+}

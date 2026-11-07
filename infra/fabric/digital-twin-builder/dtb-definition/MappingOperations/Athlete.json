@@ -1,0 +1,56 @@
+{
+  "OperationId": "{{DTB_MAPPING_ATHLETE_ID}}",
+  "DisplayName": "Athlete_mapping",
+  "OperationType": "Mapping",
+  "EntityTypeId": "20000000000001",
+  "MappingOperationProperties": {
+    "MappingType": "NonTimeSeries",
+    "MappedProperties": [
+      {
+        "SourceColumn": "athleteId",
+        "EntityTypePropertyName": "athleteId"
+      },
+      {
+        "SourceColumn": "displayName",
+        "EntityTypePropertyName": "displayName"
+      },
+      {
+        "SourceColumn": "functionalThresholdPower",
+        "EntityTypePropertyName": "functionalThresholdPower"
+      },
+      {
+        "SourceColumn": "thresholdPace",
+        "EntityTypePropertyName": "thresholdPace"
+      },
+      {
+        "SourceColumn": "restingHeartRate",
+        "EntityTypePropertyName": "restingHeartRate"
+      },
+      {
+        "SourceColumn": "thresholdHeartRate",
+        "EntityTypePropertyName": "thresholdHeartRate"
+      },
+      {
+        "SourceColumn": "dateOfBirth",
+        "EntityTypePropertyName": "dateOfBirth"
+      },
+      {
+        "SourceColumn": "createdAt",
+        "EntityTypePropertyName": "createdAt"
+      }
+    ],
+    "ProcessingType": "Iterative",
+    "EntityInstanceIdSchema": [
+      "athleteId"
+    ],
+    "TimeseriesEntityLinkProperties": null
+  },
+  "SourceTableProperties": {
+    "SourceType": "LakehouseTables",
+    "WorkspaceId": "{{WORKSPACE_ID}}",
+    "ItemId": "{{LAKEHOUSE_ITEM_ID}}",
+    "SourceTableName": "Athlete",
+    "SourceSchema": "dbo"
+  },
+  "Filters": null
+}

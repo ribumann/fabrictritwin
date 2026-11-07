@@ -1,0 +1,22 @@
+{
+  "id": "{{ONTOLOGY_CTX_TRAININGSESSIONBELONGSTOTRAININGBLOCK_ID}}",
+  "dataBindingTable": {
+    "workspaceId": "{{WORKSPACE_ID}}",
+    "itemId": "{{LAKEHOUSE_ITEM_ID}}",
+    "sourceTableName": "TrainingSession",
+    "sourceSchema": "dbo",
+    "sourceType": "LakehouseTable"
+  },
+  "sourceKeyRefBindings": [
+    {
+      "sourceColumnName": "sessionId",
+      "targetPropertyId": "24000000000001"
+    }
+  ],
+  "targetKeyRefBindings": [
+    {
+      "sourceColumnName": "trainingBlockId",
+      "targetPropertyId": "22000000000001"
+    }
+  ]
+}

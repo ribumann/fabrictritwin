@@ -1,0 +1,34 @@
+{
+  "Id": "20000000000002",
+  "Namespace": "usertypes",
+  "BaseEntityTypeId": "2",
+  "Name": "TrainingBlock",
+  "Properties": [
+    {
+      "Id": "22000000000001",
+      "Name": "trainingBlockId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "22000000000002",
+      "Name": "athleteId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "22000000000003",
+      "Name": "startDate",
+      "ValueType": "DateTime"
+    },
+    {
+      "Id": "22000000000004",
+      "Name": "endDate",
+      "ValueType": "DateTime"
+    },
+    {
+      "Id": "22000000000005",
+      "Name": "goalRaceId",
+      "ValueType": "String"
+    }
+  ],
+  "TimeseriesProperties": []
+}

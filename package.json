@@ -1,0 +1,35 @@
+{
+  "name": "triathlon-training-twin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Triathlon Training Twin - Microsoft Fabric E2E demo (spec 001-triathlon-training-twin)",
+  "workspaces": [
+    "apps/simulator",
+    "apps/streaming-backend",
+    "apps/mcp-tools",
+    "apps/cockpit",
+    "apps/console"
+  ],
+  "scripts": {
+    "lint": "eslint \"apps/*/src/**/*.ts\"",
+    "format": "prettier --check \"apps/*/src/**/*.ts\"",
+    "format:fix": "prettier --write \"apps/*/src/**/*.ts\"",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,35 @@
+table TrainingBlockPhase
+    sourceLineageTag: [dbo].[TrainingBlockPhase]
+
+    column trainingBlockPhaseId
+        dataType: string
+        isKey
+        summarizeBy: none
+        sourceColumn: trainingBlockPhaseId
+
+    column trainingBlockId
+        dataType: string
+        summarizeBy: none
+        sourceColumn: trainingBlockId
+
+    column phase
+        dataType: string
+        summarizeBy: none
+        sourceColumn: phase
+
+    column startDate
+        dataType: dateTime
+        summarizeBy: none
+        sourceColumn: startDate
+
+    column endDate
+        dataType: dateTime
+        summarizeBy: none
+        sourceColumn: endDate
+
+    partition TrainingBlockPhase = entity
+        mode: directLake
+        source
+            entityName: trainingblockphase
+            schemaName: dbo
+            expressionSource: 'DirectLake - TriathlonTrainingTwinLakehouse'

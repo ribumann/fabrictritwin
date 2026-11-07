@@ -1,0 +1,12 @@
+relationship TrainingSession_TrainingBlock
+    fromColumn: TrainingSession.trainingBlockId
+    toColumn: TrainingBlock.trainingBlockId
+
+relationship TrainingBlockPhase_TrainingBlock
+    fromColumn: TrainingBlockPhase.trainingBlockId
+    toColumn: TrainingBlock.trainingBlockId
+
+relationship TrainingBlock_Race
+    isActive: false
+    fromColumn: TrainingBlock.goalRaceId
+    toColumn: Race.raceId

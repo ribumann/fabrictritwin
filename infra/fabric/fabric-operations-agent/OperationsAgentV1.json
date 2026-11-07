@@ -1,0 +1,40 @@
+{
+  "configuration": {
+    "instructions": "Monitor the triathlon training twin for slower-moving operational issues using the Eventhouse telemetry (which reflects the ontology-modeled athlete/training-block/session graph). Watch for unsafe ACWR trends, 48-hour missed-session gaps, recovery decline, and taper readiness concerns. When you detect a meaningful issue, send a concise Teams summary with the athlete, the condition, the evidence, and the recommended coaching action. If a human approves a remediation step, you may invoke the configured Power Automate action, but do not mutate data directly.",
+    "dataSources": {
+      "triathlonTelemetry": {
+        "id": "{{KQLDATABASE_ITEM_ID}}",
+        "type": "KustoDatabase",
+        "workspaceId": "{{WORKSPACE_ID}}"
+      }
+    },
+    "actions": {
+      "notifyPowerAutomate": {
+        "id": "{{POWER_AUTOMATE_ACTION_ID}}",
+        "kind": "PowerAutomateAction",
+        "displayName": "Escalate through Power Automate",
+        "description": "Sends an out-of-band notification or downstream ticket to the demo ops flow.",
+        "parameters": [
+          {
+            "name": "severity",
+            "description": "Operational severity"
+          },
+          {
+            "name": "summary",
+            "description": "Human-readable issue summary"
+          }
+        ]
+      }
+    },
+    "messageDestination": {
+      "kind": "TeamsChannel",
+      "teamId": "{{TEAMS_TEAM_ID}}",
+      "channelId": "{{TEAMS_CHANNEL_ID}}"
+    },
+    "identity": {
+      "sponsor": "{{FABRIC_CAPACITY_ADMIN_ALIAS}}"
+    }
+  },
+  "playbook": {},
+  "shouldRun": false
+}

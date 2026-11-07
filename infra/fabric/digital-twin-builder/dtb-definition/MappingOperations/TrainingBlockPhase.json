@@ -1,0 +1,44 @@
+{
+  "OperationId": "{{DTB_MAPPING_TRAININGBLOCKPHASE_ID}}",
+  "DisplayName": "TrainingBlockPhase_mapping",
+  "OperationType": "Mapping",
+  "EntityTypeId": "20000000000003",
+  "MappingOperationProperties": {
+    "MappingType": "NonTimeSeries",
+    "MappedProperties": [
+      {
+        "SourceColumn": "trainingBlockPhaseId",
+        "EntityTypePropertyName": "trainingBlockPhaseId"
+      },
+      {
+        "SourceColumn": "trainingBlockId",
+        "EntityTypePropertyName": "trainingBlockId"
+      },
+      {
+        "SourceColumn": "phase",
+        "EntityTypePropertyName": "phase"
+      },
+      {
+        "SourceColumn": "startDate",
+        "EntityTypePropertyName": "startDate"
+      },
+      {
+        "SourceColumn": "endDate",
+        "EntityTypePropertyName": "endDate"
+      }
+    ],
+    "ProcessingType": "Iterative",
+    "EntityInstanceIdSchema": [
+      "trainingBlockPhaseId"
+    ],
+    "TimeseriesEntityLinkProperties": null
+  },
+  "SourceTableProperties": {
+    "SourceType": "LakehouseTables",
+    "WorkspaceId": "{{WORKSPACE_ID}}",
+    "ItemId": "{{LAKEHOUSE_ITEM_ID}}",
+    "SourceTableName": "TrainingBlockPhase",
+    "SourceSchema": "dbo"
+  },
+  "Filters": null
+}

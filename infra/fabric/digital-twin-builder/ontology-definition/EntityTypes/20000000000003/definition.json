@@ -1,0 +1,49 @@
+{
+  "id": "20000000000003",
+  "namespace": "usertypes",
+  "baseEntityTypeId": null,
+  "name": "TrainingBlockPhase",
+  "entityIdParts": [
+    "23000000000001"
+  ],
+  "displayNamePropertyId": "23000000000003",
+  "namespaceType": "Custom",
+  "visibility": "Visible",
+  "properties": [
+    {
+      "id": "23000000000001",
+      "name": "trainingBlockPhaseId",
+      "redefines": null,
+      "baseTypeNamespaceType": null,
+      "valueType": "String"
+    },
+    {
+      "id": "23000000000002",
+      "name": "trainingBlockId",
+      "redefines": null,
+      "baseTypeNamespaceType": null,
+      "valueType": "String"
+    },
+    {
+      "id": "23000000000003",
+      "name": "phase",
+      "redefines": null,
+      "baseTypeNamespaceType": null,
+      "valueType": "String"
+    },
+    {
+      "id": "23000000000004",
+      "name": "startDate",
+      "redefines": null,
+      "baseTypeNamespaceType": null,
+      "valueType": "DateTime"
+    },
+    {
+      "id": "23000000000005",
+      "name": "endDate",
+      "redefines": null,
+      "baseTypeNamespaceType": null,
+      "valueType": "DateTime"
+    }
+  ]
+}

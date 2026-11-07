@@ -1,0 +1,12 @@
+{
+  "namespace": "usertypes",
+  "id": "30000000000001",
+  "name": "TrainingBlockBelongsToAthlete",
+  "namespaceType": "Custom",
+  "source": {
+    "entityTypeId": "20000000000002"
+  },
+  "target": {
+    "entityTypeId": "20000000000001"
+  }
+}

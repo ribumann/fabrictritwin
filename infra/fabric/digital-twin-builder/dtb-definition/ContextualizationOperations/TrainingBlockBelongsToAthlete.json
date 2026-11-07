@@ -1,0 +1,16 @@
+{
+  "OperationId": "{{DTB_CTX_TRAININGBLOCKBELONGSTOATHLETE_ID}}",
+  "DisplayName": "TrainingBlockBelongsToAthlete_contextualization",
+  "OperationType": "Contextualization",
+  "EntityTypeRelationshipId": "30000000000001",
+  "JoinColumns": {
+    "FirstColumn": {
+      "EntityId": "20000000000002",
+      "AttributeName": "athleteId"
+    },
+    "SecondColumn": {
+      "EntityId": "20000000000001",
+      "AttributeName": "athleteId"
+    }
+  }
+}

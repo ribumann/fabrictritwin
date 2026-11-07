@@ -1,0 +1,648 @@
+:root {
+  --bg: #f2f4fb;
+  --surface: #ffffff;
+  --surface-muted: #eef1f9;
+  --surface-sunken: #eaeefa;
+  --border: #dde3f2;
+  --border-strong: #c5cfe6;
+  --text: #131a2c;
+  --text-muted: #5b6479;
+  --text-faint: #8891a8;
+  --brand-from: #4338ca;
+  --brand-to: #0ea5b8;
+  --accent: #4f46e5;
+  --accent-strong: #3730a3;
+  --accent-soft: #eef2ff;
+  --success: #059669;
+  --success-soft: #ecfdf5;
+  --warning: #d97706;
+  --warning-soft: #fffbeb;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --info: #2563eb;
+  --info-soft: #eff6ff;
+  --neutral: #64748b;
+  --neutral-soft: #eef1f7;
+  --radius-sm: 0.6rem;
+  --radius-md: 0.9rem;
+  --radius-lg: 1.15rem;
+  --shadow-sm: 0 1px 2px rgba(24, 32, 64, 0.05);
+  --shadow-md: 0 10px 26px rgba(29, 41, 82, 0.09);
+  --shadow-lg: 0 24px 56px rgba(29, 41, 82, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.page-header,
+.status-strip,
+.grid {
+  max-width: 1440px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 2.25rem 2rem;
+  background: linear-gradient(120deg, var(--brand-from) 0%, var(--brand-to) 100%);
+  color: #ffffff;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0.35rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin-bottom: 0;
+  color: rgba(255, 255, 255, 0.88);
+  max-width: 52ch;
+}
+
+.context-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(200px, 1fr)) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.context-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.context-form input,
+.context-form button {
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  padding: 0.7rem 0.9rem;
+  font: inherit;
+  transition: box-shadow 150ms ease, transform 150ms ease, background 150ms ease;
+}
+
+.context-form input {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+}
+
+.context-form input::placeholder {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.context-form input:focus-visible,
+.context-form button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55);
+}
+
+.context-form button {
+  cursor: pointer;
+  background: #ffffff;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.context-form button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.banner {
+  max-width: 1440px;
+  margin: 1.25rem auto 0;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  border: 1px solid #fde3b4;
+  color: #92400e;
+  font-weight: 600;
+}
+
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 1.25rem 2rem 0;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.status-chip::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--neutral);
+  flex: none;
+}
+
+.status-chip strong {
+  margin-left: 0.15rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.status-chip strong[data-tone="good"] {
+  color: var(--success);
+}
+
+.status-chip strong[data-tone="bad"] {
+  color: var(--danger);
+}
+
+.status-chip strong[data-tone="warn"] {
+  color: var(--warning);
+}
+
+.status-chip strong[data-tone="busy"] {
+  color: var(--info);
+}
+
+.status-chip:has(strong[data-tone="good"])::before {
+  background: var(--success);
+}
+
+.status-chip:has(strong[data-tone="bad"])::before {
+  background: var(--danger);
+}
+
+.status-chip:has(strong[data-tone="warn"])::before {
+  background: var(--warning);
+}
+
+.status-chip:has(strong[data-tone="busy"])::before {
+  background: var(--info);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.1rem;
+  padding: 1.5rem 2rem 2.5rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.15rem 1.25rem 1.35rem;
+  box-shadow: var(--shadow-md);
+}
+
+.card-wide {
+  grid-column: 1 / -1;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  margin-bottom: 0.9rem;
+}
+
+.card-header h2 {
+  margin-bottom: 0;
+  color: var(--text);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.callout {
+  margin-bottom: 0.85rem;
+  color: var(--text-muted);
+}
+
+.report-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 480px;
+  max-height: 76vh;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+/* The Power BI JS SDK injects its own iframe into this container. Force it to fill
+   the container regardless of any inline size the SDK applies, so the report scales
+   with the card instead of rendering at a small intrinsic size. */
+.report-container iframe {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0;
+}
+
+.metric-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem 0.75rem;
+  margin: 0;
+}
+
+.metric-list dt {
+  color: var(--text-muted);
+}
+
+.metric-list dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Post-race summary: KPI-style tiles (label on top, big value below) instead of a
+   left/right definition list, so a mix of short and long labels/values stays aligned. */
+.stat-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.1rem 1.75rem;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 8rem;
+  min-width: 8rem;
+}
+
+.stat-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.stat-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.stack {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.stack li {
+  padding: 0.8rem 0.9rem;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.stack.compact li {
+  padding: 0.55rem 0.7rem;
+}
+
+.transcript-list {
+  margin-bottom: 0.9rem;
+  max-height: 26rem;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding-right: 0.35rem;
+}
+
+.transcript-role {
+  display: inline-block;
+  min-width: 4.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+}
+
+.transcript-message {
+  margin-top: 0.35rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.transcript-message.error {
+  color: var(--danger);
+}
+
+.assistant-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+  align-items: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  padding: 0.2rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.panel-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.panel-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.panel-form-row .panel-field {
+  flex: 0 1 220px;
+}
+
+.panel-form-inline {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.panel-form button,
+.panel-field input,
+.panel-field select {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.7rem 0.9rem;
+  font: inherit;
+  transition: box-shadow 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.panel-field input:focus-visible,
+.panel-field select:focus-visible,
+.panel-form button:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.panel-form button {
+  cursor: pointer;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.panel-form button:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  transform: translateY(-1px);
+}
+
+.panel-form button:disabled,
+.panel-field input:disabled,
+.panel-field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.panel-field {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.tool-params {
+  display: contents;
+}
+
+.panel-form-row .empty-state {
+  flex: 1 1 220px;
+  align-self: center;
+}
+
+.json-output {
+  min-height: 120px;
+  max-height: 34rem;
+  margin: 0.85rem 0 0;
+  padding: 0.95rem 1.05rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text);
+  overflow: auto;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+/* Fallback JSON tree view (used only for shapes that don't fit the MCP table/summary
+   pattern, e.g. deeply nested or non-tabular results). */
+.json-tree {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+/* Scalar fields shown above an MCP result table (e.g. training phase, ACWR). */
+.mcp-summary {
+  margin: 0 0 0.9rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.mcp-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.mcp-table th,
+.mcp-table td {
+  padding: 0.55rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.mcp-table th {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.mcp-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mcp-table tbody tr:hover {
+  background: var(--surface-muted);
+}
+
+.mcp-error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.mcp-error-code {
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+}
+
+.json-key {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.json-string {
+  color: var(--success);
+}
+
+.json-number {
+  color: var(--info);
+}
+
+.json-boolean {
+  color: var(--warning);
+}
+
+.json-null {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.json-punct {
+  color: var(--text-faint);
+}
+
+.panel-disabled {
+  opacity: 0.75;
+}
+
+.alert-type {
+  display: inline-block;
+  margin-bottom: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--danger);
+}
+
+.placeholder-copy {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.empty-state {
+  color: var(--text-faint);
+}
+
+/* Generic status-tone coloring, applied via JS (app.js bindStatusTone) to any status
+   label -- chips in the header strip and the muted status text in each card header. */
+[data-tone="good"] {
+  color: var(--success);
+}
+
+[data-tone="bad"] {
+  color: var(--danger);
+}
+
+[data-tone="warn"] {
+  color: var(--warning);
+}
+
+[data-tone="busy"] {
+  color: var(--info);
+}
+
+@media (max-width: 800px) {
+  .page-header,
+  .status-strip,
+  .grid {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .context-form {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-form-inline {
+    grid-template-columns: 1fr;
+  }
+
+  .report-container {
+    max-height: none;
+  }
+}

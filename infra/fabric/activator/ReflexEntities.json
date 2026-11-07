@@ -1,0 +1,265 @@
+[
+  {
+    "uniqueIdentifier": "11111111-1111-1111-1111-111111111111",
+    "payload": {
+      "name": "TriathlonAlertRules",
+      "type": "kqlQueries"
+    },
+    "type": "container-v1"
+  },
+  {
+    "uniqueIdentifier": "20000000-0000-0000-0000-000000000001",
+    "payload": {
+      "name": "SustainedHighHeartRate",
+      "runSettings": {
+        "executionIntervalInSeconds": 60
+      },
+      "query": {
+        "queryString": "eh_mv_sustained_high_hr_candidates | where minHeartRate >= 160.2 and distinctMinutes >= 3"
+      },
+      "eventhouseItem": {
+        "targetUniqueIdentifier": "{{KQLDATABASE_ITEM_ID}}"
+      },
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    "type": "kqlSource-v1"
+  },
+  {
+    "uniqueIdentifier": "30000000-0000-0000-0000-000000000001",
+    "payload": {
+      "name": "SustainedHighHeartRateEvent",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Event",
+        "instance": "{{SUSTAINED_HIGH_HR_SOURCE_EVENT_INSTANCE_ESCAPED}}"
+      }
+    },
+    "type": "timeSeriesView-v1"
+  },
+  {
+    "uniqueIdentifier": "40000000-0000-0000-0000-000000000001",
+    "payload": {
+      "name": "SustainedHighHeartRateRule",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Rule",
+        "instance": "{{SUSTAINED_HIGH_HR_RULE_INSTANCE_ESCAPED}}",
+        "settings": {
+          "shouldRun": true,
+          "shouldApplyRuleOnUpdate": false
+        }
+      }
+    },
+    "type": "timeSeriesView-v1"
+  },
+  {
+    "uniqueIdentifier": "20000000-0000-0000-0000-000000000002",
+    "payload": {
+      "name": "UnsafeAcwr",
+      "runSettings": {
+        "executionIntervalInSeconds": 60
+      },
+      "query": {
+        "queryString": "eh_fn_acwr_alert_candidates() | where acwr < 0.8 or acwr > 1.5"
+      },
+      "eventhouseItem": {
+        "targetUniqueIdentifier": "{{KQLDATABASE_ITEM_ID}}"
+      },
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    "type": "kqlSource-v1"
+  },
+  {
+    "uniqueIdentifier": "30000000-0000-0000-0000-000000000002",
+    "payload": {
+      "name": "UnsafeAcwrEvent",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Event",
+        "instance": "{{UNSAFE_ACWR_SOURCE_EVENT_INSTANCE_ESCAPED}}"
+      }
+    },
+    "type": "timeSeriesView-v1"
+  },
+  {
+    "uniqueIdentifier": "40000000-0000-0000-0000-000000000002",
+    "payload": {
+      "name": "UnsafeAcwrRule",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Rule",
+        "instance": "{{UNSAFE_ACWR_RULE_INSTANCE_ESCAPED}}",
+        "settings": {
+          "shouldRun": true,
+          "shouldApplyRuleOnUpdate": false
+        }
+      }
+    },
+    "type": "timeSeriesView-v1"
+  },
+  {
+    "uniqueIdentifier": "20000000-0000-0000-0000-000000000003",
+    "payload": {
+      "name": "MissedSessionGap",
+      "runSettings": {
+        "executionIntervalInSeconds": 60
+      },
+      "query": {
+        "queryString": "eh_fn_missed_session_alert_candidates() | where overdueHours >= 48"
+      },
+      "eventhouseItem": {
+        "targetUniqueIdentifier": "{{KQLDATABASE_ITEM_ID}}"
+      },
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    "type": "kqlSource-v1"
+  },
+  {
+    "uniqueIdentifier": "30000000-0000-0000-0000-000000000003",
+    "payload": {
+      "name": "MissedSessionGapEvent",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Event",
+        "instance": "{{MISSED_SESSION_SOURCE_EVENT_INSTANCE_ESCAPED}}"
+      }
+    },
+    "type": "timeSeriesView-v1"
+  },
+  {
+    "uniqueIdentifier": "40000000-0000-0000-0000-000000000003",
+    "payload": {
+      "name": "MissedSessionGapRule",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Rule",
+        "instance": "{{MISSED_SESSION_RULE_INSTANCE_ESCAPED}}",
+        "settings": {
+          "shouldRun": true,
+          "shouldApplyRuleOnUpdate": false
+        }
+      }
+    },
+    "type": "timeSeriesView-v1"
+  },
+  {
+    "uniqueIdentifier": "20000000-0000-0000-0000-000000000004",
+    "payload": {
+      "name": "RacePaceDrift",
+      "runSettings": {
+        "executionIntervalInSeconds": 60
+      },
+      "query": {
+        "queryString": "eh_mv_race_pace_drift_alert_candidates | where consecutiveOffPlanSplits >= 2 and abs(paceDriftPct) > 10"
+      },
+      "eventhouseItem": {
+        "targetUniqueIdentifier": "{{KQLDATABASE_ITEM_ID}}"
+      },
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    "type": "kqlSource-v1"
+  },
+  {
+    "uniqueIdentifier": "30000000-0000-0000-0000-000000000004",
+    "payload": {
+      "name": "RacePaceDriftEvent",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Event",
+        "instance": "{{RACE_PACE_DRIFT_SOURCE_EVENT_INSTANCE_ESCAPED}}"
+      }
+    },
+    "type": "timeSeriesView-v1"
+  },
+  {
+    "uniqueIdentifier": "40000000-0000-0000-0000-000000000004",
+    "payload": {
+      "name": "RacePaceDriftRule",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Rule",
+        "instance": "{{RACE_PACE_DRIFT_RULE_INSTANCE_ESCAPED}}",
+        "settings": {
+          "shouldRun": true,
+          "shouldApplyRuleOnUpdate": false
+        }
+      }
+    },
+    "type": "timeSeriesView-v1"
+  },
+  {
+    "uniqueIdentifier": "20000000-0000-0000-0000-000000000005",
+    "payload": {
+      "name": "FuelingShortfall",
+      "runSettings": {
+        "executionIntervalInSeconds": 60
+      },
+      "query": {
+        "queryString": "eh_fn_live_fueling_alert_candidates() | where adequacyRatio < 0.5"
+      },
+      "eventhouseItem": {
+        "targetUniqueIdentifier": "{{KQLDATABASE_ITEM_ID}}"
+      },
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      }
+    },
+    "type": "kqlSource-v1"
+  },
+  {
+    "uniqueIdentifier": "30000000-0000-0000-0000-000000000005",
+    "payload": {
+      "name": "FuelingShortfallEvent",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Event",
+        "instance": "{{FUELING_SHORTFALL_SOURCE_EVENT_INSTANCE_ESCAPED}}"
+      }
+    },
+    "type": "timeSeriesView-v1"
+  },
+  {
+    "uniqueIdentifier": "40000000-0000-0000-0000-000000000005",
+    "payload": {
+      "name": "FuelingShortfallRule",
+      "parentContainer": {
+        "targetUniqueIdentifier": "11111111-1111-1111-1111-111111111111"
+      },
+      "definition": {
+        "type": "Rule",
+        "instance": "{{FUELING_SHORTFALL_RULE_INSTANCE_ESCAPED}}",
+        "settings": {
+          "shouldRun": true,
+          "shouldApplyRuleOnUpdate": false
+        }
+      }
+    },
+    "type": "timeSeriesView-v1"
+  }
+]

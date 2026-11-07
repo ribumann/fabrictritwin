@@ -1,0 +1,34 @@
+{
+  "Id": "20000000000003",
+  "Namespace": "usertypes",
+  "BaseEntityTypeId": "2",
+  "Name": "TrainingBlockPhase",
+  "Properties": [
+    {
+      "Id": "23000000000001",
+      "Name": "trainingBlockPhaseId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "23000000000002",
+      "Name": "trainingBlockId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "23000000000003",
+      "Name": "phase",
+      "ValueType": "String"
+    },
+    {
+      "Id": "23000000000004",
+      "Name": "startDate",
+      "ValueType": "DateTime"
+    },
+    {
+      "Id": "23000000000005",
+      "Name": "endDate",
+      "ValueType": "DateTime"
+    }
+  ],
+  "TimeseriesProperties": []
+}

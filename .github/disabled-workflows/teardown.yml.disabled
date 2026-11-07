@@ -1,0 +1,56 @@
+# Quarantined: inactive until inputs, identity and deployment targets are reviewed.
+name: Teardown
+
+on:
+  workflow_dispatch:
+    inputs:
+      subscriptionId:
+        description: Azure subscription ID to delete from
+        required: true
+        type: string
+      resourceGroupName:
+        description: Resource group to delete
+        required: true
+        default: rg-triathlon-twin-demo
+        type: string
+      confirmResourceGroupName:
+        description: Re-type the exact resource group name above to confirm this destructive action
+        required: true
+        type: string
+      fabricWorkspaceName:
+        description: Exact display name of the Fabric workspace to delete
+        required: true
+        default: triatwin-dev-fabric
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  teardown:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify typed confirmation matches
+        shell: pwsh
+        run: |
+          if ('${{ inputs.confirmResourceGroupName }}' -ne '${{ inputs.resourceGroupName }}') {
+            throw "confirmResourceGroupName ('${{ inputs.confirmResourceGroupName }}') does not match resourceGroupName ('${{ inputs.resourceGroupName }}'). Aborting teardown."
+          }
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Delete Fabric workspace and Azure resource group
+        shell: pwsh
+        run: |
+          ./scripts/teardown/teardown-all.ps1 `
+            -SubscriptionId '${{ inputs.subscriptionId }}' `
+            -ResourceGroupName '${{ inputs.resourceGroupName }}' `
+            -FabricWorkspaceName '${{ inputs.fabricWorkspaceName }}' `
+            -Force -Confirm:$false

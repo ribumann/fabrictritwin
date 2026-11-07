@@ -1,0 +1,33 @@
+{
+  "name": "@triathlon-twin/cockpit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unified operations cockpit web app for the Triathlon Training Twin demo",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"const fs=require('node:fs'); fs.cpSync('src/ui/public','dist/ui/public',{recursive:true}); fs.mkdirSync('dist/ui/public/vendor',{recursive:true}); fs.copyFileSync(require.resolve('powerbi-client/dist/powerbi.js'),'dist/ui/public/vendor/powerbi.js');\"",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "lint": "eslint src/**/*.ts"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.13.2",
+    "@triathlon-twin/simulator": "file:../simulator",
+    "express": "^5.2.1",
+    "powerbi-client": "^2.23.1",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.3",
+    "@types/supertest": "^7.2.1",
+    "@types/ws": "^8.18.1",
+    "supertest": "^7.2.2",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  },
+  "license": "MIT"
+}

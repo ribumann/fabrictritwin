@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+*.tmp
+tests/pester/TestResults/
+.specify/feature.json
+infra/bicep/deploy-output-*.txt
+infra/bicep/modules/*-test.json
+infra/bicep/main.json
+infra/bicep/modules/*.json
+
+# Impeccable design-lint hook local cache
+.impeccable/

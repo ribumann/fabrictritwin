@@ -1,0 +1,82 @@
+{
+  "templateId": "EventTrigger",
+  "templateVersion": "1.1",
+  "steps": [
+    {
+      "name": "EventSelectStep",
+      "id": "60000000-0000-0000-0000-000000000002",
+      "rows": [
+        {
+          "name": "EventSelector",
+          "kind": "Event",
+          "arguments": [
+            {
+              "kind": "EventReference",
+              "type": "complex",
+              "arguments": [
+                {
+                  "name": "entityId",
+                  "type": "string",
+                  "value": "30000000-0000-0000-0000-000000000002"
+                }
+              ],
+              "name": "event"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ActStep",
+      "id": "70000000-0000-0000-0000-000000000002",
+      "rows": [
+        {
+          "name": "TeamsBinding",
+          "kind": "TeamsMessage",
+          "arguments": [
+            {
+              "name": "messageLocale",
+              "type": "string",
+              "value": "en-us"
+            },
+            {
+              "name": "recipients",
+              "type": "array",
+              "values": [
+                {
+                  "type": "string",
+                  "value": "{{OPERATIONS_RECIPIENT_UPN}}"
+                }
+              ]
+            },
+            {
+              "name": "headline",
+              "type": "array",
+              "values": [
+                {
+                  "type": "string",
+                  "value": "Unsafe acute:chronic workload ratio"
+                }
+              ]
+            },
+            {
+              "name": "optionalMessage",
+              "type": "array",
+              "values": [
+                {
+                  "type": "string",
+                  "value": "ACWR moved outside the safe 0.8-1.5 range."
+                }
+              ]
+            },
+            {
+              "name": "additionalInformation",
+              "type": "array",
+              "values": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

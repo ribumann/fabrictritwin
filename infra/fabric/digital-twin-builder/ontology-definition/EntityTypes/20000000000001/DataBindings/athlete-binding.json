@@ -1,0 +1,47 @@
+{
+  "id": "{{ATHLETE_BINDING_ID}}",
+  "dataBindingConfiguration": {
+    "dataBindingType": "NonTimeSeries",
+    "propertyBindings": [
+      {
+        "sourceColumnName": "athleteId",
+        "targetPropertyId": "21000000000001"
+      },
+      {
+        "sourceColumnName": "displayName",
+        "targetPropertyId": "21000000000002"
+      },
+      {
+        "sourceColumnName": "functionalThresholdPower",
+        "targetPropertyId": "21000000000003"
+      },
+      {
+        "sourceColumnName": "thresholdPace",
+        "targetPropertyId": "21000000000004"
+      },
+      {
+        "sourceColumnName": "restingHeartRate",
+        "targetPropertyId": "21000000000005"
+      },
+      {
+        "sourceColumnName": "thresholdHeartRate",
+        "targetPropertyId": "21000000000006"
+      },
+      {
+        "sourceColumnName": "dateOfBirth",
+        "targetPropertyId": "21000000000007"
+      },
+      {
+        "sourceColumnName": "createdAt",
+        "targetPropertyId": "21000000000008"
+      }
+    ],
+    "sourceTableProperties": {
+      "sourceType": "LakehouseTable",
+      "workspaceId": "{{WORKSPACE_ID}}",
+      "itemId": "{{LAKEHOUSE_ITEM_ID}}",
+      "sourceTableName": "Athlete",
+      "sourceSchema": "dbo"
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "Id": "20000000000005",
+  "Namespace": "usertypes",
+  "BaseEntityTypeId": "2",
+  "Name": "Race",
+  "Properties": [
+    {
+      "Id": "25000000000001",
+      "Name": "raceId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "25000000000002",
+      "Name": "name",
+      "ValueType": "String"
+    },
+    {
+      "Id": "25000000000003",
+      "Name": "athleteId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "25000000000004",
+      "Name": "date",
+      "ValueType": "DateTime"
+    },
+    {
+      "Id": "25000000000005",
+      "Name": "distance",
+      "ValueType": "String"
+    },
+    {
+      "Id": "25000000000006",
+      "Name": "goalTimeSeconds",
+      "ValueType": "BigInt"
+    },
+    {
+      "Id": "25000000000007",
+      "Name": "status",
+      "ValueType": "String"
+    },
+    {
+      "Id": "25000000000008",
+      "Name": "predictedFinishTimeSeconds",
+      "ValueType": "BigInt"
+    },
+    {
+      "Id": "25000000000009",
+      "Name": "actualFinishTimeSeconds",
+      "ValueType": "BigInt"
+    },
+    {
+      "Id": "25000000000010",
+      "Name": "pacingEvennessStdDev",
+      "ValueType": "Double"
+    }
+  ],
+  "TimeseriesProperties": []
+}

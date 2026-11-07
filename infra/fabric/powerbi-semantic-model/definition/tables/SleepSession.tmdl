@@ -1,0 +1,62 @@
+table SleepSession
+    sourceLineageTag: [dbo].[SleepSession]
+
+    measure 'Total Sleep Minutes' = SUM('SleepSession'[totalSleepMinutes])
+        formatString: #,##0
+
+    measure 'Avg Sleep Score' = AVERAGE('SleepSession'[sleepScore])
+        formatString: 0.0
+
+    measure 'Avg Deep Sleep Minutes' = AVERAGE('SleepSession'[deepSleepMinutes])
+        formatString: 0.0
+
+    measure 'Avg REM Sleep Minutes' = AVERAGE('SleepSession'[remSleepMinutes])
+        formatString: 0.0
+
+    column athleteId
+        dataType: string
+        summarizeBy: none
+        sourceColumn: athleteId
+
+    column date
+        dataType: dateTime
+        summarizeBy: none
+        sourceColumn: date
+
+    column totalSleepMinutes
+        dataType: int64
+        formatString: #,##0
+        sourceColumn: totalSleepMinutes
+
+    column deepSleepMinutes
+        dataType: int64
+        formatString: #,##0
+        sourceColumn: deepSleepMinutes
+
+    column remSleepMinutes
+        dataType: int64
+        formatString: #,##0
+        sourceColumn: remSleepMinutes
+
+    column sleepScore
+        dataType: double
+        formatString: 0.0
+        sourceColumn: sleepScore
+
+    column source
+        dataType: string
+        summarizeBy: none
+        sourceColumn: source
+
+    column AthleteDateKey
+        dataType: string
+        isHidden
+        summarizeBy: none
+        sourceColumn: AthleteDateKey
+
+    partition SleepSession = entity
+        mode: directLake
+        source
+            entityName: sleepsession
+            schemaName: dbo
+            expressionSource: 'DirectLake - TriathlonTrainingTwinLakehouse'

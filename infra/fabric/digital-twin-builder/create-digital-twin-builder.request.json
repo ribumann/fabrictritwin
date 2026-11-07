@@ -1,0 +1,118 @@
+{
+  "displayName": "{{NAME_PREFIX_UNDERSCORE}}_digitaltwinbuilder",
+  "description": "Triathlon Training Twin digital twin builder",
+  "definition": {
+    "parts": [
+      {
+        "path": "definition.json",
+        "payload": "{{DTB_DEFINITION_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": ".platform",
+        "payload": "{{DTB_PLATFORM_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypes/20000000000001.json",
+        "payload": "{{DTB_ATHLETE_ENTITY_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "MappingOperations/Athlete.json",
+        "payload": "{{DTB_MAPPING_ATHLETE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypes/20000000000002.json",
+        "payload": "{{DTB_TRAININGBLOCK_ENTITY_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "MappingOperations/TrainingBlock.json",
+        "payload": "{{DTB_MAPPING_TRAININGBLOCK_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypes/20000000000003.json",
+        "payload": "{{DTB_TRAININGBLOCKPHASE_ENTITY_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "MappingOperations/TrainingBlockPhase.json",
+        "payload": "{{DTB_MAPPING_TRAININGBLOCKPHASE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypes/20000000000004.json",
+        "payload": "{{DTB_TRAININGSESSION_ENTITY_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "MappingOperations/TrainingSession.json",
+        "payload": "{{DTB_MAPPING_TRAININGSESSION_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypes/20000000000005.json",
+        "payload": "{{DTB_RACE_ENTITY_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "MappingOperations/Race.json",
+        "payload": "{{DTB_MAPPING_RACE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypeRelationships/30000000000001.json",
+        "payload": "{{DTB_REL_TRAININGBLOCKBELONGSTOATHLETE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "ContextualizationOperations/TrainingBlockBelongsToAthlete.json",
+        "payload": "{{DTB_CTX_TRAININGBLOCKBELONGSTOATHLETE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypeRelationships/30000000000002.json",
+        "payload": "{{DTB_REL_TRAININGBLOCKPHASEBELONGSTOTRAININGBLOCK_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "ContextualizationOperations/TrainingBlockPhaseBelongsToTrainingBlock.json",
+        "payload": "{{DTB_CTX_TRAININGBLOCKPHASEBELONGSTOTRAININGBLOCK_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypeRelationships/30000000000003.json",
+        "payload": "{{DTB_REL_TRAININGSESSIONBELONGSTOTRAININGBLOCK_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "ContextualizationOperations/TrainingSessionBelongsToTrainingBlock.json",
+        "payload": "{{DTB_CTX_TRAININGSESSIONBELONGSTOTRAININGBLOCK_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypeRelationships/30000000000004.json",
+        "payload": "{{DTB_REL_RACEBELONGSTOATHLETE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "ContextualizationOperations/RaceBelongsToAthlete.json",
+        "payload": "{{DTB_CTX_RACEBELONGSTOATHLETE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "EntityTypeRelationships/30000000000005.json",
+        "payload": "{{DTB_REL_TRAININGBLOCKGOALRACE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "ContextualizationOperations/TrainingBlockGoalRace.json",
+        "payload": "{{DTB_CTX_TRAININGBLOCKGOALRACE_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

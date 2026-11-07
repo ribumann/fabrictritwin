@@ -1,0 +1,16 @@
+{
+  "OperationId": "{{DTB_CTX_RACEBELONGSTOATHLETE_ID}}",
+  "DisplayName": "RaceBelongsToAthlete_contextualization",
+  "OperationType": "Contextualization",
+  "EntityTypeRelationshipId": "30000000000004",
+  "JoinColumns": {
+    "FirstColumn": {
+      "EntityId": "20000000000005",
+      "AttributeName": "athleteId"
+    },
+    "SecondColumn": {
+      "EntityId": "20000000000001",
+      "AttributeName": "athleteId"
+    }
+  }
+}

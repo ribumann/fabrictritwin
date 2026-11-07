@@ -1,0 +1,7 @@
+expression 'DirectLake - TriathlonTrainingTwinLakehouse' =
+        let
+            Source = AzureStorage.DataLake("https://onelake.dfs.fabric.microsoft.com/{{WORKSPACE_ID}}/{{LAKEHOUSE_ITEM_ID}}", [HierarchicalNavigation=true])
+        in
+            Source
+
+    annotation PBI_IncludeFutureArtifacts = False

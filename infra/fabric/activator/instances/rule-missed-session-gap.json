@@ -1,0 +1,82 @@
+{
+  "templateId": "EventTrigger",
+  "templateVersion": "1.1",
+  "steps": [
+    {
+      "name": "EventSelectStep",
+      "id": "60000000-0000-0000-0000-000000000003",
+      "rows": [
+        {
+          "name": "EventSelector",
+          "kind": "Event",
+          "arguments": [
+            {
+              "kind": "EventReference",
+              "type": "complex",
+              "arguments": [
+                {
+                  "name": "entityId",
+                  "type": "string",
+                  "value": "30000000-0000-0000-0000-000000000003"
+                }
+              ],
+              "name": "event"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ActStep",
+      "id": "70000000-0000-0000-0000-000000000003",
+      "rows": [
+        {
+          "name": "TeamsBinding",
+          "kind": "TeamsMessage",
+          "arguments": [
+            {
+              "name": "messageLocale",
+              "type": "string",
+              "value": "en-us"
+            },
+            {
+              "name": "recipients",
+              "type": "array",
+              "values": [
+                {
+                  "type": "string",
+                  "value": "{{OPERATIONS_RECIPIENT_UPN}}"
+                }
+              ]
+            },
+            {
+              "name": "headline",
+              "type": "array",
+              "values": [
+                {
+                  "type": "string",
+                  "value": "Missed session gap"
+                }
+              ]
+            },
+            {
+              "name": "optionalMessage",
+              "type": "array",
+              "values": [
+                {
+                  "type": "string",
+                  "value": "A scheduled training session was not completed within 48 hours of its planned time."
+                }
+              ]
+            },
+            {
+              "name": "additionalInformation",
+              "type": "array",
+              "values": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/2.0.0/schema.json",
+  "name": "7f4e3c1b9a0d4f6e8c2a",
+  "displayName": "Historical Trends",
+  "displayOption": "FitToPage",
+  "height": 900,
+  "width": 1600
+}

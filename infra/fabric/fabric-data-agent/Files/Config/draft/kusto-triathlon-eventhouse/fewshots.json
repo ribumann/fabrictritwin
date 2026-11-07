@@ -1,0 +1,45 @@
+{
+  "$schema": "1.0.0",
+  "fewShots": [
+    {
+      "id": "90000000-0000-0000-0000-000000000003",
+      "question": "How did my pace drift during the race?",
+      "query": "eh_fn_race_pace_drift() | where raceId == '{{RACE_ID}}' | order by timestamp asc"
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000004",
+      "question": "Why did my heart rate spike in yesterday's bike ride?",
+      "query": "SessionMetric | where sessionId == '{{SESSION_ID}}' | order by timestamp asc"
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000005",
+      "question": "Is my training load ratio (ACWR) safe right now?",
+      "query": "eh_fn_acwr_alert_candidates() | where athleteId == '{{AUTHORIZED_ATHLETE_ID}}'"
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000006",
+      "question": "Have I missed any scheduled training sessions?",
+      "query": "eh_fn_missed_session_alert_candidates() | where athleteId == '{{AUTHORIZED_ATHLETE_ID}}' | order by plannedDate desc"
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000007",
+      "question": "Am I fueling adequately during my current session?",
+      "query": "eh_fn_live_fueling_alert_candidates() | where athleteId == '{{AUTHORIZED_ATHLETE_ID}}'"
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000008",
+      "question": "What is my current recovery score?",
+      "query": "eh_fn_recovery_score() | where athleteId == '{{AUTHORIZED_ATHLETE_ID}}'"
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000009",
+      "question": "How much sleep debt have I built up?",
+      "query": "eh_fn_sleep_debt() | where athleteId == '{{AUTHORIZED_ATHLETE_ID}}'"
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000010",
+      "question": "Am I tapering correctly ahead of my race?",
+      "query": "eh_fn_taper_index() | where athleteId == '{{AUTHORIZED_ATHLETE_ID}}'"
+    }
+  ]
+}

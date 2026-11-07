@@ -1,0 +1,90 @@
+{
+  "$schema": "1.0.0",
+  "artifactId": "{{KQLDATABASE_ITEM_ID}}",
+  "workspaceId": "{{WORKSPACE_ID}}",
+  "displayName": "Triathlon Eventhouse Telemetry",
+  "type": "kusto",
+  "userDescription": "High-frequency live and historical telemetry for sessions and race splits.",
+  "dataSourceInstructions": "Use this source for live telemetry, heart-rate anomalies, race split pacing, recent-session comparisons, and alert-candidate checks (sustained high heart rate, race-pace drift, unsafe training-load ratio, missed sessions, fueling shortfall), plus dashboard analyses (recovery score, sleep debt, taper index). Prefer the eh_mv_*/eh_fn_* views/functions when they answer the question directly -- eh_fn_acwr_alert_candidates(), eh_fn_missed_session_alert_candidates(), eh_fn_live_fueling_alert_candidates(), eh_fn_recovery_score(), eh_fn_sleep_debt(), and eh_fn_taper_index() join Lakehouse TrainingSession/NutritionLog/RecoveryMetrics/SleepSession/TrainingBlockPhase data via OneLake shortcuts, so they answer training-load, missed-session, fueling, recovery, sleep, and taper questions without needing the lakehouse_tables source.",
+  "elements": [
+    {
+      "display_name": "Telemetry",
+      "type": "kusto",
+      "is_selected": true,
+      "children": [
+        {
+          "display_name": "SessionMetric",
+          "type": "kusto.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "RaceSplit",
+          "type": "kusto.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_mv_sessionmetric_latest",
+          "type": "kusto.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_mv_racesplit_latest",
+          "type": "kusto.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_mv_sustained_high_hr_candidates",
+          "type": "kusto.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_mv_race_pace_drift_alert_candidates",
+          "type": "kusto.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_fn_acwr_alert_candidates",
+          "type": "kusto.function",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_fn_missed_session_alert_candidates",
+          "type": "kusto.function",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_fn_live_fueling_alert_candidates",
+          "type": "kusto.function",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_fn_recovery_score",
+          "type": "kusto.function",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_fn_sleep_debt",
+          "type": "kusto.function",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "eh_fn_taper_index",
+          "type": "kusto.function",
+          "is_selected": true,
+          "children": []
+        }
+      ]
+    }
+  ]
+}

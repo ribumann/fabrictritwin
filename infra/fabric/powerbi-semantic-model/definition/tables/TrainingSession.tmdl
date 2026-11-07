@@ -1,0 +1,81 @@
+table TrainingSession
+    sourceLineageTag: [dbo].[TrainingSession]
+
+    measure 'Total Sessions' = COUNTROWS('TrainingSession')
+        formatString: #,##0
+
+    measure 'Completed Sessions' = CALCULATE([Total Sessions], 'TrainingSession'[status] = "completed")
+        formatString: #,##0
+
+    measure 'Total Training Minutes' = SUM('TrainingSession'[plannedDurationMinutes])
+        formatString: #,##0
+
+    measure 'Completed Training Minutes' = CALCULATE([Total Training Minutes], 'TrainingSession'[status] = "completed")
+        formatString: #,##0
+
+    measure 'Avg RPE' = AVERAGE('TrainingSession'[rpe])
+        formatString: 0.0
+
+    column sessionId
+        dataType: string
+        isKey
+        summarizeBy: none
+        sourceColumn: sessionId
+
+    column athleteId
+        dataType: string
+        summarizeBy: none
+        sourceColumn: athleteId
+
+    column trainingBlockId
+        dataType: string
+        summarizeBy: none
+        sourceColumn: trainingBlockId
+
+    column discipline
+        dataType: string
+        summarizeBy: none
+        sourceColumn: discipline
+
+    column plannedDate
+        dataType: dateTime
+        summarizeBy: none
+        sourceColumn: plannedDate
+
+    column plannedDurationMinutes
+        dataType: int64
+        formatString: #,##0
+        sourceColumn: plannedDurationMinutes
+
+    column targetZone
+        dataType: string
+        summarizeBy: none
+        sourceColumn: targetZone
+
+    column status
+        dataType: string
+        summarizeBy: none
+        sourceColumn: status
+
+    column rpe
+        dataType: int64
+        formatString: 0
+        sourceColumn: rpe
+
+    column source
+        dataType: string
+        summarizeBy: none
+        sourceColumn: source
+
+    column AthleteDateKey
+        dataType: string
+        isHidden
+        summarizeBy: none
+        sourceColumn: AthleteDateKey
+
+    partition TrainingSession = entity
+        mode: directLake
+        source
+            entityName: trainingsession
+            schemaName: dbo
+            expressionSource: 'DirectLake - TriathlonTrainingTwinLakehouse'

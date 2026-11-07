@@ -1,0 +1,14 @@
+{
+  "displayName": "{{NAME_PREFIX}}-alerts",
+  "description": "Triathlon Training Twin Reflex container (minimal fallback -- see warning logged at creation time)",
+  "definition": {
+    "format": null,
+    "parts": [
+      {
+        "path": "ReflexEntities.json",
+        "payload": "{{REFLEX_ENTITIES_MINIMAL_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

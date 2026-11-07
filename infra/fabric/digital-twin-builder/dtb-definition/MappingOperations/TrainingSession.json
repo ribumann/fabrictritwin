@@ -1,0 +1,64 @@
+{
+  "OperationId": "{{DTB_MAPPING_TRAININGSESSION_ID}}",
+  "DisplayName": "TrainingSession_mapping",
+  "OperationType": "Mapping",
+  "EntityTypeId": "20000000000004",
+  "MappingOperationProperties": {
+    "MappingType": "NonTimeSeries",
+    "MappedProperties": [
+      {
+        "SourceColumn": "sessionId",
+        "EntityTypePropertyName": "sessionId"
+      },
+      {
+        "SourceColumn": "athleteId",
+        "EntityTypePropertyName": "athleteId"
+      },
+      {
+        "SourceColumn": "trainingBlockId",
+        "EntityTypePropertyName": "trainingBlockId"
+      },
+      {
+        "SourceColumn": "discipline",
+        "EntityTypePropertyName": "discipline"
+      },
+      {
+        "SourceColumn": "plannedDate",
+        "EntityTypePropertyName": "plannedDate"
+      },
+      {
+        "SourceColumn": "plannedDurationMinutes",
+        "EntityTypePropertyName": "plannedDurationMinutes"
+      },
+      {
+        "SourceColumn": "targetZone",
+        "EntityTypePropertyName": "targetZone"
+      },
+      {
+        "SourceColumn": "status",
+        "EntityTypePropertyName": "status"
+      },
+      {
+        "SourceColumn": "rpe",
+        "EntityTypePropertyName": "rpe"
+      },
+      {
+        "SourceColumn": "source",
+        "EntityTypePropertyName": "source"
+      }
+    ],
+    "ProcessingType": "Iterative",
+    "EntityInstanceIdSchema": [
+      "sessionId"
+    ],
+    "TimeseriesEntityLinkProperties": null
+  },
+  "SourceTableProperties": {
+    "SourceType": "LakehouseTables",
+    "WorkspaceId": "{{WORKSPACE_ID}}",
+    "ItemId": "{{LAKEHOUSE_ITEM_ID}}",
+    "SourceTableName": "TrainingSession",
+    "SourceSchema": "dbo"
+  },
+  "Filters": null
+}

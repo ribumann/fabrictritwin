@@ -1,0 +1,16 @@
+{
+  "OperationId": "{{DTB_CTX_TRAININGBLOCKGOALRACE_ID}}",
+  "DisplayName": "TrainingBlockGoalRace_contextualization",
+  "OperationType": "Contextualization",
+  "EntityTypeRelationshipId": "30000000000005",
+  "JoinColumns": {
+    "FirstColumn": {
+      "EntityId": "20000000000002",
+      "AttributeName": "goalRaceId"
+    },
+    "SecondColumn": {
+      "EntityId": "20000000000005",
+      "AttributeName": "raceId"
+    }
+  }
+}

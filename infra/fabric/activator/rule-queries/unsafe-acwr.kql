@@ -1,0 +1,1 @@
+eh_fn_acwr_alert_candidates() | where acwr < 0.8 or acwr > 1.5

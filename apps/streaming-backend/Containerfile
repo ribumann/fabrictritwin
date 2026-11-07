@@ -1,0 +1,59 @@
+FROM node:24-alpine AS build
+
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+COPY apps/console/package.json apps/console/package.json
+COPY apps/streaming-backend/package.json apps/streaming-backend/package.json
+COPY apps/mcp-tools/package.json apps/mcp-tools/package.json
+COPY apps/cockpit/package.json apps/cockpit/package.json
+COPY apps/simulator/package.json apps/simulator/package.json
+
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+
+# streaming-backend has a REAL runtime dependency on @triathlon-twin/simulator (not just
+# types -- see src/api/simulate.ts, src/services/preconditions.ts), resolved via the
+# "file:../simulator" workspace link whose package.json points "main"/"types" at
+# dist/index.js|d.ts. That dist/ only exists once simulator itself has been compiled, so it
+# must be built here too (before/alongside streaming-backend) or both tsc (missing type
+# declarations) and the running container (missing module at import time) fail.
+RUN npm run build --workspace apps/simulator --workspace apps/streaming-backend
+
+FROM node:24-alpine AS prod-deps
+
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+COPY apps/console/package.json apps/console/package.json
+COPY apps/streaming-backend/package.json apps/streaming-backend/package.json
+COPY apps/mcp-tools/package.json apps/mcp-tools/package.json
+COPY apps/cockpit/package.json apps/cockpit/package.json
+COPY apps/simulator/package.json apps/simulator/package.json
+
+RUN npm ci --omit=dev --workspace apps/simulator --workspace apps/streaming-backend --include-workspace-root=false --no-audit --no-fund
+
+FROM node:24-alpine AS runtime
+
+ENV NODE_ENV=production \
+    PORT=3000
+
+WORKDIR /workspace
+
+COPY --from=prod-deps --chown=node:node /workspace/package.json /workspace/package.json
+COPY --from=prod-deps --chown=node:node /workspace/node_modules /workspace/node_modules
+COPY --from=build --chown=node:node /workspace/apps/simulator/package.json /workspace/apps/simulator/package.json
+COPY --from=build --chown=node:node /workspace/apps/simulator/dist /workspace/apps/simulator/dist
+COPY --from=build --chown=node:node /workspace/apps/streaming-backend/package.json /workspace/apps/streaming-backend/package.json
+COPY --from=build --chown=node:node /workspace/apps/streaming-backend/dist /workspace/apps/streaming-backend/dist
+
+WORKDIR /workspace/apps/streaming-backend
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["node", "-e", "const port=process.env.PORT||'3000';fetch('http://127.0.0.1:'+port+'/healthz').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))"]
+
+USER node
+
+CMD ["node", "dist/index.js"]

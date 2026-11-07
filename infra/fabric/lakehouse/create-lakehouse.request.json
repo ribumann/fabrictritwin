@@ -1,0 +1,7 @@
+{
+  "displayName": "{{NAME_PREFIX_UNDERSCORE}}_lakehouse",
+  "description": "Triathlon Training Twin canonical Lakehouse",
+  "creationPayload": {
+    "enableSchemas": true
+  }
+}

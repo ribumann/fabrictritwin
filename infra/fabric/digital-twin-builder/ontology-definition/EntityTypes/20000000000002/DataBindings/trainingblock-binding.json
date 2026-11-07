@@ -1,0 +1,35 @@
+{
+  "id": "{{TRAININGBLOCK_BINDING_ID}}",
+  "dataBindingConfiguration": {
+    "dataBindingType": "NonTimeSeries",
+    "propertyBindings": [
+      {
+        "sourceColumnName": "trainingBlockId",
+        "targetPropertyId": "22000000000001"
+      },
+      {
+        "sourceColumnName": "athleteId",
+        "targetPropertyId": "22000000000002"
+      },
+      {
+        "sourceColumnName": "startDate",
+        "targetPropertyId": "22000000000003"
+      },
+      {
+        "sourceColumnName": "endDate",
+        "targetPropertyId": "22000000000004"
+      },
+      {
+        "sourceColumnName": "goalRaceId",
+        "targetPropertyId": "22000000000005"
+      }
+    ],
+    "sourceTableProperties": {
+      "sourceType": "LakehouseTable",
+      "workspaceId": "{{WORKSPACE_ID}}",
+      "itemId": "{{LAKEHOUSE_ITEM_ID}}",
+      "sourceTableName": "TrainingBlock",
+      "sourceSchema": "dbo"
+    }
+  }
+}

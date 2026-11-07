@@ -1,0 +1,35 @@
+{
+  "id": "{{TRAININGBLOCKPHASE_BINDING_ID}}",
+  "dataBindingConfiguration": {
+    "dataBindingType": "NonTimeSeries",
+    "propertyBindings": [
+      {
+        "sourceColumnName": "trainingBlockPhaseId",
+        "targetPropertyId": "23000000000001"
+      },
+      {
+        "sourceColumnName": "trainingBlockId",
+        "targetPropertyId": "23000000000002"
+      },
+      {
+        "sourceColumnName": "phase",
+        "targetPropertyId": "23000000000003"
+      },
+      {
+        "sourceColumnName": "startDate",
+        "targetPropertyId": "23000000000004"
+      },
+      {
+        "sourceColumnName": "endDate",
+        "targetPropertyId": "23000000000005"
+      }
+    ],
+    "sourceTableProperties": {
+      "sourceType": "LakehouseTable",
+      "workspaceId": "{{WORKSPACE_ID}}",
+      "itemId": "{{LAKEHOUSE_ITEM_ID}}",
+      "sourceTableName": "TrainingBlockPhase",
+      "sourceSchema": "dbo"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "displayName": "{{NAME_PREFIX}}-alerts",
+  "description": "Triathlon Training Twin Reflex rules",
+  "definition": {
+    "format": null,
+    "parts": [
+      {
+        "path": "ReflexEntities.json",
+        "payload": "{{REFLEX_ENTITIES_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": ".platform",
+        "payload": "{{REFLEX_PLATFORM_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

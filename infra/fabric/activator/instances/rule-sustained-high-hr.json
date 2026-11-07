@@ -1,0 +1,82 @@
+{
+  "templateId": "EventTrigger",
+  "templateVersion": "1.1",
+  "steps": [
+    {
+      "name": "EventSelectStep",
+      "id": "60000000-0000-0000-0000-000000000001",
+      "rows": [
+        {
+          "name": "EventSelector",
+          "kind": "Event",
+          "arguments": [
+            {
+              "kind": "EventReference",
+              "type": "complex",
+              "arguments": [
+                {
+                  "name": "entityId",
+                  "type": "string",
+                  "value": "30000000-0000-0000-0000-000000000001"
+                }
+              ],
+              "name": "event"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ActStep",
+      "id": "70000000-0000-0000-0000-000000000001",
+      "rows": [
+        {
+          "name": "TeamsBinding",
+          "kind": "TeamsMessage",
+          "arguments": [
+            {
+              "name": "messageLocale",
+              "type": "string",
+              "value": "en-us"
+            },
+            {
+              "name": "recipients",
+              "type": "array",
+              "values": [
+                {
+                  "type": "string",
+                  "value": "{{OPERATIONS_RECIPIENT_UPN}}"
+                }
+              ]
+            },
+            {
+              "name": "headline",
+              "type": "array",
+              "values": [
+                {
+                  "type": "string",
+                  "value": "Sustained high HR during race"
+                }
+              ]
+            },
+            {
+              "name": "optionalMessage",
+              "type": "array",
+              "values": [
+                {
+                  "type": "string",
+                  "value": "Heart rate is >= 90% of threshold for 3 or more consecutive minutes during a live race."
+                }
+              ]
+            },
+            {
+              "name": "additionalInformation",
+              "type": "array",
+              "values": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

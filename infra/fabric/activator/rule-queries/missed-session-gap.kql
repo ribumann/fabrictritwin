@@ -1,0 +1,1 @@
+eh_fn_missed_session_alert_candidates() | where overdueHours >= 48

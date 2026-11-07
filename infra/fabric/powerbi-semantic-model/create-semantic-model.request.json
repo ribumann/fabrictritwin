@@ -1,0 +1,78 @@
+{
+  "displayName": "{{NAME_PREFIX}}-athlete-trends-semanticmodel",
+  "description": "Triathlon Training Twin Direct Lake semantic model for training-load, recovery, sleep, and nutrition trends",
+  "definition": {
+    "parts": [
+      {
+        "path": "definition/database.tmdl",
+        "payload": "{{SEMANTIC_DATABASE_TMDL_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/model.tmdl",
+        "payload": "{{SEMANTIC_MODEL_TMDL_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/expressions.tmdl",
+        "payload": "{{SEMANTIC_EXPRESSIONS_TMDL_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/relationships.tmdl",
+        "payload": "{{SEMANTIC_RELATIONSHIPS_TMDL_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/cultures/en-US.tmdl",
+        "payload": "{{SEMANTIC_CULTURE_EN_US_TMDL_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/tables/TrainingSession.tmdl",
+        "payload": "{{SEMANTIC_TABLE_TRAININGSESSION_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/tables/RecoveryMetrics.tmdl",
+        "payload": "{{SEMANTIC_TABLE_RECOVERYMETRICS_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/tables/SleepSession.tmdl",
+        "payload": "{{SEMANTIC_TABLE_SLEEPSESSION_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/tables/NutritionLog.tmdl",
+        "payload": "{{SEMANTIC_TABLE_NUTRITIONLOG_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/tables/TrainingBlock.tmdl",
+        "payload": "{{SEMANTIC_TABLE_TRAININGBLOCK_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/tables/TrainingBlockPhase.tmdl",
+        "payload": "{{SEMANTIC_TABLE_TRAININGBLOCKPHASE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/tables/Race.tmdl",
+        "payload": "{{SEMANTIC_TABLE_RACE_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition.pbism",
+        "payload": "{{SEMANTIC_DEFINITION_PBISM_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": ".platform",
+        "payload": "{{SEMANTIC_PLATFORM_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

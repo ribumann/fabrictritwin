@@ -1,0 +1,67 @@
+# Quarantined: inactive until inputs, identity and deployment targets are reviewed.
+name: Deploy Application Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      imageTag:
+        description: Image tag to build, push, and deploy (defaults to the triggering commit SHA)
+        required: false
+        default: ''
+        type: string
+      resourceGroupName:
+        description: Resource group containing the ACR and Container Apps
+        required: false
+        default: rg-triathlon-twin-demo
+        type: string
+      apps:
+        description: Comma-separated subset of apps to build/deploy (console,streaming-backend,mcp-tools,simulator). Empty = all four.
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve image tag
+        id: tag
+        shell: pwsh
+        run: |
+          $tag = '${{ inputs.imageTag }}'
+          if ([string]::IsNullOrWhiteSpace($tag)) { $tag = '${{ github.sha }}'.Substring(0, 12) }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Build and push container images
+        shell: pwsh
+        run: |
+          $appsSwitch = @{}
+          if ('${{ inputs.apps }}' -ne '') { $appsSwitch['Apps'] = '${{ inputs.apps }}'.Split(',') }
+          ./scripts/deploy/build-and-push-images.ps1 `
+            -SubscriptionId '${{ secrets.AZURE_SUBSCRIPTION_ID }}' `
+            -ResourceGroupName '${{ inputs.resourceGroupName }}' `
+            -ImageTag '${{ steps.tag.outputs.tag }}' `
+            @appsSwitch
+
+      - name: Roll Container Apps/Job to the new image tag
+        shell: pwsh
+        run: |
+          $appsSwitch = @{}
+          if ('${{ inputs.apps }}' -ne '') { $appsSwitch['Apps'] = '${{ inputs.apps }}'.Split(',') }
+          ./scripts/deploy/deploy-container-apps.ps1 `
+            -SubscriptionId '${{ secrets.AZURE_SUBSCRIPTION_ID }}' `
+            -ResourceGroupName '${{ inputs.resourceGroupName }}' `
+            -ImageTag '${{ steps.tag.outputs.tag }}' `
+            @appsSwitch

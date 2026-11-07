@@ -1,0 +1,49 @@
+{
+  "Id": "20000000000001",
+  "Namespace": "usertypes",
+  "BaseEntityTypeId": "2",
+  "Name": "Athlete",
+  "Properties": [
+    {
+      "Id": "21000000000001",
+      "Name": "athleteId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "21000000000002",
+      "Name": "displayName",
+      "ValueType": "String"
+    },
+    {
+      "Id": "21000000000003",
+      "Name": "functionalThresholdPower",
+      "ValueType": "BigInt"
+    },
+    {
+      "Id": "21000000000004",
+      "Name": "thresholdPace",
+      "ValueType": "String"
+    },
+    {
+      "Id": "21000000000005",
+      "Name": "restingHeartRate",
+      "ValueType": "BigInt"
+    },
+    {
+      "Id": "21000000000006",
+      "Name": "thresholdHeartRate",
+      "ValueType": "BigInt"
+    },
+    {
+      "Id": "21000000000007",
+      "Name": "dateOfBirth",
+      "ValueType": "DateTime"
+    },
+    {
+      "Id": "21000000000008",
+      "Name": "createdAt",
+      "ValueType": "DateTime"
+    }
+  ],
+  "TimeseriesProperties": []
+}

@@ -1,0 +1,23 @@
+{
+  "displayName": "{{NAME_PREFIX}}-realtime",
+  "description": "Triathlon Training Twin realtime telemetry KQL database",
+  "definition": {
+    "parts": [
+      {
+        "path": "DatabaseProperties.json",
+        "payload": "{{DATABASE_PROPERTIES_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "DatabaseSchema.kql",
+        "payload": "{{DATABASE_SCHEMA_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": ".platform",
+        "payload": "{{KQL_PLATFORM_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

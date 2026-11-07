@@ -1,0 +1,69 @@
+table Race
+    sourceLineageTag: [dbo].[Race]
+
+    measure 'Completed Races' = CALCULATE(COUNTROWS('Race'), 'Race'[status] = "completed")
+        formatString: #,##0
+
+    column raceId
+        dataType: string
+        isKey
+        summarizeBy: none
+        sourceColumn: raceId
+
+    column athleteId
+        dataType: string
+        summarizeBy: none
+        sourceColumn: athleteId
+
+    column name
+        dataType: string
+        summarizeBy: none
+        sourceColumn: name
+
+    column date
+        dataType: dateTime
+        summarizeBy: none
+        sourceColumn: date
+
+    column distance
+        dataType: string
+        summarizeBy: none
+        sourceColumn: distance
+
+    column goalTimeSeconds
+        dataType: int64
+        formatString: #,##0
+        sourceColumn: goalTimeSeconds
+
+    column status
+        dataType: string
+        summarizeBy: none
+        sourceColumn: status
+
+    column predictedFinishTimeSeconds
+        dataType: int64
+        formatString: #,##0
+        sourceColumn: predictedFinishTimeSeconds
+
+    column actualFinishTimeSeconds
+        dataType: int64
+        formatString: #,##0
+        sourceColumn: actualFinishTimeSeconds
+
+    column pacingEvennessStdDev
+        dataType: double
+        formatString: 0.0
+        sourceColumn: pacingEvennessStdDev
+
+    column AthleteDateKey
+        dataType: string
+        isHidden
+        summarizeBy: none
+        sourceColumn: AthleteDateKey
+
+    partition Race = entity
+        mode: directLake
+        source
+            entityName: race
+            schemaName: dbo
+            expressionSource: 'DirectLake - TriathlonTrainingTwinLakehouse'

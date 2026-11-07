@@ -1,0 +1,74 @@
+# Quarantined: inactive until inputs, identity and deployment targets are reviewed.
+name: Simulate Trigger (Session / Race)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Simulation to trigger
+        required: true
+        default: session
+        type: choice
+        options:
+          - session
+          - race
+      athleteId:
+        description: Athlete GUID to simulate
+        required: true
+        type: string
+      discipline:
+        description: Training discipline (mode=session only)
+        required: false
+        default: run
+        type: choice
+        options:
+          - swim
+          - bike
+          - run
+          - strength
+      raceId:
+        description: Race GUID to simulate (mode=race only)
+        required: false
+        type: string
+      streamingBackendBaseUrl:
+        description: Deployed Streaming Backend base URL
+        required: true
+        type: string
+      bearerToken:
+        description: Easy Auth bearer token (acquire locally via scripts/simulate/get-bearer-token.ps1)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  trigger-session:
+    if: ${{ inputs.mode == 'session' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger training session simulation
+        shell: pwsh
+        run: |
+          ./scripts/simulate/trigger-session.ps1 `
+            -AthleteId '${{ inputs.athleteId }}' `
+            -Discipline '${{ inputs.discipline }}' `
+            -StreamingBackendBaseUrl '${{ inputs.streamingBackendBaseUrl }}' `
+            -BearerToken '${{ inputs.bearerToken }}'
+
+  trigger-race:
+    if: ${{ inputs.mode == 'race' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger race simulation
+        shell: pwsh
+        run: |
+          ./scripts/simulate/trigger-race.ps1 `
+            -AthleteId '${{ inputs.athleteId }}' `
+            -RaceId '${{ inputs.raceId }}' `
+            -StreamingBackendBaseUrl '${{ inputs.streamingBackendBaseUrl }}' `
+            -BearerToken '${{ inputs.bearerToken }}'

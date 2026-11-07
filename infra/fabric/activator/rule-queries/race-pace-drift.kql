@@ -1,0 +1,1 @@
+eh_mv_race_pace_drift_alert_candidates | where consecutiveOffPlanSplits >= 2 and abs(paceDriftPct) > 10

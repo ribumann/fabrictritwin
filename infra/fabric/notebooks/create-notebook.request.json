@@ -1,0 +1,14 @@
+{
+  "displayName": "{{NAME_PREFIX}}-load-history-to-tables",
+  "description": "Loads seeded OneLake Files/ JSONL data into Lakehouse Delta Tables/ (idempotent MERGE) so Direct Lake, Power BI, and the Data Agent have real rows. Run via load-history-to-tables.ps1 after seeding.",
+  "definition": {
+    "format": "fabricGitSource",
+    "parts": [
+      {
+        "path": "notebook-content.py",
+        "payload": "{{LOAD_HISTORY_NOTEBOOK_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

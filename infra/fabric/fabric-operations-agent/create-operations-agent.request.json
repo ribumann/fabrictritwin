@@ -1,0 +1,19 @@
+{
+  "displayName": "{{NAME_PREFIX}}-operationsagent",
+  "description": "Triathlon Training Twin Fabric Operations Agent",
+  "definition": {
+    "format": "OperationsAgentV1",
+    "parts": [
+      {
+        "path": "Configurations.json",
+        "payload": "{{OPS_AGENT_CONFIG_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": ".platform",
+        "payload": "{{OPS_AGENT_PLATFORM_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

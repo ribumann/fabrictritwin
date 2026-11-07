@@ -1,0 +1,63 @@
+{
+  "displayName": "{{NAME_PREFIX}}-athlete-trends-report",
+  "description": "Triathlon Training Twin Power BI report for training-load, recovery, sleep, and nutrition trends",
+  "definition": {
+    "parts": [
+      {
+        "path": "definition/report.json",
+        "payload": "{{REPORT_REPORT_JSON_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/version.json",
+        "payload": "{{REPORT_VERSION_JSON_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/pages/pages.json",
+        "payload": "{{REPORT_PAGES_JSON_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/pages/7f4e3c1b9a0d4f6e8c2a/page.json",
+        "payload": "{{REPORT_OVERVIEW_PAGE_JSON_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/pages/7f4e3c1b9a0d4f6e8c2a/visuals/0f2e4d6c8b1a3e5d7c9f/visual.json",
+        "payload": "{{REPORT_PHASE_SLICER_JSON_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/pages/7f4e3c1b9a0d4f6e8c2a/visuals/1a2b3c4d5e6f7081920a/visual.json",
+        "payload": "{{REPORT_TRAINING_VISUAL_JSON_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/pages/7f4e3c1b9a0d4f6e8c2a/visuals/2b3c4d5e6f7081920a1b/visual.json",
+        "payload": "{{REPORT_RECOVERY_VISUAL_JSON_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/pages/7f4e3c1b9a0d4f6e8c2a/visuals/3c4d5e6f7081920a1b2c/visual.json",
+        "payload": "{{REPORT_SLEEP_VISUAL_JSON_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition/pages/7f4e3c1b9a0d4f6e8c2a/visuals/4d5e6f7081920a1b2c3d/visual.json",
+        "payload": "{{REPORT_NUTRITION_VISUAL_JSON_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": "definition.pbir",
+        "payload": "{{REPORT_DEFINITION_PBIR_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": ".platform",
+        "payload": "{{REPORT_PLATFORM_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

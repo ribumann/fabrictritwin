@@ -1,0 +1,67 @@
+table RecoveryMetrics
+    sourceLineageTag: [dbo].[RecoveryMetrics]
+
+    measure 'Avg HRV' = AVERAGE('RecoveryMetrics'[hrv])
+        formatString: 0.0
+
+    measure 'Avg Resting Heart Rate' = AVERAGE('RecoveryMetrics'[restingHeartRate])
+        formatString: 0.0
+
+    measure 'Avg Sleep Score (Recovery)' = AVERAGE('RecoveryMetrics'[sleepScore])
+        formatString: 0.0
+
+    measure 'Avg Soreness Score' = AVERAGE('RecoveryMetrics'[sorenessScore])
+        formatString: 0.0
+
+    column athleteId
+        dataType: string
+        summarizeBy: none
+        sourceColumn: athleteId
+
+    column date
+        dataType: dateTime
+        summarizeBy: none
+        sourceColumn: date
+
+    column hrv
+        dataType: double
+        formatString: 0.0
+        sourceColumn: hrv
+
+    column restingHeartRate
+        dataType: int64
+        formatString: 0
+        sourceColumn: restingHeartRate
+
+    column sleepScore
+        dataType: double
+        formatString: 0.0
+        sourceColumn: sleepScore
+
+    column bodyWeightKg
+        dataType: double
+        formatString: 0.0
+        sourceColumn: bodyWeightKg
+
+    column sorenessScore
+        dataType: double
+        formatString: 0.0
+        sourceColumn: sorenessScore
+
+    column source
+        dataType: string
+        summarizeBy: none
+        sourceColumn: source
+
+    column AthleteDateKey
+        dataType: string
+        isHidden
+        summarizeBy: none
+        sourceColumn: AthleteDateKey
+
+    partition RecoveryMetrics = entity
+        mode: directLake
+        source
+            entityName: recoverymetrics
+            schemaName: dbo
+            expressionSource: 'DirectLake - TriathlonTrainingTwinLakehouse'

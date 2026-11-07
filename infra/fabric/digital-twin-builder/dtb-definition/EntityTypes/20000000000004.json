@@ -1,0 +1,59 @@
+{
+  "Id": "20000000000004",
+  "Namespace": "usertypes",
+  "BaseEntityTypeId": "2",
+  "Name": "TrainingSession",
+  "Properties": [
+    {
+      "Id": "24000000000001",
+      "Name": "sessionId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "24000000000002",
+      "Name": "athleteId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "24000000000003",
+      "Name": "trainingBlockId",
+      "ValueType": "String"
+    },
+    {
+      "Id": "24000000000004",
+      "Name": "discipline",
+      "ValueType": "String"
+    },
+    {
+      "Id": "24000000000005",
+      "Name": "plannedDate",
+      "ValueType": "DateTime"
+    },
+    {
+      "Id": "24000000000006",
+      "Name": "plannedDurationMinutes",
+      "ValueType": "BigInt"
+    },
+    {
+      "Id": "24000000000007",
+      "Name": "targetZone",
+      "ValueType": "String"
+    },
+    {
+      "Id": "24000000000008",
+      "Name": "status",
+      "ValueType": "String"
+    },
+    {
+      "Id": "24000000000009",
+      "Name": "rpe",
+      "ValueType": "BigInt"
+    },
+    {
+      "Id": "24000000000010",
+      "Name": "source",
+      "ValueType": "String"
+    }
+  ],
+  "TimeseriesProperties": []
+}

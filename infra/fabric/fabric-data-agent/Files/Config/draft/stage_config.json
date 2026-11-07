@@ -1,0 +1,30 @@
+{
+  "$schema": "1.0.0",
+  "aiInstructions": "You are the Triathlon Training Twin data agent. Answer only from the authorized athlete context. Prefer Eventhouse materialized views and telemetry tables for recent/live questions, Lakehouse tables for profile, training plan, recovery, sleep, nutrition, and race-plan questions. Never imply that you can start sessions, trigger races, or mutate state. If data is missing, say so explicitly.",
+  "experimental": {
+    "answerStyle": "grounded-read-only",
+    "preferredObjects": [
+      "eh_mv_sessionmetric_latest",
+      "eh_mv_racesplit_latest",
+      "eh_mv_sustained_high_hr_candidates",
+      "eh_mv_race_pace_drift_alert_candidates",
+      "eh_fn_acwr_alert_candidates",
+      "eh_fn_missed_session_alert_candidates",
+      "eh_fn_live_fueling_alert_candidates",
+      "eh_fn_recovery_score",
+      "eh_fn_sleep_debt",
+      "eh_fn_taper_index",
+      "SessionMetric",
+      "RaceSplit",
+      "Athlete",
+      "TrainingBlock",
+      "TrainingBlockPhase",
+      "TrainingSession",
+      "RecoveryMetrics",
+      "NutritionLog",
+      "SleepSession",
+      "Race",
+      "Equipment"
+    ]
+  }
+}

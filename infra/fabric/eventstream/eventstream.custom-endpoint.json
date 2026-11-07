@@ -1,0 +1,282 @@
+{
+
+  "sources": [
+
+    {
+
+      "name": "triathlon_custom_endpoint",
+
+      "type": "CustomEndpoint",
+
+      "properties": {
+
+        "inputSerialization": {
+
+          "type": "Json",
+
+          "properties": {
+
+            "encoding": "UTF8"
+
+          }
+
+        }
+
+      }
+
+    }
+
+  ],
+
+  "destinations": [
+
+    {
+
+      "name": "sessionmetric_direct_ingestion",
+
+      "type": "Eventhouse",
+
+      "properties": {
+
+        "dataIngestionMode": "DirectIngestion",
+
+        "workspaceId": "{{EVENTHOUSE_WORKSPACE_ID}}",
+
+        "itemId": "{{KQLDATABASE_ITEM_ID}}",
+        "tableName": "SessionMetric",
+
+        "connectionName": "{{SESSIONMETRIC_CONNECTION_NAME}}",
+
+        "mappingRuleName": "sessionmetric_json_map"
+
+      },
+
+      "inputNodes": [
+
+        {
+
+          "name": "sessionmetric_stream"
+
+        }
+
+      ],
+      "inputSchemas": [
+        {
+          "name": "sessionmetric_stream",
+          "schema": {
+            "columns": [
+              { "name": "entityType", "type": "Nvarchar(max)", "fields": null, "items": null },
+              { "name": "sessionId", "type": "Nvarchar(max)", "fields": null, "items": null },
+              { "name": "timestamp", "type": "DateTime", "fields": null, "items": null },
+              { "name": "heartRate", "type": "BigInt", "fields": null, "items": null },
+              { "name": "power", "type": "Float", "fields": null, "items": null },
+              { "name": "pace", "type": "Float", "fields": null, "items": null },
+              { "name": "cadence", "type": "Float", "fields": null, "items": null },
+              { "name": "latitude", "type": "Float", "fields": null, "items": null },
+              { "name": "longitude", "type": "Float", "fields": null, "items": null }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "racesplit_direct_ingestion",
+      "type": "Eventhouse",
+      "properties": {
+        "dataIngestionMode": "DirectIngestion",
+        "workspaceId": "{{EVENTHOUSE_WORKSPACE_ID}}",
+        "itemId": "{{KQLDATABASE_ITEM_ID}}",
+        "tableName": "RaceSplit",
+        "connectionName": "{{RACESPLIT_CONNECTION_NAME}}",
+        "mappingRuleName": "racesplit_json_map"
+      },
+      "inputNodes": [
+        {
+          "name": "racesplit_stream"
+        }
+      ],
+      "inputSchemas": [
+        {
+          "name": "racesplit_stream",
+          "schema": {
+            "columns": [
+              { "name": "entityType", "type": "Nvarchar(max)", "fields": null, "items": null },
+              { "name": "raceId", "type": "Nvarchar(max)", "fields": null, "items": null },
+              { "name": "timestamp", "type": "DateTime", "fields": null, "items": null },
+              { "name": "distanceCoveredMeters", "type": "Float", "fields": null, "items": null },
+              { "name": "currentPaceSecPerKm", "type": "Float", "fields": null, "items": null },
+              { "name": "plannedPaceSecPerKm", "type": "Float", "fields": null, "items": null },
+              { "name": "currentHeartRate", "type": "BigInt", "fields": null, "items": null },
+              { "name": "leg", "type": "Nvarchar(max)", "fields": null, "items": null },
+              { "name": "isFinish", "type": "Nvarchar(max)", "fields": null, "items": null }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "operators": [
+    {
+
+      "name": "sessionmetric_filter",
+
+      "type": "Filter",
+
+      "inputNodes": [
+
+        {
+
+          "name": "triathlon_main_stream"
+
+        }
+
+      ],
+
+      "properties": {
+
+        "conditions": [
+
+          {
+
+            "column": {
+
+              "node": "triathlon_main_stream",
+
+              "columnName": "entityType",
+
+              "columnPath": null,
+              "expressionType": "ColumnReference"
+            },
+            "operatorType": "Equals",
+            "value": {
+              "dataType": "Nvarchar(max)",
+              "value": "SessionMetric",
+              "expressionType": "Literal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "racesplit_filter",
+      "type": "Filter",
+      "inputNodes": [
+        {
+          "name": "triathlon_main_stream"
+        }
+      ],
+      "properties": {
+        "conditions": [
+          {
+            "column": {
+              "node": "triathlon_main_stream",
+              "columnName": "entityType",
+              "columnPath": null,
+              "expressionType": "ColumnReference"
+            },
+            "operatorType": "Equals",
+            "value": {
+              "dataType": "Nvarchar(max)",
+              "value": "RaceSplit",
+              "expressionType": "Literal"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "streams": [
+
+    {
+
+      "name": "triathlon_main_stream",
+
+      "type": "DefaultStream",
+
+      "properties": {},
+
+      "inputNodes": [
+
+        {
+
+          "name": "triathlon_custom_endpoint"
+
+        }
+
+      ]
+
+    },
+
+    {
+
+      "name": "sessionmetric_stream",
+
+      "type": "DerivedStream",
+
+      "properties": {
+
+        "inputSerialization": {
+
+          "type": "Json",
+
+          "properties": {
+
+            "encoding": "UTF8"
+
+          }
+
+        }
+
+      },
+
+      "inputNodes": [
+
+        {
+
+          "name": "sessionmetric_filter"
+
+        }
+
+      ]
+
+    },
+
+    {
+
+      "name": "racesplit_stream",
+
+      "type": "DerivedStream",
+
+      "properties": {
+
+        "inputSerialization": {
+
+          "type": "Json",
+
+          "properties": {
+
+            "encoding": "UTF8"
+
+          }
+
+        }
+
+      },
+
+      "inputNodes": [
+
+        {
+
+          "name": "racesplit_filter"
+
+        }
+
+      ]
+
+    }
+
+  ],
+
+  "compatibilityLevel": "1.1"
+
+}

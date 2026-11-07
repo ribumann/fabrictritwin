@@ -1,0 +1,64 @@
+{
+  "OperationId": "{{DTB_MAPPING_RACE_ID}}",
+  "DisplayName": "Race_mapping",
+  "OperationType": "Mapping",
+  "EntityTypeId": "20000000000005",
+  "MappingOperationProperties": {
+    "MappingType": "NonTimeSeries",
+    "MappedProperties": [
+      {
+        "SourceColumn": "raceId",
+        "EntityTypePropertyName": "raceId"
+      },
+      {
+        "SourceColumn": "name",
+        "EntityTypePropertyName": "name"
+      },
+      {
+        "SourceColumn": "athleteId",
+        "EntityTypePropertyName": "athleteId"
+      },
+      {
+        "SourceColumn": "date",
+        "EntityTypePropertyName": "date"
+      },
+      {
+        "SourceColumn": "distance",
+        "EntityTypePropertyName": "distance"
+      },
+      {
+        "SourceColumn": "goalTimeSeconds",
+        "EntityTypePropertyName": "goalTimeSeconds"
+      },
+      {
+        "SourceColumn": "status",
+        "EntityTypePropertyName": "status"
+      },
+      {
+        "SourceColumn": "predictedFinishTimeSeconds",
+        "EntityTypePropertyName": "predictedFinishTimeSeconds"
+      },
+      {
+        "SourceColumn": "actualFinishTimeSeconds",
+        "EntityTypePropertyName": "actualFinishTimeSeconds"
+      },
+      {
+        "SourceColumn": "pacingEvennessStdDev",
+        "EntityTypePropertyName": "pacingEvennessStdDev"
+      }
+    ],
+    "ProcessingType": "Iterative",
+    "EntityInstanceIdSchema": [
+      "raceId"
+    ],
+    "TimeseriesEntityLinkProperties": null
+  },
+  "SourceTableProperties": {
+    "SourceType": "LakehouseTables",
+    "WorkspaceId": "{{WORKSPACE_ID}}",
+    "ItemId": "{{LAKEHOUSE_ITEM_ID}}",
+    "SourceTableName": "Race",
+    "SourceSchema": "dbo"
+  },
+  "Filters": null
+}

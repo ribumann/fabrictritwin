@@ -1,0 +1,5 @@
+{
+  "displayName": "{{NAME_PREFIX}}-fabric",
+  "description": "Triathlon Training Twin Fabric workspace",
+  "capacityId": "{{CAPACITY_ID}}"
+}

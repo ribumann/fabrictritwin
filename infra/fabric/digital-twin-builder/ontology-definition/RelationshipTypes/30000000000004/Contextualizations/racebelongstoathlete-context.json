@@ -1,0 +1,22 @@
+{
+  "id": "{{ONTOLOGY_CTX_RACEBELONGSTOATHLETE_ID}}",
+  "dataBindingTable": {
+    "workspaceId": "{{WORKSPACE_ID}}",
+    "itemId": "{{LAKEHOUSE_ITEM_ID}}",
+    "sourceTableName": "Race",
+    "sourceSchema": "dbo",
+    "sourceType": "LakehouseTable"
+  },
+  "sourceKeyRefBindings": [
+    {
+      "sourceColumnName": "raceId",
+      "targetPropertyId": "25000000000001"
+    }
+  ],
+  "targetKeyRefBindings": [
+    {
+      "sourceColumnName": "athleteId",
+      "targetPropertyId": "21000000000001"
+    }
+  ]
+}

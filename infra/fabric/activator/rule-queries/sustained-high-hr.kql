@@ -1,0 +1,1 @@
+eh_mv_sustained_high_hr_candidates | where minHeartRate >= 160.2 and distinctMinutes >= 3

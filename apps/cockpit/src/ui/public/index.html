@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Triathlon Training Twin -- Cockpit</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="page-header">
+    <div>
+      <h1>Triathlon Training Twin — Operations Cockpit</h1>
+      <p class="subtitle">Analyses, alerts, report, live telemetry, and post-race views in one screen.</p>
+    </div>
+    <form id="context-form" class="context-form">
+      <label>
+        Athlete ID
+        <input id="athlete-id" name="athleteId" type="text" autocomplete="off" />
+      </label>
+      <label>
+        Race ID
+        <input id="race-id" name="raceId" type="text" autocomplete="off" />
+      </label>
+      <button type="submit">Refresh</button>
+    </form>
+  </header>
+
+  <section id="banner" class="banner" hidden></section>
+
+  <section class="status-strip">
+    <div class="status-chip">
+      Stream
+      <strong id="stream-status">Disconnected</strong>
+    </div>
+    <div class="status-chip">
+      Assistant panel
+      <strong id="assistant-panel-chip">Checking…</strong>
+    </div>
+    <div class="status-chip">
+      Direct MCP panel
+      <strong id="mcp-panel-chip">Checking…</strong>
+    </div>
+  </section>
+
+  <main class="grid">
+    <section class="card card-wide">
+      <div class="card-header">
+        <h2>Embedded Power BI report</h2>
+        <span id="report-status" class="muted">Loading…</span>
+      </div>
+      <div id="powerbi-message" class="callout"></div>
+      <div id="powerbi-container" class="report-container" aria-label="Embedded Power BI report"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Current analyses</h2>
+        <span id="analyses-status" class="muted">Loading…</span>
+      </div>
+      <dl id="analyses-list" class="metric-list"></dl>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Active alerts</h2>
+        <span id="alerts-status" class="muted">Loading…</span>
+      </div>
+      <ul id="alerts-list" class="stack"></ul>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Live session telemetry</h2>
+        <span id="telemetry-status" class="muted">Waiting for stream…</span>
+      </div>
+      <dl id="telemetry-list" class="metric-list"></dl>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Live race view</h2>
+        <span id="race-live-status" class="muted">Loading…</span>
+      </div>
+      <dl id="race-live-list" class="metric-list"></dl>
+      <ul id="race-live-splits" class="stack compact"></ul>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Post-race summary</h2>
+        <span id="race-summary-status" class="muted">Loading…</span>
+      </div>
+      <div id="race-summary-list" class="stat-grid"></div>
+    </section>
+
+    <section class="card card-wide">
+      <div class="card-header">
+        <h2>Foundry agent chat</h2>
+        <span id="assistant-status" class="muted">Checking availability…</span>
+      </div>
+      <p id="assistant-note" class="callout">
+        Ask the Athlete Assistant a grounded question about the selected athlete.
+      </p>
+      <ol id="assistant-transcript" class="stack transcript-list"></ol>
+      <form id="assistant-form" class="panel-form panel-form-inline">
+        <label class="panel-field">
+          Question
+          <input
+            id="assistant-question"
+            name="question"
+            type="text"
+            autocomplete="off"
+            placeholder="How is my recovery trending this week?"
+          />
+        </label>
+        <button id="assistant-submit" type="submit">Ask</button>
+      </form>
+    </section>
+
+    <section class="card card-wide">
+      <div class="card-header">
+        <h2>Direct MCP query</h2>
+        <span id="mcp-status" class="muted">Checking availability…</span>
+      </div>
+      <p id="mcp-note" class="callout">
+        Run a raw MCP tool call for the selected athlete and inspect the formatted response.
+      </p>
+      <form id="mcp-form" class="panel-form">
+        <div class="panel-form-row">
+          <label class="panel-field">
+            Tool
+            <select id="mcp-tool" name="tool">
+              <option value="query_recovery_trend">Recovery trend</option>
+              <option value="query_training_load">Training load</option>
+              <option value="query_active_alerts">Active alerts</option>
+              <option value="query_race_splits">Race splits</option>
+            </select>
+          </label>
+          <div id="mcp-params" class="tool-params"></div>
+          <button id="mcp-submit" type="submit">Run Query</button>
+        </div>
+      </form>
+      <div id="mcp-output" class="json-output"></div>
+    </section>
+  </main>
+
+  <script src="/vendor/powerbi.js"></script>
+  <script src="/powerbi-panel.js"></script>
+  <script src="/assistant-session.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

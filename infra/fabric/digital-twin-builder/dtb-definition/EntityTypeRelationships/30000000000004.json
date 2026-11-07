@@ -1,0 +1,8 @@
+{
+  "Id": "30000000000004",
+  "Namespace": "usertypes",
+  "RelationshipCardinality": "ManyToOne",
+  "Name": "RaceBelongsToAthlete",
+  "FirstEntityTypeId": "20000000000005",
+  "SecondEntityTypeId": "20000000000001"
+}

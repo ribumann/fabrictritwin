@@ -1,0 +1,15 @@
+{
+  "$schema": "1.0.0",
+  "fewShots": [
+    {
+      "id": "90000000-0000-0000-0000-000000000001",
+      "question": "What is my next race and goal time?",
+      "query": "SELECT name, date, goalTimeSeconds, status FROM dbo.Race WHERE athleteId = '{{AUTHORIZED_ATHLETE_ID}}' AND status = 'upcoming' ORDER BY date ASC LIMIT 1"
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000002",
+      "question": "What phase of the training block am I in today?",
+      "query": "SELECT phase, startDate, endDate FROM dbo.TrainingBlockPhase WHERE trainingBlockId IN (SELECT trainingBlockId FROM dbo.TrainingBlock WHERE athleteId = '{{AUTHORIZED_ATHLETE_ID}}')"
+    }
+  ]
+}

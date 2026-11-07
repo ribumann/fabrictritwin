@@ -1,0 +1,274 @@
+// Canonical telemetry tables from specs/001-triathlon-training-twin/data-model.md.
+
+// Apply by Base64-encoding this file into the KQL database definition payload.
+
+
+
+.create-merge table SessionMetric (
+
+    sessionId:string,
+
+    timestamp:datetime,
+
+    heartRate:int,
+
+    power:real,
+
+    pace:real,
+
+    cadence:real,
+
+    latitude:real,
+
+    longitude:real
+
+)
+
+
+
+.create-or-alter table SessionMetric ingestion json mapping 'sessionmetric_json_map' '[{"column":"sessionId","Properties":{"path":"$.sessionId"}},{"column":"timestamp","Properties":{"path":"$.timestamp"}},{"column":"heartRate","Properties":{"path":"$.heartRate"}},{"column":"power","Properties":{"path":"$.power"}},{"column":"pace","Properties":{"path":"$.pace"}},{"column":"cadence","Properties":{"path":"$.cadence"}},{"column":"latitude","Properties":{"path":"$.latitude"}},{"column":"longitude","Properties":{"path":"$.longitude"}}]'
+
+
+.create-merge table RaceSplit (
+
+    raceId:string,
+
+    timestamp:datetime,
+
+    distanceCoveredMeters:real,
+
+    currentPaceSecPerKm:real,
+
+    plannedPaceSecPerKm:real,
+
+    currentHeartRate:int,
+
+    leg:string,
+
+    isFinish:bool
+
+)
+
+
+
+.create-or-alter table RaceSplit ingestion json mapping 'racesplit_json_map' '[{"column":"raceId","Properties":{"path":"$.raceId"}},{"column":"timestamp","Properties":{"path":"$.timestamp"}},{"column":"distanceCoveredMeters","Properties":{"path":"$.distanceCoveredMeters"}},{"column":"currentPaceSecPerKm","Properties":{"path":"$.currentPaceSecPerKm"}},{"column":"plannedPaceSecPerKm","Properties":{"path":"$.plannedPaceSecPerKm"}},{"column":"currentHeartRate","Properties":{"path":"$.currentHeartRate"}},{"column":"leg","Properties":{"path":"$.leg"}},{"column":"isFinish","Properties":{"path":"$.isFinish"}}]'
+
+
+// Lightweight helper views for read-oriented experiences.
+
+.create-or-alter materialized-view with (backfill=true, autoUpdateSchema=true) eh_mv_sessionmetric_latest on table SessionMetric
+{
+    SessionMetric
+    | summarize arg_max(timestamp, *) by sessionId
+}
+
+.create-or-alter materialized-view with (backfill=true, autoUpdateSchema=true) eh_mv_racesplit_latest on table RaceSplit
+{
+    RaceSplit
+    | summarize arg_max(timestamp, *) by raceId
+}
+
+
+.create-or-alter function with (folder = 'eh_fn') eh_fn_race_pace_drift()
+
+{
+
+    RaceSplit
+
+    | extend paceDriftPct = iff(plannedPaceSecPerKm == 0.0, real(null), ((currentPaceSecPerKm - plannedPaceSecPerKm) / plannedPaceSecPerKm) * 100.0)
+
+    | project raceId, timestamp, leg, distanceCoveredMeters, currentPaceSecPerKm, plannedPaceSecPerKm, currentHeartRate, isFinish, paceDriftPct
+
+}
+
+
+.create-or-alter materialized-view with (backfill=true) eh_mv_sustained_high_hr_candidates on table SessionMetric
+{
+    SessionMetric
+    | summarize minHeartRate = min(heartRate), distinctMinutes = dcount(bin(timestamp, 1m)), sampleCount = count() by sessionId, windowStart = bin(timestamp, 3m)
+}
+
+// FR-007d (spec.md): the current split's pace deviates from the planned/target pace for that
+// leg by more than +/-10%, for 2 or more consecutive splits. Reuses eh_fn_race_pace_drift's
+// paceDriftPct formula. Same materialized-view constraint as above (no prev()/row-window
+// functions) means a literal "trailing 2 splits" streak can't be computed incrementally; this
+// approximates it per raceId+leg by counting how many splits within that leg have been
+// off-plan so far (countif) -- so `consecutiveOffPlanSplits` really means "off-plan splits so
+// far this leg", reaching >=2 exactly when 2 splits in the same leg go off-plan, which matches
+// the scripted-demo acceptance case (SC-004) even though it isn't a strict trailing-streak
+// count. `paceDriftPct` reports the LATEST split's drift so the Activator rule's `abs(...) >
+// 10` check reflects current state, not stale history.
+.create-or-alter materialized-view with (backfill=true) eh_mv_race_pace_drift_alert_candidates on table RaceSplit
+{
+    RaceSplit
+    | where plannedPaceSecPerKm > 0.0
+    | extend paceDriftPct = ((currentPaceSecPerKm - plannedPaceSecPerKm) / plannedPaceSecPerKm) * 100.0
+    | summarize arg_max(timestamp, paceDriftPct), consecutiveOffPlanSplits = countif(abs(paceDriftPct) > 10.0) by raceId, leg
+}
+
+// ---------------------------------------------------------------------------
+// Lakehouse-dependent analyses (FR-006 / FR-007b/c/e).
+//
+// These functions join against OneLake shortcuts into the Lakehouse Delta
+// tables (TrainingSession, NutritionLog, RecoveryMetrics, SleepSession,
+// TrainingBlockPhase) via external_table(). They are plain KQL *functions*,
+// not materialized views, because Kusto materialized views cannot be defined
+// over external_table() sources (a hard platform limitation, distinct from
+// the pipe-after-summarize constraint documented above for the native-table
+// views). The five shortcuts (sc_TrainingSession, sc_NutritionLog,
+// sc_RecoveryMetrics, sc_SleepSession, sc_TrainingBlockPhase) are created by
+// scripts/provision/provision-fabric-items.ps1 against triatwin_dev_lakehouse's
+// Tables/dbo/{trainingsession,nutritionlog,recoverymetrics,sleepsession,
+// trainingblockphase} Delta tables -- NOT part of this file (OneLake
+// shortcuts are a KQL-database-level construct configured via the Fabric
+// REST API, not something `.create-or-alter` control commands can express).
+// ---------------------------------------------------------------------------
+
+// FR-006 ACWR + FR-007b (unsafe workload ratio): acute:chronic workload ratio
+// = (avg daily load, trailing 7 days) / (avg daily load, trailing 28 days);
+// daily load = plannedDurationMinutes * rpe, summed per day, for completed
+// sessions only (rpe is only populated once status = completed, per
+// data-model.md). Evaluated "as of" the latest day present in the data (this
+// is a live/near-real-time Activator rule query, not a historical trend
+// chart), per athlete. alertCandidate is true when the ratio falls outside
+// the safe 0.8-1.5 range (spec.md FR-007b).
+.create-or-alter function with (folder = 'eh_fn', docstring = 'ACWR alert candidates: 7d/28d daily training-load ratio per athlete, flagged when outside the safe 0.8-1.5 range (FR-006, FR-007b).') eh_fn_acwr_alert_candidates() {
+    let dailyLoad = external_table('sc_TrainingSession')
+        | where status == 'completed' and isnotnull(rpe)
+        | extend loadDay = bin(plannedDate, 1d)
+        | summarize dailyLoad = sum(plannedDurationMinutes * rpe) by athleteId, loadDay;
+    let asOfDate = toscalar(dailyLoad | summarize max(loadDay));
+    dailyLoad
+    | summarize
+        avgLoad7d = avgif(dailyLoad, loadDay > asOfDate - 7d and loadDay <= asOfDate),
+        avgLoad28d = avgif(dailyLoad, loadDay > asOfDate - 28d and loadDay <= asOfDate)
+        by athleteId
+    | extend acwr = iff(avgLoad28d > 0.0, round(avgLoad7d / avgLoad28d, 2), real(null))
+    | extend alertCandidate = isnotnull(acwr) and (acwr < 0.8 or acwr > 1.5)
+    | extend asOfDate = asOfDate
+    | project athleteId, asOfDate, avgLoad7d, avgLoad28d, acwr, alertCandidate
+}
+
+// FR-007c (missed session): a scheduled TrainingSession not confirmed
+// completed within 48 hours of its plannedDate. Only rows with status in
+// ('planned','missed') are eligible -- a day with no session scheduled at
+// all never appears here, satisfying the spec.md edge case that a planned
+// rest day MUST NOT raise this alert. overdueHours lets the Activator rule
+// (rule-queries/missed-session-gap.kql) apply the ">= 48" threshold.
+.create-or-alter function with (folder = 'eh_fn', docstring = 'Missed-session alert candidates: scheduled TrainingSession rows not confirmed completed within 48h of plannedDate (FR-007c).') eh_fn_missed_session_alert_candidates() {
+    external_table('sc_TrainingSession')
+    | where status in ('planned', 'missed')
+    | extend overdueHours = round((now() - plannedDate) / 1h, 1)
+    | where overdueHours >= 0
+    | project sessionId, athleteId, trainingBlockId, discipline, plannedDate, plannedDurationMinutes, targetZone, status, overdueHours
+}
+
+// FR-006 nutrition adequacy + FR-007e (fueling alert): for live sessions,
+// sum NutritionLog carb intake in the 3h window preceding/during the session
+// and compare it against the session's estimated carbohydrate demand.
+// Demand isn't a stored field (per data-model.md) -- it's derived here from
+// plannedDurationMinutes and an intensity-based carbs-per-hour rate (rpe
+// once known, else a targetZone keyword heuristic), a reasonable simplified
+// sports-nutrition estimate for demo purposes. adequacyRatio < 0.5 is the
+// FR-007e threshold (checked by the Activator rule query).
+.create-or-alter function with (folder = 'eh_fn', docstring = 'Fueling alert candidates: live TrainingSession rows where 3h-window NutritionLog carb intake covers less than 50% of the estimated carbohydrate demand (FR-006 nutrition adequacy, FR-007e).') eh_fn_live_fueling_alert_candidates() {
+    let liveSessions = external_table('sc_TrainingSession')
+        | where status == 'live'
+        | extend carbDemandGramsPerHour = case(
+            isnotnull(rpe) and rpe >= 8, 90.0,
+            isnotnull(rpe) and rpe >= 6, 60.0,
+            isnotnull(rpe) and rpe >= 4, 45.0,
+            isnotnull(rpe), 30.0,
+            targetZone has 'Threshold' or targetZone has 'VO2' or targetZone has 'Zone5', 90.0,
+            targetZone has 'Tempo' or targetZone has 'Zone4', 60.0,
+            targetZone has 'Zone3', 45.0,
+            45.0)
+        | extend estimatedCarbDemandGrams = carbDemandGramsPerHour * plannedDurationMinutes / 60.0;
+    liveSessions
+    | join kind=leftouter (external_table('sc_NutritionLog')) on athleteId
+    | where isnull(['date']) or ['date'] between ((plannedDate - 3h) .. (plannedDate + plannedDurationMinutes * 1m))
+    | summarize recentCarbsGrams = sumif(carbsGrams, isnotnull(['date'])) by sessionId, athleteId, discipline, plannedDate, estimatedCarbDemandGrams
+    | extend adequacyRatio = iff(estimatedCarbDemandGrams > 0.0, round(coalesce(recentCarbsGrams, 0.0) / estimatedCarbDemandGrams, 2), real(null))
+    | extend alertCandidate = isnotnull(adequacyRatio) and adequacyRatio < 0.5
+    | project sessionId, athleteId, discipline, plannedDate, estimatedCarbDemandGrams, recentCarbsGrams = coalesce(recentCarbsGrams, 0.0), adequacyRatio, alertCandidate
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard-only analyses (FR-006), not tied to any FR-007 alert condition.
+// Same OneLake-shortcut/external_table() pattern as above, plus two more
+// shortcuts (sc_SleepSession, sc_TrainingBlockPhase) also provisioned by
+// scripts/provision/provision-fabric-items.ps1. Consumed by the planned
+// `GET /api/analyses/{athleteId}` endpoint (T088), not by any Activator rule.
+// ---------------------------------------------------------------------------
+
+// FR-006 recovery score: a weighted 0-100 composite -- 35% HRV z-score vs the
+// athlete's trailing 28-day HRV baseline (capped to +/-3 sigma), 25% sleep
+// score (already 0-100 scale), 20% inverse soreness (sorenessScore is a 0-10
+// scale where higher = more sore, so inverted to 0-100), and 20% resting-HR
+// delta vs baseline (capped to +/-10 bpm; a lower current RHR than baseline
+// scores higher). Weights/caps are a documented simplification for demo
+// purposes, not an authoritative sports-science formula -- spec.md only
+// specifies the four inputs, not their exact weights.
+.create-or-alter function with (folder = 'eh_fn', docstring = 'Recovery score: weighted 0-100 composite of HRV z-score vs trailing 28d baseline, sleep score, inverse soreness, and resting-HR delta vs baseline (FR-006).') eh_fn_recovery_score() {
+    let baseline = external_table('sc_RecoveryMetrics')
+        | summarize baselineHrvMean = avg(hrv), baselineHrvStdev = stdev(hrv), baselineRhrMean = avg(restingHeartRate) by athleteId
+        | project athleteId, baselineHrvMean, baselineHrvStdev, baselineRhrMean;
+    external_table('sc_RecoveryMetrics')
+    | summarize latestDate = max(['date']) by athleteId
+    | join kind=inner (external_table('sc_RecoveryMetrics')) on athleteId
+    | where ['date'] == latestDate
+    | join kind=inner baseline on athleteId
+    | extend hrvZ = iff(baselineHrvStdev > 0.0, (hrv - baselineHrvMean) / baselineHrvStdev, 0.0)
+    | extend hrvZCapped = max_of(min_of(hrvZ, 3.0), -3.0)
+    | extend hrvComponent = (hrvZCapped + 3.0) / 6.0 * 100.0
+    | extend sleepComponent = sleepScore
+    | extend inverseSorenessComponent = (10.0 - sorenessScore) / 10.0 * 100.0
+    | extend rhrDelta = baselineRhrMean - restingHeartRate
+    | extend rhrDeltaCapped = max_of(min_of(rhrDelta, 10.0), -10.0)
+    | extend rhrComponent = (rhrDeltaCapped + 10.0) / 20.0 * 100.0
+    | extend recoveryScore = round(0.35 * hrvComponent + 0.25 * sleepComponent + 0.20 * inverseSorenessComponent + 0.20 * rhrComponent, 1)
+    | project athleteId, asOfDate = latestDate, hrv, sleepScore, sorenessScore, restingHeartRate, recoveryScore
+}
+
+// FR-006 sleep debt: 8-hour (480 min) nightly target minus the trailing 7-day
+// rolling average of SleepSession.totalSleepMinutes, evaluated as of the
+// latest day present per athlete. Positive sleepDebtMinutes = average nightly
+// sleep is falling short of the target (e.g. the FR-009 "poor night's sleep"
+// injected anomaly should show up here as an elevated debt).
+.create-or-alter function with (folder = 'eh_fn', docstring = 'Sleep debt: 8-hour (480 min) nightly target minus the trailing 7-day rolling average total sleep time, per athlete (FR-006).') eh_fn_sleep_debt() {
+    let nightlyTargetMinutes = 480.0;
+    external_table('sc_SleepSession')
+    | summarize latestDate = max(['date']) by athleteId
+    | join kind=inner (external_table('sc_SleepSession')) on athleteId
+    | where ['date'] > latestDate - 7d and ['date'] <= latestDate
+    | summarize avg7dTotalSleepMinutes = round(avg(totalSleepMinutes), 1), nightsCounted = count() by athleteId, asOfDate = latestDate
+    | extend sleepDebtMinutes = round(nightlyTargetMinutes - avg7dTotalSleepMinutes, 1)
+    | project athleteId, asOfDate, avg7dTotalSleepMinutes, nightsCounted, sleepDebtMinutes
+}
+
+// FR-006 taper index: average daily training load (plannedDurationMinutes *
+// rpe, completed sessions only) during the athlete's TrainingBlockPhase =
+// 'Taper' window, compared against the average daily load during the 'Peak'
+// phase (the "peak-week load" per spec.md -- the Peak phase itself spans the
+// final build weeks before Taper, so its own average approximates the
+// peak-week figure without needing a separate single-week pick). Joined via
+// TrainingSession.trainingBlockId -> TrainingBlockPhase.trainingBlockId,
+// which is sufficient given the spec's single-TrainingBlock-per-iteration
+// assumption (data-model.md) -- no separate TrainingBlock shortcut/join is
+// needed for athleteId attribution. taperIndex < 1.0 indicates the athlete is
+// tapering (reducing volume) as expected going into a race.
+.create-or-alter function with (folder = 'eh_fn', docstring = 'Taper index: average daily training load during the TrainingBlockPhase.Taper window compared to the average daily load during the Peak phase (the peak-week load), per athlete. Values below 1.0 indicate the athlete is tapering (reducing volume) as expected (FR-006).') eh_fn_taper_index() {
+    let phaseLoad = external_table('sc_TrainingSession')
+        | where status == 'completed'
+        | extend dailyLoad = plannedDurationMinutes * rpe
+        | summarize dailyLoad = sum(dailyLoad) by athleteId, trainingBlockId, day = bin(plannedDate, 1d)
+        | join kind=inner (external_table('sc_TrainingBlockPhase') | project trainingBlockId, phase, startDate, endDate) on trainingBlockId
+        | where day >= startDate and day <= endDate
+        | summarize avgDailyLoad = round(avg(dailyLoad), 1), daysCounted = count() by athleteId, phase;
+    let peak = phaseLoad | where phase == 'Peak' | project athleteId, peakWeekAvgDailyLoad = avgDailyLoad;
+    let taper = phaseLoad | where phase == 'Taper' | project athleteId, taperAvgDailyLoad = avgDailyLoad, taperDaysCounted = daysCounted;
+    taper
+    | join kind=inner peak on athleteId
+    | extend taperIndex = iff(peakWeekAvgDailyLoad > 0.0, round(taperAvgDailyLoad / peakWeekAvgDailyLoad, 2), real(null))
+    | project athleteId, peakWeekAvgDailyLoad, taperAvgDailyLoad, taperDaysCounted, taperIndex
+}

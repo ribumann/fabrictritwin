@@ -1,0 +1,72 @@
+{
+  "$schema": "1.0.0",
+  "artifactId": "{{LAKEHOUSE_ITEM_ID}}",
+  "workspaceId": "{{WORKSPACE_ID}}",
+  "displayName": "Triathlon Lakehouse Tables",
+  "type": "lakehouse_tables",
+  "userDescription": "Canonical profile, plan, daily recovery, nutrition, sleep, race, and equipment tables.",
+  "dataSourceInstructions": "Use this source for athlete profile, plan context, daily history, and next-race questions. Respect athleteId authorization scope on every answer.",
+  "elements": [
+    {
+      "display_name": "dbo",
+      "type": "lakehouse_tables.schema",
+      "is_selected": true,
+      "children": [
+        {
+          "display_name": "Athlete",
+          "type": "lakehouse_tables.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "TrainingBlock",
+          "type": "lakehouse_tables.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "TrainingBlockPhase",
+          "type": "lakehouse_tables.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "TrainingSession",
+          "type": "lakehouse_tables.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "RecoveryMetrics",
+          "type": "lakehouse_tables.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "NutritionLog",
+          "type": "lakehouse_tables.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "SleepSession",
+          "type": "lakehouse_tables.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "Race",
+          "type": "lakehouse_tables.table",
+          "is_selected": true,
+          "children": []
+        },
+        {
+          "display_name": "Equipment",
+          "type": "lakehouse_tables.table",
+          "is_selected": true,
+          "children": []
+        }
+      ]
+    }
+  ]
+}

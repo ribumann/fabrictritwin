@@ -1,0 +1,75 @@
+table NutritionLog
+    sourceLineageTag: [dbo].[NutritionLog]
+
+    measure 'Total Calories' = SUM('NutritionLog'[calories])
+        formatString: #,##0
+
+    measure 'Total Carbs (g)' = SUM('NutritionLog'[carbsGrams])
+        formatString: #,##0
+
+    measure 'Total Protein (g)' = SUM('NutritionLog'[proteinGrams])
+        formatString: #,##0
+
+    measure 'Total Fat (g)' = SUM('NutritionLog'[fatGrams])
+        formatString: #,##0
+
+    measure 'Total Hydration (ml)' = SUM('NutritionLog'[hydrationMl])
+        formatString: #,##0
+
+    column athleteId
+        dataType: string
+        summarizeBy: none
+        sourceColumn: athleteId
+
+    column date
+        dataType: dateTime
+        summarizeBy: none
+        sourceColumn: date
+
+    column mealType
+        dataType: string
+        summarizeBy: none
+        sourceColumn: mealType
+
+    column calories
+        dataType: double
+        formatString: 0.0
+        sourceColumn: calories
+
+    column carbsGrams
+        dataType: double
+        formatString: 0.0
+        sourceColumn: carbsGrams
+
+    column proteinGrams
+        dataType: double
+        formatString: 0.0
+        sourceColumn: proteinGrams
+
+    column fatGrams
+        dataType: double
+        formatString: 0.0
+        sourceColumn: fatGrams
+
+    column hydrationMl
+        dataType: double
+        formatString: 0.0
+        sourceColumn: hydrationMl
+
+    column source
+        dataType: string
+        summarizeBy: none
+        sourceColumn: source
+
+    column AthleteDateKey
+        dataType: string
+        isHidden
+        summarizeBy: none
+        sourceColumn: AthleteDateKey
+
+    partition NutritionLog = entity
+        mode: directLake
+        source
+            entityName: nutritionlog
+            schemaName: dbo
+            expressionSource: 'DirectLake - TriathlonTrainingTwinLakehouse'

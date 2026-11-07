@@ -1,0 +1,44 @@
+{
+  "OperationId": "{{DTB_MAPPING_TRAININGBLOCK_ID}}",
+  "DisplayName": "TrainingBlock_mapping",
+  "OperationType": "Mapping",
+  "EntityTypeId": "20000000000002",
+  "MappingOperationProperties": {
+    "MappingType": "NonTimeSeries",
+    "MappedProperties": [
+      {
+        "SourceColumn": "trainingBlockId",
+        "EntityTypePropertyName": "trainingBlockId"
+      },
+      {
+        "SourceColumn": "athleteId",
+        "EntityTypePropertyName": "athleteId"
+      },
+      {
+        "SourceColumn": "startDate",
+        "EntityTypePropertyName": "startDate"
+      },
+      {
+        "SourceColumn": "endDate",
+        "EntityTypePropertyName": "endDate"
+      },
+      {
+        "SourceColumn": "goalRaceId",
+        "EntityTypePropertyName": "goalRaceId"
+      }
+    ],
+    "ProcessingType": "Iterative",
+    "EntityInstanceIdSchema": [
+      "trainingBlockId"
+    ],
+    "TimeseriesEntityLinkProperties": null
+  },
+  "SourceTableProperties": {
+    "SourceType": "LakehouseTables",
+    "WorkspaceId": "{{WORKSPACE_ID}}",
+    "ItemId": "{{LAKEHOUSE_ITEM_ID}}",
+    "SourceTableName": "TrainingBlock",
+    "SourceSchema": "dbo"
+  },
+  "Filters": null
+}

@@ -1,0 +1,19 @@
+{
+  "displayName": "{{NAME_PREFIX}}-eventstream",
+  "type": "Eventstream",
+  "description": "Triathlon Training Twin Eventstream using a Fabric custom endpoint source",
+  "definition": {
+    "parts": [
+      {
+        "path": "eventstream.json",
+        "payload": "{{EVENTSTREAM_TOPOLOGY_B64}}",
+        "payloadType": "InlineBase64"
+      },
+      {
+        "path": ".platform",
+        "payload": "{{EVENTSTREAM_PLATFORM_B64}}",
+        "payloadType": "InlineBase64"
+      }
+    ]
+  }
+}

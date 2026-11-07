@@ -1,0 +1,55 @@
+{
+  "id": "{{RACE_BINDING_ID}}",
+  "dataBindingConfiguration": {
+    "dataBindingType": "NonTimeSeries",
+    "propertyBindings": [
+      {
+        "sourceColumnName": "raceId",
+        "targetPropertyId": "25000000000001"
+      },
+      {
+        "sourceColumnName": "name",
+        "targetPropertyId": "25000000000002"
+      },
+      {
+        "sourceColumnName": "athleteId",
+        "targetPropertyId": "25000000000003"
+      },
+      {
+        "sourceColumnName": "date",
+        "targetPropertyId": "25000000000004"
+      },
+      {
+        "sourceColumnName": "distance",
+        "targetPropertyId": "25000000000005"
+      },
+      {
+        "sourceColumnName": "goalTimeSeconds",
+        "targetPropertyId": "25000000000006"
+      },
+      {
+        "sourceColumnName": "status",
+        "targetPropertyId": "25000000000007"
+      },
+      {
+        "sourceColumnName": "predictedFinishTimeSeconds",
+        "targetPropertyId": "25000000000008"
+      },
+      {
+        "sourceColumnName": "actualFinishTimeSeconds",
+        "targetPropertyId": "25000000000009"
+      },
+      {
+        "sourceColumnName": "pacingEvennessStdDev",
+        "targetPropertyId": "25000000000010"
+      }
+    ],
+    "sourceTableProperties": {
+      "sourceType": "LakehouseTable",
+      "workspaceId": "{{WORKSPACE_ID}}",
+      "itemId": "{{LAKEHOUSE_ITEM_ID}}",
+      "sourceTableName": "Race",
+      "sourceSchema": "dbo"
+    }
+  }
+}
