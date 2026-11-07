@@ -1,0 +1,76 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Verify public registry connectivity
+        run: npm ping --registry=https://registry.npmjs.org
+      - name: Verify runner tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          pwsh --version
+          docker --version
+          docker info > /dev/null
+          az version
+          az bicep install
+          az bicep version
+      - name: Install pinned PowerShell test and analysis tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module Pester -RequiredVersion 5.6.1 -Scope CurrentUser -Force
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.24.0 -Scope CurrentUser -Force
+          Import-Module Pester -RequiredVersion 5.6.1
+          Import-Module PSScriptAnalyzer -RequiredVersion 1.24.0
+      - name: Restore locked JavaScript dependencies
+        run: npm ci --registry=https://registry.npmjs.org
+      - name: Build workspace dependency outputs
+        run: npm run build
+      - name: Run credential-free JavaScript tests
+        if: ${{ always() && !cancelled() }}
+        run: npm test
+      - name: Run mock PowerShell tests
+        if: ${{ always() && !cancelled() }}
+        shell: pwsh
+        run: ./tests/pester/Run-Tests.ps1
+      - name: Lint TypeScript
+        if: ${{ always() && !cancelled() }}
+        run: npm run lint
+      - name: Check TypeScript formatting
+        if: ${{ always() && !cancelled() }}
+        run: npm run format
+      - name: Compile infrastructure without deploying
+        if: ${{ always() && !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            output="${RUNNER_TEMP}/bicep/${file#infra/bicep/}.json"
+            mkdir -p "$(dirname "$output")"
+            az bicep build --file "$file" --outfile "$output"
+          done < <(find infra/bicep -name '*.bicep' -print0)
