@@ -7,7 +7,12 @@ const RENEW_BEFORE_MS = 180_000;
 
 export class PowerBiError extends Error {
   constructor(
-    public readonly code: "not-configured" | "identity-unavailable" | "upstream-failed" | "report-mismatch" | "unsupported-model",
+    public readonly code:
+      | "not-configured"
+      | "identity-unavailable"
+      | "upstream-failed"
+      | "report-mismatch"
+      | "unsupported-model",
   ) {
     super(code);
   }
@@ -43,11 +48,22 @@ export function readPowerBiConfig(env: NodeJS.ProcessEnv = process.env): PowerBi
     reportId: env.POWERBI_REPORT_ID?.trim().toLowerCase() ?? "",
     datasetId: env.POWERBI_SEMANTIC_MODEL_ID?.trim().toLowerCase() ?? "",
     allowedPrincipalIds: (env.POWERBI_ALLOWED_PRINCIPAL_IDS ?? "")
-      .split(",").map((id) => id.trim().toLowerCase()).filter(Boolean),
+      .split(",")
+      .map((id) => id.trim().toLowerCase())
+      .filter(Boolean),
   };
-  if (!config.clientSecret || !config.allowedPrincipalIds.length ||
-      [config.tenantId, config.clientId, config.workspaceId, config.reportId, config.datasetId,
-        ...config.allowedPrincipalIds].some((id) => !GUID.test(id))) {
+  if (
+    !config.clientSecret ||
+    !config.allowedPrincipalIds.length ||
+    [
+      config.tenantId,
+      config.clientId,
+      config.workspaceId,
+      config.reportId,
+      config.datasetId,
+      ...config.allowedPrincipalIds,
+    ].some((id) => !GUID.test(id))
+  ) {
     throw new PowerBiError("not-configured");
   }
   return config;
@@ -60,12 +76,16 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export function createPowerBiService(config: PowerBiConfig, options: {
-  credential?: TokenCredential;
-  fetchImpl?: typeof fetch;
-  now?: () => number;
-} = {}) {
-  const credential = options.credential ??
+export function createPowerBiService(
+  config: PowerBiConfig,
+  options: {
+    credential?: TokenCredential;
+    fetchImpl?: typeof fetch;
+    now?: () => number;
+  } = {},
+) {
+  const credential =
+    options.credential ??
     new ClientSecretCredential(config.tenantId, config.clientId, config.clientSecret);
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? Date.now;
@@ -108,15 +128,20 @@ export function createPowerBiService(config: PowerBiConfig, options: {
     }
 
     const report = await api(`groups/${config.workspaceId}/reports/${config.reportId}`);
-    if (report.id !== config.reportId || report.datasetId !== config.datasetId ||
-        report.reportType !== "PowerBIReport") {
+    if (
+      report.id !== config.reportId ||
+      report.datasetId !== config.datasetId ||
+      report.reportType !== "PowerBIReport"
+    ) {
       throw new PowerBiError("report-mismatch");
     }
     // Pin both resources: a portal rebind must be explicitly re-approved by provisioning.
     const dataset = await api(`groups/${config.workspaceId}/datasets/${config.datasetId}`);
-    if (dataset.id !== config.datasetId ||
-        dataset.isEffectiveIdentityRequired !== false ||
-        dataset.isEffectiveIdentityRolesRequired !== false) {
+    if (
+      dataset.id !== config.datasetId ||
+      dataset.isEffectiveIdentityRequired !== false ||
+      dataset.isEffectiveIdentityRolesRequired !== false
+    ) {
       throw new PowerBiError("unsupported-model");
     }
     const embedUrl = new URL("https://app.powerbi.com/reportEmbed");
@@ -127,10 +152,15 @@ export function createPowerBiService(config: PowerBiConfig, options: {
       reports: [{ id: config.reportId, allowEdit: false }],
       lifetimeInMinutes: 10,
     });
-    const expiration = typeof generated.expiration === "string" ? Date.parse(generated.expiration) : NaN;
-    if (typeof generated.token !== "string" || !generated.token ||
-        !Number.isFinite(expiration) || expiration <= now() + RENEW_BEFORE_MS ||
-        expiration > token.expiresOnTimestamp + 30_000) {
+    const expiration =
+      typeof generated.expiration === "string" ? Date.parse(generated.expiration) : NaN;
+    if (
+      typeof generated.token !== "string" ||
+      !generated.token ||
+      !Number.isFinite(expiration) ||
+      expiration <= now() + RENEW_BEFORE_MS ||
+      expiration > token.expiresOnTimestamp + 30_000
+    ) {
       throw new PowerBiError("upstream-failed");
     }
     return {
@@ -151,10 +181,14 @@ export function createPowerBiService(config: PowerBiConfig, options: {
         return Promise.resolve(cached);
       }
       // One report and one explicitly approved audience, never a caller-selected cache key.
-      pending ??= issue().then((result) => {
-        cached = result;
-        return result;
-      }).finally(() => { pending = undefined; });
+      pending ??= issue()
+        .then((result) => {
+          cached = result;
+          return result;
+        })
+        .finally(() => {
+          pending = undefined;
+        });
       return pending;
     },
   };

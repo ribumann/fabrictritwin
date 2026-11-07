@@ -46,10 +46,7 @@ class OneLakeDataGapStatusService implements DataGapStatusService {
   }
 
   async getStatus(athleteId: string): Promise<DataGapStatusResponse> {
-    const state = await this.store.readDailyGenerationState(
-      athleteId,
-      this.environment,
-    );
+    const state = await this.store.readDailyGenerationState(athleteId, this.environment);
 
     return {
       athleteId,

@@ -29,8 +29,7 @@ export function createDefaultRaceIdAction(options: DefaultRaceIdActionOptions = 
   const resolveDefaultAthleteId = options.resolveDefaultAthleteId ?? defaultResolveDefaultAthleteId;
 
   return (req: Request, res: Response): void => {
-    const athleteId =
-      (req.query.athleteId as string | undefined) ?? resolveDefaultAthleteId();
+    const athleteId = (req.query.athleteId as string | undefined) ?? resolveDefaultAthleteId();
 
     if (!athleteId) {
       res.status(400).json({

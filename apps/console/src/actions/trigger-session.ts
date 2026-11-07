@@ -36,7 +36,6 @@ function defaultResolveDefaultAthleteId(): string | undefined {
   return process.env.DEFAULT_ATHLETE_ID;
 }
 
-
 /**
  * Shared forwarding logic for both trigger actions: resolves the athleteId, forwards the Easy
  * Auth headers, POSTs the built body to `path` on the Streaming Backend, and relays the response
@@ -54,7 +53,8 @@ function createTriggerAction(
   const buildAuthHeaders = options.buildAuthHeaders ?? buildServiceAuthHeaders;
 
   return async (req: Request, res: Response): Promise<void> => {
-    const athleteId = (req.body as { athleteId?: string } | undefined)?.athleteId ?? resolveDefaultAthleteId();
+    const athleteId =
+      (req.body as { athleteId?: string } | undefined)?.athleteId ?? resolveDefaultAthleteId();
 
     if (!athleteId) {
       res.status(400).json({
@@ -87,7 +87,8 @@ function createTriggerAction(
       res.status(502).json({
         error: {
           code: "streaming_backend_unreachable",
-          message: error instanceof Error ? error.message : "Failed to reach the Streaming Backend.",
+          message:
+            error instanceof Error ? error.message : "Failed to reach the Streaming Backend.",
         },
       });
     }

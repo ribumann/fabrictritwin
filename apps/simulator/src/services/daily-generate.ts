@@ -61,7 +61,16 @@ const LAKEHOUSE_ENTITY_FILES = {
 } as const;
 
 type LakehouseSeedPayload = Parameters<SeedHistoryStore["writeLakehouseFiles"]>[0]["payload"];
-type JsonRecord = Athlete | TrainingBlock | TrainingBlockPhase | TrainingSession | RecoveryMetrics | NutritionLog | SleepSession | Race | Equipment;
+type JsonRecord =
+  | Athlete
+  | TrainingBlock
+  | TrainingBlockPhase
+  | TrainingSession
+  | RecoveryMetrics
+  | NutritionLog
+  | SleepSession
+  | Race
+  | Equipment;
 
 export interface DailyGenerationState {
   athleteId: string;
@@ -72,10 +81,19 @@ export interface DailyGenerationState {
   activeGaps: DailyGenerationGapRecord[];
 }
 
-export interface DailyGenerationStore extends Pick<SeedHistoryStore, "getExistingSeed" | "writeLakehouseFiles"> {
+export interface DailyGenerationStore extends Pick<
+  SeedHistoryStore,
+  "getExistingSeed" | "writeLakehouseFiles"
+> {
   listSeededAthleteIds(environment: string): Promise<string[]>;
-  readLakehousePayload(athleteId: string, environment: string): Promise<LakehouseSeedPayload | null>;
-  readDailyGenerationState(athleteId: string, environment: string): Promise<DailyGenerationState | null>;
+  readLakehousePayload(
+    athleteId: string,
+    environment: string,
+  ): Promise<LakehouseSeedPayload | null>;
+  readDailyGenerationState(
+    athleteId: string,
+    environment: string,
+  ): Promise<DailyGenerationState | null>;
   writeDailyGenerationState(state: DailyGenerationState): Promise<string>;
 }
 
@@ -88,7 +106,10 @@ export interface DailyGenerationNotebookLoadResult {
 }
 
 export interface DailyGenerationNotebookLoader {
-  run(args: { environment: string; athleteId?: string }): Promise<DailyGenerationNotebookLoadResult>;
+  run(args: {
+    environment: string;
+    athleteId?: string;
+  }): Promise<DailyGenerationNotebookLoadResult>;
 }
 
 export interface DailyGenerateAthleteOptions {
@@ -174,14 +195,24 @@ function maxIsoDate(...values: IsoDate[]): IsoDate {
   return values.reduce((current, candidate) => (candidate > current ? candidate : current));
 }
 
-function sortByDate<T>(records: readonly T[], getDate: (record: T) => string, getTieBreaker: (record: T) => string): T[] {
+function sortByDate<T>(
+  records: readonly T[],
+  getDate: (record: T) => string,
+  getTieBreaker: (record: T) => string,
+): T[] {
   return [...records].sort((left, right) => {
     const dateCompare = getDate(left).localeCompare(getDate(right));
-    return dateCompare !== 0 ? dateCompare : getTieBreaker(left).localeCompare(getTieBreaker(right));
+    return dateCompare !== 0
+      ? dateCompare
+      : getTieBreaker(left).localeCompare(getTieBreaker(right));
   });
 }
 
-function dedupeByKey<T>(existing: readonly T[], additions: readonly T[], keySelector: (record: T) => string): T[] {
+function dedupeByKey<T>(
+  existing: readonly T[],
+  additions: readonly T[],
+  keySelector: (record: T) => string,
+): T[] {
   const byKey = new Map(existing.map((record) => [keySelector(record), record]));
   for (const record of additions) {
     byKey.set(keySelector(record), record);
@@ -193,22 +224,40 @@ function dedupeByKey<T>(existing: readonly T[], additions: readonly T[], keySele
 function inferLastGeneratedDate(payload: LakehouseSeedPayload, seedManifestDate: IsoDate): IsoDate {
   const recoveryDate = payload.recoveryMetrics.at(-1)?.date ?? seedManifestDate;
   const sleepDate = payload.sleepSessions.at(-1)?.date ?? seedManifestDate;
-  const nutritionDate = getDatePortion(payload.nutritionLogs.at(-1)?.date ?? `${seedManifestDate}T00:00:00.000Z`);
-  const sessionDate = getDatePortion(payload.sessions.at(-1)?.plannedDate ?? `${seedManifestDate}T00:00:00.000Z`);
+  const nutritionDate = getDatePortion(
+    payload.nutritionLogs.at(-1)?.date ?? `${seedManifestDate}T00:00:00.000Z`,
+  );
+  const sessionDate = getDatePortion(
+    payload.sessions.at(-1)?.plannedDate ?? `${seedManifestDate}T00:00:00.000Z`,
+  );
 
-  return maxIsoDate(seedManifestDate, payload.trainingBlock.endDate, recoveryDate, sleepDate, nutritionDate, sessionDate);
+  return maxIsoDate(
+    seedManifestDate,
+    payload.trainingBlock.endDate,
+    recoveryDate,
+    sleepDate,
+    nutritionDate,
+    sessionDate,
+  );
 }
 
 function extendTrainingBlock(trainingBlock: TrainingBlock, targetDate: IsoDate): TrainingBlock {
-  return targetDate > trainingBlock.endDate ? { ...trainingBlock, endDate: targetDate } : trainingBlock;
+  return targetDate > trainingBlock.endDate
+    ? { ...trainingBlock, endDate: targetDate }
+    : trainingBlock;
 }
 
-function extendTrainingBlockPhases(phases: readonly TrainingBlockPhase[], targetDate: IsoDate): TrainingBlockPhase[] {
+function extendTrainingBlockPhases(
+  phases: readonly TrainingBlockPhase[],
+  targetDate: IsoDate,
+): TrainingBlockPhase[] {
   if (phases.length === 0) {
     throw new Error("Seeded history is missing TrainingBlockPhase rows.");
   }
 
-  const sortedPhases = [...phases].sort((left, right) => left.startDate.localeCompare(right.startDate));
+  const sortedPhases = [...phases].sort((left, right) =>
+    left.startDate.localeCompare(right.startDate),
+  );
   const lastPhase = sortedPhases.at(-1)!;
 
   if (targetDate <= lastPhase.endDate) {
@@ -281,9 +330,18 @@ function buildUpdatedPayload(args: {
     sessions: dailySessions,
     seed: deriveSeed(baseSeed, "daily-metrics"),
   });
-  const recoveryMetrics = dailyMetrics.recoveryMetrics.map((metrics) => ({ ...metrics, source: "daily-generated" as const }));
-  const sleepSessions = dailyMetrics.sleepSessions.map((session) => ({ ...session, source: "daily-generated" as const }));
-  const nutritionLogs = dailyMetrics.nutritionLogs.map((log) => ({ ...log, source: "daily-generated" as const }));
+  const recoveryMetrics = dailyMetrics.recoveryMetrics.map((metrics) => ({
+    ...metrics,
+    source: "daily-generated" as const,
+  }));
+  const sleepSessions = dailyMetrics.sleepSessions.map((session) => ({
+    ...session,
+    source: "daily-generated" as const,
+  }));
+  const nutritionLogs = dailyMetrics.nutritionLogs.map((log) => ({
+    ...log,
+    source: "daily-generated" as const,
+  }));
 
   return {
     payload: {
@@ -296,17 +354,29 @@ function buildUpdatedPayload(args: {
         (session) => session.sessionId,
       ),
       recoveryMetrics: sortByDate(
-        dedupeByKey(args.payload.recoveryMetrics, recoveryMetrics, (metrics) => `${metrics.athleteId}|${metrics.date}`),
+        dedupeByKey(
+          args.payload.recoveryMetrics,
+          recoveryMetrics,
+          (metrics) => `${metrics.athleteId}|${metrics.date}`,
+        ),
         (metrics) => metrics.date,
         (metrics) => metrics.athleteId,
       ),
       nutritionLogs: sortByDate(
-        dedupeByKey(args.payload.nutritionLogs, nutritionLogs, (log) => `${log.athleteId}|${log.date}|${log.mealType}`),
+        dedupeByKey(
+          args.payload.nutritionLogs,
+          nutritionLogs,
+          (log) => `${log.athleteId}|${log.date}|${log.mealType}`,
+        ),
         (log) => log.date,
         (log) => `${log.mealType}|${log.athleteId}`,
       ),
       sleepSessions: sortByDate(
-        dedupeByKey(args.payload.sleepSessions, sleepSessions, (sleep) => `${sleep.athleteId}|${sleep.date}`),
+        dedupeByKey(
+          args.payload.sleepSessions,
+          sleepSessions,
+          (sleep) => `${sleep.athleteId}|${sleep.date}`,
+        ),
         (sleep) => sleep.date,
         (sleep) => sleep.athleteId,
       ),
@@ -334,7 +404,11 @@ function parseJsonLines<T extends JsonRecord>(content: string | null): T[] {
     .map((line) => JSON.parse(line) as T);
 }
 
-function ensureLakehousePayload(payload: LakehouseSeedPayload | null, athleteId: string, environment: string): LakehouseSeedPayload {
+function ensureLakehousePayload(
+  payload: LakehouseSeedPayload | null,
+  athleteId: string,
+  environment: string,
+): LakehouseSeedPayload {
   if (!payload) {
     throw new Error(
       `Seed history exists for athlete '${athleteId}' in environment '${environment}', but the expected Lakehouse Files payload could not be read.`,
@@ -344,8 +418,14 @@ function ensureLakehousePayload(payload: LakehouseSeedPayload | null, athleteId:
   return payload;
 }
 
-export class OneLakeFilesDailyGenerationStore extends OneLakeFilesSeedHistoryStore implements DailyGenerationStore {
-  constructor(config: OneLakeConfig, credential: DefaultAzureCredential = new DefaultAzureCredential()) {
+export class OneLakeFilesDailyGenerationStore
+  extends OneLakeFilesSeedHistoryStore
+  implements DailyGenerationStore
+{
+  constructor(
+    config: OneLakeConfig,
+    credential: DefaultAzureCredential = new DefaultAzureCredential(),
+  ) {
     super(config, credential);
   }
 
@@ -364,7 +444,12 @@ export class OneLakeFilesDailyGenerationStore extends OneLakeFilesSeedHistorySto
         athleteIds.add(path.name.split("/").at(-1) ?? "");
       }
     } catch (error: unknown) {
-      if (typeof error === "object" && error !== null && "statusCode" in error && error.statusCode === 404) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "statusCode" in error &&
+        error.statusCode === 404
+      ) {
         return [];
       }
       throw error;
@@ -373,10 +458,19 @@ export class OneLakeFilesDailyGenerationStore extends OneLakeFilesSeedHistorySto
     return [...athleteIds].filter(Boolean).sort();
   }
 
-  async readLakehousePayload(athleteId: string, environment: string): Promise<LakehouseSeedPayload | null> {
+  async readLakehousePayload(
+    athleteId: string,
+    environment: string,
+  ): Promise<LakehouseSeedPayload | null> {
     const rootPath = this.getAthleteRootPath(athleteId, environment);
-    const athlete = parseJsonLines<Athlete>(await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.Athlete}`))[0] ?? null;
-    const trainingBlock = parseJsonLines<TrainingBlock>(await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.TrainingBlock}`))[0] ?? null;
+    const athlete =
+      parseJsonLines<Athlete>(
+        await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.Athlete}`),
+      )[0] ?? null;
+    const trainingBlock =
+      parseJsonLines<TrainingBlock>(
+        await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.TrainingBlock}`),
+      )[0] ?? null;
 
     if (!athlete || !trainingBlock) {
       return null;
@@ -385,18 +479,37 @@ export class OneLakeFilesDailyGenerationStore extends OneLakeFilesSeedHistorySto
     return {
       athlete,
       trainingBlock,
-      phases: parseJsonLines<TrainingBlockPhase>(await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.TrainingBlockPhase}`)),
-      sessions: parseJsonLines<TrainingSession>(await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.TrainingSession}`)),
-      recoveryMetrics: parseJsonLines<RecoveryMetrics>(await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.RecoveryMetrics}`)),
-      nutritionLogs: parseJsonLines<NutritionLog>(await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.NutritionLog}`)),
-      sleepSessions: parseJsonLines<SleepSession>(await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.SleepSession}`)),
-      races: parseJsonLines<Race>(await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.Race}`)),
-      equipment: parseJsonLines<Equipment>(await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.Equipment}`)),
+      phases: parseJsonLines<TrainingBlockPhase>(
+        await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.TrainingBlockPhase}`),
+      ),
+      sessions: parseJsonLines<TrainingSession>(
+        await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.TrainingSession}`),
+      ),
+      recoveryMetrics: parseJsonLines<RecoveryMetrics>(
+        await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.RecoveryMetrics}`),
+      ),
+      nutritionLogs: parseJsonLines<NutritionLog>(
+        await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.NutritionLog}`),
+      ),
+      sleepSessions: parseJsonLines<SleepSession>(
+        await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.SleepSession}`),
+      ),
+      races: parseJsonLines<Race>(
+        await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.Race}`),
+      ),
+      equipment: parseJsonLines<Equipment>(
+        await this.readTextFile(`${rootPath}/${LAKEHOUSE_ENTITY_FILES.Equipment}`),
+      ),
     };
   }
 
-  async readDailyGenerationState(athleteId: string, environment: string): Promise<DailyGenerationState | null> {
-    const content = await this.readTextFile(`${this.getAthleteRootPath(athleteId, environment)}/${DAILY_GENERATION_STATE_FILE}`);
+  async readDailyGenerationState(
+    athleteId: string,
+    environment: string,
+  ): Promise<DailyGenerationState | null> {
+    const content = await this.readTextFile(
+      `${this.getAthleteRootPath(athleteId, environment)}/${DAILY_GENERATION_STATE_FILE}`,
+    );
     return content ? (JSON.parse(content) as DailyGenerationState) : null;
   }
 
@@ -416,15 +529,21 @@ export class OneLakeFilesDailyGenerationStore extends OneLakeFilesSeedHistorySto
 export class FabricNotebookLoadHistoryRunner implements DailyGenerationNotebookLoader {
   constructor(private readonly credential: TokenCredential = new DefaultAzureCredential()) {}
 
-  async run(args: { environment: string; athleteId?: string }): Promise<DailyGenerationNotebookLoadResult> {
-    const workspaceId = process.env.FABRIC_WORKSPACE_ID?.trim() || process.env.LAKEHOUSE_ONELAKE_FILESYSTEM?.trim();
+  async run(args: {
+    environment: string;
+    athleteId?: string;
+  }): Promise<DailyGenerationNotebookLoadResult> {
+    const workspaceId =
+      process.env.FABRIC_WORKSPACE_ID?.trim() || process.env.LAKEHOUSE_ONELAKE_FILESYSTEM?.trim();
     if (!workspaceId) {
       throw new Error(
         "Missing Fabric workspace id. Set FABRIC_WORKSPACE_ID or LAKEHOUSE_ONELAKE_FILESYSTEM before running daily generation.",
       );
     }
 
-    const notebookId = process.env.LOAD_HISTORY_NOTEBOOK_ITEM_ID?.trim() || (await this.resolveNotebookId(workspaceId));
+    const notebookId =
+      process.env.LOAD_HISTORY_NOTEBOOK_ITEM_ID?.trim() ||
+      (await this.resolveNotebookId(workspaceId));
     const headers = await this.getHeaders();
     const parameters: Array<{ name: string; value: string; type: "Text" }> = [];
     if (args.athleteId) {
@@ -448,7 +567,9 @@ export class FabricNotebookLoadHistoryRunner implements DailyGenerationNotebookL
     );
 
     if (response.status !== 202) {
-      throw new Error(`Fabric notebook trigger failed with HTTP ${response.status}: ${await response.text()}`);
+      throw new Error(
+        `Fabric notebook trigger failed with HTTP ${response.status}: ${await response.text()}`,
+      );
     }
 
     const pollUri = response.headers.get("Location");
@@ -482,14 +603,22 @@ export class FabricNotebookLoadHistoryRunner implements DailyGenerationNotebookL
   private async resolveNotebookId(workspaceId: string): Promise<string> {
     let nextUri = `https://api.fabric.microsoft.com/v1/workspaces/${workspaceId}/items`;
     while (nextUri) {
-      const response = await fetch(nextUri, { headers: await this.getHeaders(), signal: AbortSignal.timeout(30_000) });
+      const response = await fetch(nextUri, {
+        headers: await this.getHeaders(),
+        signal: AbortSignal.timeout(30_000),
+      });
       if (!response.ok) {
-        throw new Error(`Failed to list Fabric items for notebook discovery: HTTP ${response.status}.`);
+        throw new Error(
+          `Failed to list Fabric items for notebook discovery: HTTP ${response.status}.`,
+        );
       }
 
       const body = (await response.json()) as FabricItemListResponse;
       const match = body.value?.find(
-        (item) => item.type === "Notebook" && item.displayName && LOAD_HISTORY_NOTEBOOK_NAME_PATTERN.test(item.displayName),
+        (item) =>
+          item.type === "Notebook" &&
+          item.displayName &&
+          LOAD_HISTORY_NOTEBOOK_NAME_PATTERN.test(item.displayName),
       );
 
       if (match?.id) {
@@ -499,15 +628,22 @@ export class FabricNotebookLoadHistoryRunner implements DailyGenerationNotebookL
       nextUri = body.continuationUri ?? "";
     }
 
-    throw new Error("No Fabric notebook named '*load-history-to-tables' is visible to the simulator identity.");
+    throw new Error(
+      "No Fabric notebook named '*load-history-to-tables' is visible to the simulator identity.",
+    );
   }
 
-  private async waitForCompletion(pollUri: string, initialDelayMs: number): Promise<FabricJobInstanceResponse> {
+  private async waitForCompletion(
+    pollUri: string,
+    initialDelayMs: number,
+  ): Promise<FabricJobInstanceResponse> {
     const deadline = Date.now() + NOTEBOOK_TIMEOUT_MS;
     let delayMs = initialDelayMs;
     while (Date.now() < deadline) {
       if (delayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, deadline - Date.now())));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(delayMs, deadline - Date.now())),
+        );
       }
       if (Date.now() >= deadline) {
         break;
@@ -526,15 +662,21 @@ export class FabricNotebookLoadHistoryRunner implements DailyGenerationNotebookL
       }
 
       if (body.status === "Failed" || body.status === "Cancelled" || body.status === "Deduped") {
-        throw new Error(`Fabric notebook job finished with status '${body.status}': ${JSON.stringify(body.failureReason ?? null)}`);
+        throw new Error(
+          `Fabric notebook job finished with status '${body.status}': ${JSON.stringify(body.failureReason ?? null)}`,
+        );
       }
       if (body.status !== "NotStarted" && body.status !== "InProgress") {
-        throw new Error(`Fabric notebook job returned an unrecognized status: ${JSON.stringify(body.status ?? null)}.`);
+        throw new Error(
+          `Fabric notebook job returned an unrecognized status: ${JSON.stringify(body.status ?? null)}.`,
+        );
       }
 
       delayMs = Math.max(10_000, retryAfterMilliseconds(response));
     }
-    throw new Error(`Timed out after ${NOTEBOOK_TIMEOUT_MS / 1000}s waiting for Fabric notebook job completion.`);
+    throw new Error(
+      `Timed out after ${NOTEBOOK_TIMEOUT_MS / 1000}s waiting for Fabric notebook job completion.`,
+    );
   }
 }
 
@@ -561,10 +703,16 @@ export async function dailyGenerateAthlete(
   const existingSeed = await store.getExistingSeed(options.athleteId, environment);
 
   if (!existingSeed) {
-    throw new Error(`Cannot run daily generation for athlete '${options.athleteId}' before history seeding has completed.`);
+    throw new Error(
+      `Cannot run daily generation for athlete '${options.athleteId}' before history seeding has completed.`,
+    );
   }
 
-  const payload = ensureLakehousePayload(await store.readLakehousePayload(options.athleteId, environment), options.athleteId, environment);
+  const payload = ensureLakehousePayload(
+    await store.readLakehousePayload(options.athleteId, environment),
+    options.athleteId,
+    environment,
+  );
   const existingState = await store.readDailyGenerationState(options.athleteId, environment);
   const lastGeneratedDate = maxIsoDate(
     existingSeed.referenceDate,
@@ -648,7 +796,9 @@ export async function runDailyGenerationJob(
   const now = dependencies.now ?? (() => new Date());
   const targetDate = resolveTargetDate(options.targetDate, now);
   const store = dependencies.store ?? createDefaultDailyGenerationStore();
-  const athleteIds = options.athleteId ? [options.athleteId] : await store.listSeededAthleteIds(environment);
+  const athleteIds = options.athleteId
+    ? [options.athleteId]
+    : await store.listSeededAthleteIds(environment);
 
   if (athleteIds.length === 0) {
     return {
@@ -678,7 +828,8 @@ export async function runDailyGenerationJob(
     );
   }
 
-  const notebookLoader = dependencies.notebookLoader ?? createDefaultDailyGenerationNotebookLoader();
+  const notebookLoader =
+    dependencies.notebookLoader ?? createDefaultDailyGenerationNotebookLoader();
   // The generation state only confirms Files writes, not a successful Delta load. Always
   // replay the idempotent MERGE, including retries after an earlier load failed or timed out.
   const notebookLoad = await notebookLoader.run({ environment });

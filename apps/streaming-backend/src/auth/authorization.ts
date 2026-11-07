@@ -110,9 +110,7 @@ function getPrincipalAthleteMap(): Record<string, string> {
   try {
     const parsed = JSON.parse(raw) as unknown;
     cachedPrincipalAthleteMap =
-      typeof parsed === "object" && parsed !== null
-        ? (parsed as Record<string, string>)
-        : {};
+      typeof parsed === "object" && parsed !== null ? (parsed as Record<string, string>) : {};
   } catch {
     cachedPrincipalAthleteMap = {};
   }

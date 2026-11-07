@@ -30,11 +30,29 @@ interface SessionTemplate {
 }
 
 const WEEKLY_SESSION_TEMPLATES: readonly SessionTemplate[] = [
-  { dayOfWeek: 2, discipline: "swim", time: [6, 15], durationMinutes: 55, workoutType: "technique" },
-  { dayOfWeek: 3, discipline: "bike", time: [6, 30], durationMinutes: 90, workoutType: "endurance" },
+  {
+    dayOfWeek: 2,
+    discipline: "swim",
+    time: [6, 15],
+    durationMinutes: 55,
+    workoutType: "technique",
+  },
+  {
+    dayOfWeek: 3,
+    discipline: "bike",
+    time: [6, 30],
+    durationMinutes: 90,
+    workoutType: "endurance",
+  },
   { dayOfWeek: 4, discipline: "run", time: [6, 10], durationMinutes: 55, workoutType: "tempo" },
   { dayOfWeek: 5, discipline: "swim", time: [6, 0], durationMinutes: 50, workoutType: "endurance" },
-  { dayOfWeek: 5, discipline: "strength", time: [17, 30], durationMinutes: 40, workoutType: "strength" },
+  {
+    dayOfWeek: 5,
+    discipline: "strength",
+    time: [17, 30],
+    durationMinutes: 40,
+    workoutType: "strength",
+  },
   { dayOfWeek: 6, discipline: "bike", time: [7, 0], durationMinutes: 150, workoutType: "long" },
   { dayOfWeek: 0, discipline: "run", time: [8, 0], durationMinutes: 85, workoutType: "long" },
 ] as const;
@@ -142,14 +160,22 @@ function resolveRpe(
             : 7;
 
   const profile = PHASE_PROFILES[phase];
-  const offset = template.workoutType === "technique" || template.workoutType === "endurance" ? profile.easyRpeOffset : profile.hardRpeOffset;
+  const offset =
+    template.workoutType === "technique" || template.workoutType === "endurance"
+      ? profile.easyRpeOffset
+      : profile.hardRpeOffset;
   const recoveryAdjustment = isRecoveryWeek ? -1 : 0;
 
   return clamp(baseRpe + offset + recoveryAdjustment + randomJitter, 3, 9);
 }
 
-function findPhaseForDate(phases: readonly TrainingBlockPhase[], date: IsoDate): TrainingBlockPhase {
-  const phase = phases.find((candidate) => candidate.startDate <= date && candidate.endDate >= date);
+function findPhaseForDate(
+  phases: readonly TrainingBlockPhase[],
+  date: IsoDate,
+): TrainingBlockPhase {
+  const phase = phases.find(
+    (candidate) => candidate.startDate <= date && candidate.endDate >= date,
+  );
 
   if (!phase) {
     throw new Error(`No phase found for date ${date}.`);
@@ -165,7 +191,9 @@ export function generateTrainingBlock(options: PeriodizedTrainingPlanOptions): T
   const referenceDate = resolveReferenceDate(options.referenceDate);
   const endDate = referenceDate;
   const startDate = formatDate(addDays(referenceDate, -(HISTORY_WINDOW_DAYS - 1)));
-  const random = createSeededRandom(deriveSeed(options.seed ?? DEFAULT_PERIODIZATION_SEED, "training-block"));
+  const random = createSeededRandom(
+    deriveSeed(options.seed ?? DEFAULT_PERIODIZATION_SEED, "training-block"),
+  );
 
   return {
     trainingBlockId: nextUuid(random),
@@ -212,7 +240,9 @@ export function generateTrainingSessions(
   phases: readonly TrainingBlockPhase[],
   seed = DEFAULT_PERIODIZATION_SEED,
 ): TrainingSession[] {
-  if (getInclusiveDayCount(trainingBlock.startDate, trainingBlock.endDate) !== HISTORY_WINDOW_DAYS) {
+  if (
+    getInclusiveDayCount(trainingBlock.startDate, trainingBlock.endDate) !== HISTORY_WINDOW_DAYS
+  ) {
     throw new Error(`Training block must span exactly ${HISTORY_WINDOW_DAYS} days.`);
   }
 
@@ -230,7 +260,9 @@ export function generateTrainingSessions(
  * the pseudo-random sequence from the original block start so later days remain consistent with the
  * seeded plan instead of "resetting" from a fresh window.
  */
-export function generateTrainingSessionsForDateRange(options: TrainingSessionDateRangeOptions): TrainingSession[] {
+export function generateTrainingSessionsForDateRange(
+  options: TrainingSessionDateRangeOptions,
+): TrainingSession[] {
   const rangeStartDate = options.startDate ?? options.trainingBlock.startDate;
   const rangeEndDate = options.endDate ?? options.trainingBlock.endDate;
   const blockStart = toUtcDate(options.trainingBlock.startDate);
@@ -268,7 +300,9 @@ export function generateTrainingSessionsForDateRange(options: TrainingSessionDat
       const profile = PHASE_PROFILES[phase];
       const plannedDurationMinutes = Math.max(
         30,
-        Math.round(template.durationMinutes * profile.durationMultiplier * weeklyLoadMultiplier * variation),
+        Math.round(
+          template.durationMinutes * profile.durationMultiplier * weeklyLoadMultiplier * variation,
+        ),
       );
       const rpe = resolveRpe(template, phase, workoutRandom.int(-1, 1), isRecoveryWeek);
 
@@ -298,10 +332,19 @@ export function generateTrainingSessionsForDateRange(options: TrainingSessionDat
 /**
  * Generates the full seeded training plan for the 16-week historical window.
  */
-export function generatePeriodizedTrainingPlan(options: PeriodizedTrainingPlanOptions): PeriodizedTrainingPlan {
+export function generatePeriodizedTrainingPlan(
+  options: PeriodizedTrainingPlanOptions,
+): PeriodizedTrainingPlan {
   const trainingBlock = generateTrainingBlock(options);
-  const phases = generateTrainingBlockPhases(trainingBlock, options.seed ?? DEFAULT_PERIODIZATION_SEED);
-  const sessions = generateTrainingSessions(trainingBlock, phases, options.seed ?? DEFAULT_PERIODIZATION_SEED);
+  const phases = generateTrainingBlockPhases(
+    trainingBlock,
+    options.seed ?? DEFAULT_PERIODIZATION_SEED,
+  );
+  const sessions = generateTrainingSessions(
+    trainingBlock,
+    phases,
+    options.seed ?? DEFAULT_PERIODIZATION_SEED,
+  );
 
   return { trainingBlock, phases, sessions };
 }

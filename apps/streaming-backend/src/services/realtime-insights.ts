@@ -16,11 +16,7 @@ export interface AthleteAnalysesResponse {
 }
 
 export type AlertType =
-  | "sustained-high-hr"
-  | "acwr"
-  | "missed-session"
-  | "race-pace-drift"
-  | "fueling-shortfall";
+  "sustained-high-hr" | "acwr" | "missed-session" | "race-pace-drift" | "fueling-shortfall";
 
 export interface ActiveAlert {
   alertId: string;
@@ -42,9 +38,7 @@ export interface ActiveAlertsService {
   getActiveAlerts(athleteId: string): Promise<ActiveAlertsResponse>;
 }
 
-export interface RealtimeInsightsService
-  extends AthleteAnalysesService,
-    ActiveAlertsService {}
+export interface RealtimeInsightsService extends AthleteAnalysesService, ActiveAlertsService {}
 
 interface QueryRow {
   [key: string]: unknown;
@@ -155,7 +149,10 @@ function toAlertId(parts: readonly string[]): string {
 class DefaultQueryExecutor implements QueryExecutor {
   private readonly client: KustoClient;
 
-  constructor(private readonly config: EventhouseConfig, credential: TokenCredential) {
+  constructor(
+    private readonly config: EventhouseConfig,
+    credential: TokenCredential,
+  ) {
     this.client = new KustoClient(
       KustoConnectionStringBuilder.withTokenCredential(config.queryUri, credential),
     );
@@ -413,4 +410,3 @@ export function createRealtimeInsightsService(
 ): RealtimeInsightsService {
   return new KustoRealtimeInsightsService(options.queryExecutor ?? getDefaultQueryExecutor());
 }
-

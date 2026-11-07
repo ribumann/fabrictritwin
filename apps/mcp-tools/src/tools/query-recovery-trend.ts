@@ -40,12 +40,14 @@ export function registerQueryRecoveryTrendTool(
     "query_recovery_trend",
     {
       title: "Query recovery trend",
-      description: "Returns recent recovery score, sleep debt, and HRV trend for the authorized athlete.",
+      description:
+        "Returns recent recovery score, sleep debt, and HRV trend for the authorized athlete.",
       inputSchema: {
         athleteId: z.string().uuid(),
         days: z.number().int().positive().max(30).default(7),
       },
     },
-    async (args, extra) => toToolResult(await executeQueryRecoveryTrendTool(args, extra, dataService)),
+    async (args, extra) =>
+      toToolResult(await executeQueryRecoveryTrendTool(args, extra, dataService)),
   );
 }

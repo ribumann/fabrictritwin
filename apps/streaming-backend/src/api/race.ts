@@ -20,10 +20,7 @@ type RaceRouteResponse =
   | ForbiddenErrorBody
   | {
       error: {
-        code:
-          | "race_live_query_failed"
-          | "race_summary_query_failed"
-          | "race_summary_unavailable";
+        code: "race_live_query_failed" | "race_summary_query_failed" | "race_summary_unavailable";
         message: string;
       };
     };
@@ -66,10 +63,7 @@ export function createRaceRouter(options: CreateRaceRouterOptions = {}): Router 
         res.status(500).json({
           error: {
             code: "race_live_query_failed",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Race live query failed.",
+            message: error instanceof Error ? error.message : "Race live query failed.",
           },
         });
       }
@@ -99,8 +93,7 @@ export function createRaceRouter(options: CreateRaceRouterOptions = {}): Router 
           res.status(404).json({
             error: {
               code: "race_summary_unavailable",
-              message:
-                "Race summary is only available after a race simulation completes.",
+              message: "Race summary is only available after a race simulation completes.",
             },
           });
           return;
@@ -112,10 +105,7 @@ export function createRaceRouter(options: CreateRaceRouterOptions = {}): Router 
         res.status(500).json({
           error: {
             code: "race_summary_query_failed",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Race summary query failed.",
+            message: error instanceof Error ? error.message : "Race summary query failed.",
           },
         });
       }

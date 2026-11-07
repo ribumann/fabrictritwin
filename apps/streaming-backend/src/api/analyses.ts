@@ -1,9 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import {
-  requireAthleteAuthorization,
-  type ForbiddenErrorBody,
-} from "../auth/authorization.js";
+import { requireAthleteAuthorization, type ForbiddenErrorBody } from "../auth/authorization.js";
 import {
   createRealtimeInsightsService,
   type AthleteAnalysesResponse,

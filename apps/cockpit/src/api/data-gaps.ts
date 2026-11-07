@@ -1,9 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import {
-  proxyStreamingBackendGet,
-  type StreamingBackendProxyOptions,
-} from "./proxy.js";
+import { proxyStreamingBackendGet, type StreamingBackendProxyOptions } from "./proxy.js";
 
 function getRequestedAthleteId(req: Request): string | undefined {
   return typeof req.params.athleteId === "string" ? req.params.athleteId : undefined;
@@ -28,7 +25,8 @@ export function createDataGapsRouter(options: StreamingBackendProxyOptions): Rou
       req,
       res,
       options,
-      () => new URL(`/api/data-gaps/${encodeURIComponent(athleteId)}`, options.streamingBackendBaseUrl),
+      () =>
+        new URL(`/api/data-gaps/${encodeURIComponent(athleteId)}`, options.streamingBackendBaseUrl),
       "data_gap_proxy_failed",
     );
   });

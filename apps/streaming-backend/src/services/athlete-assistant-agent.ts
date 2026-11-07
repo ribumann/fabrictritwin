@@ -19,11 +19,25 @@
  * athlete URL parameter is diagnostic, not an authorization mechanism (see the FR-017 note
  * below).
  */
-import { AIProjectClient, type MCPTool, type MicrosoftFabricPreviewTool, type ToolUnion } from "@azure/ai-projects";
+import {
+  AIProjectClient,
+  type MCPTool,
+  type MicrosoftFabricPreviewTool,
+  type ToolUnion,
+} from "@azure/ai-projects";
 import { DefaultAzureCredential, type TokenCredential } from "@azure/identity";
-import { ClientConfigurationError, ConfidentialClientApplication, InteractionRequiredAuthError, ServerError } from "@azure/msal-node";
+import {
+  ClientConfigurationError,
+  ConfidentialClientApplication,
+  InteractionRequiredAuthError,
+  ServerError,
+} from "@azure/msal-node";
 import type { Response as OpenAIResponse } from "openai/resources/responses/responses";
-import { AssistantAuthError, assistantAuthSetting, type AssistantUserContext } from "../auth/assistant-auth.js";
+import {
+  AssistantAuthError,
+  assistantAuthSetting,
+  type AssistantUserContext,
+} from "../auth/assistant-auth.js";
 
 const DEFAULT_AGENT_NAME = "athlete-assistant";
 const DEFAULT_MCP_SERVER_LABEL = "triathlon-twin-tools";
@@ -103,7 +117,9 @@ function getAssistantConfig(): AssistantConfig {
     projectEndpoint: requireConfiguredEnv("FOUNDRY_PROJECT_ENDPOINT"),
     agentName: process.env.ATHLETE_ASSISTANT_AGENT_NAME?.trim() || DEFAULT_AGENT_NAME,
     modelDeploymentName: requireConfiguredEnv("ATHLETE_ASSISTANT_MODEL_DEPLOYMENT_NAME"),
-    fabricProjectConnectionId: requireConfiguredEnv("ATHLETE_ASSISTANT_FABRIC_PROJECT_CONNECTION_ID"),
+    fabricProjectConnectionId: requireConfiguredEnv(
+      "ATHLETE_ASSISTANT_FABRIC_PROJECT_CONNECTION_ID",
+    ),
     mcpProjectConnectionId: requireConfiguredEnv("ATHLETE_ASSISTANT_MCP_PROJECT_CONNECTION_ID"),
     mcpProxyUrl: requireConfiguredEnv("ATHLETE_ASSISTANT_MCP_PROXY_URL"),
   };
@@ -111,7 +127,10 @@ function getAssistantConfig(): AssistantConfig {
 
 function getManagementProjectClient(): AIProjectClient {
   if (!managementProjectClient) {
-    managementProjectClient = new AIProjectClient(getAssistantConfig().projectEndpoint, new DefaultAzureCredential());
+    managementProjectClient = new AIProjectClient(
+      getAssistantConfig().projectEndpoint,
+      new DefaultAzureCredential(),
+    );
   }
 
   return managementProjectClient;
@@ -177,7 +196,10 @@ function buildInvocationTools(config: AssistantConfig, authorizedAthleteId: stri
 // authentication, so it is deliberately omitted here -- invoking it with a managed identity
 // credential would fail platform-side. Only the MCP tools (which authorize via FR-017's
 // caller-agnostic ATHLETE_PRINCIPAL_MAP, not the visitor's own identity) are offered.
-function buildMcpOnlyInvocationTools(config: AssistantConfig, authorizedAthleteId: string): ToolUnion[] {
+function buildMcpOnlyInvocationTools(
+  config: AssistantConfig,
+  authorizedAthleteId: string,
+): ToolUnion[] {
   const proxyUrl = new URL(config.mcpProxyUrl);
   proxyUrl.searchParams.set("authorizedAthleteId", authorizedAthleteId);
 
@@ -193,7 +215,9 @@ function buildMcpOnlyInvocationTools(config: AssistantConfig, authorizedAthleteI
 }
 
 function isNotFoundError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "statusCode" in error && error.statusCode === 404;
+  return (
+    typeof error === "object" && error !== null && "statusCode" in error && error.statusCode === 404
+  );
 }
 
 function extractGroundedOn(response: OpenAIResponse): string[] {
@@ -213,9 +237,17 @@ function extractGroundedOn(response: OpenAIResponse): string[] {
           }
 
           for (const annotation of annotations) {
-            if ("title" in annotation && typeof annotation.title === "string" && annotation.title.length > 0) {
+            if (
+              "title" in annotation &&
+              typeof annotation.title === "string" &&
+              annotation.title.length > 0
+            ) {
               groundedOn.add(annotation.title);
-            } else if ("url" in annotation && typeof annotation.url === "string" && annotation.url.length > 0) {
+            } else if (
+              "url" in annotation &&
+              typeof annotation.url === "string" &&
+              annotation.url.length > 0
+            ) {
               groundedOn.add(annotation.url);
             }
           }
@@ -240,7 +272,11 @@ function extractAnswer(response: OpenAIResponse): string {
       }
 
       for (const content of item.content) {
-        if ("text" in content && typeof content.text === "string" && content.text.trim().length > 0) {
+        if (
+          "text" in content &&
+          typeof content.text === "string" &&
+          content.text.trim().length > 0
+        ) {
           textChunks.push(content.text.trim());
         }
       }
@@ -276,7 +312,10 @@ class FoundryAthleteAssistantService implements AthleteAssistantService {
       credential = {
         async getToken(scopes, options) {
           const requestedScopes = typeof scopes === "string" ? [scopes] : scopes;
-          if (requestedScopes.length !== 1 || requestedScopes[0] !== "https://ai.azure.com/.default") {
+          if (
+            requestedScopes.length !== 1 ||
+            requestedScopes[0] !== "https://ai.azure.com/.default"
+          ) {
             throw new AssistantAuthError("assistant_auth_configuration_error", 503);
           }
           const result = await msal.acquireTokenOnBehalfOf({
@@ -345,8 +384,11 @@ class FoundryAthleteAssistantService implements AthleteAssistantService {
       }
       if (error instanceof ServerError) {
         const kind = error.errorCode;
-        if (kind === "interaction_required" || kind === "consent_required" ||
-          ["65001", "50076", "50079", "50158"].includes(error.errorNo ?? "")) {
+        if (
+          kind === "interaction_required" ||
+          kind === "consent_required" ||
+          ["65001", "50076", "50079", "50158"].includes(error.errorNo ?? "")
+        ) {
           throw new AssistantAuthError("assistant_interaction_required", 401);
         }
         if (kind === "invalid_grant") {

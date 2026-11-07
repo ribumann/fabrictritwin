@@ -45,7 +45,8 @@ export function createSeedHistoryAction(options: SeedHistoryActionOptions) {
   const buildAuthHeaders = options.buildAuthHeaders ?? buildServiceAuthHeaders;
 
   return async (req: Request, res: Response): Promise<void> => {
-    const athleteId = (req.body as { athleteId?: string } | undefined)?.athleteId ?? resolveDefaultAthleteId();
+    const athleteId =
+      (req.body as { athleteId?: string } | undefined)?.athleteId ?? resolveDefaultAthleteId();
 
     if (!athleteId) {
       res.status(400).json({
@@ -73,7 +74,8 @@ export function createSeedHistoryAction(options: SeedHistoryActionOptions) {
       res.status(502).json({
         error: {
           code: "streaming_backend_unreachable",
-          message: error instanceof Error ? error.message : "Failed to reach the Streaming Backend.",
+          message:
+            error instanceof Error ? error.message : "Failed to reach the Streaming Backend.",
         },
       });
     }

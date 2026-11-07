@@ -1,6 +1,10 @@
 import express from "express";
 import type { Request } from "express";
-import { AssistantAuthError, isServiceOrAnonymousCaller, requireAssistantUser } from "../auth/assistant-auth.js";
+import {
+  AssistantAuthError,
+  isServiceOrAnonymousCaller,
+  requireAssistantUser,
+} from "../auth/assistant-auth.js";
 import type { AssistantUserContext } from "../auth/assistant-auth.js";
 import {
   forbiddenBody,
@@ -172,50 +176,46 @@ export function createAssistantRouter(options: CreateAssistantRouterOptions = {}
   const router = express.Router();
   const assistantService = options.assistantService ?? getAthleteAssistantService();
 
-  router.post(
-    "/ask",
-    requireAthleteAuthorization(getRequestedAthleteId),
-    async (req, res) => {
-      const athleteId = getRequestedAthleteId(req);
-      const question = getQuestion(req);
-      if (!athleteId || !question) {
-        res.status(400).json({
-          error: {
-            code: "invalid_request",
-            message: "Request body must include athleteId and question.",
-          },
-        });
+  router.post("/ask", requireAthleteAuthorization(getRequestedAthleteId), async (req, res) => {
+    const athleteId = getRequestedAthleteId(req);
+    const question = getQuestion(req);
+    if (!athleteId || !question) {
+      res.status(400).json({
+        error: {
+          code: "invalid_request",
+          message: "Request body must include athleteId and question.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const user = resolveOptionalAssistantUser(req);
+      const answer = await assistantService.askQuestion(athleteId, question, user);
+      res.setHeader("cache-control", "no-store");
+      res.status(200).json(answer);
+    } catch (error) {
+      if (error instanceof AssistantAuthError) {
+        res.setHeader("cache-control", "no-store");
+        if (error.authenticateHeader) {
+          res.setHeader("www-authenticate", error.authenticateHeader);
+        }
+        res.status(error.status).json(error.toBody());
+        return;
+      }
+      if (error instanceof AssistantUnavailableError) {
+        // Server-side only -- never leaked to the client, which always gets the generic
+        // assistantUnavailableBody(). Logging the cause is necessary to diagnose Foundry/
+        // MCP/credential failures in this route, which otherwise surface as an opaque 503.
+        console.error("Athlete Assistant unavailable:", error.message, error.cause ?? "");
+        res.status(503).json(assistantUnavailableBody());
         return;
       }
 
-      try {
-        const user = resolveOptionalAssistantUser(req);
-        const answer = await assistantService.askQuestion(athleteId, question, user);
-        res.setHeader("cache-control", "no-store");
-        res.status(200).json(answer);
-      } catch (error) {
-        if (error instanceof AssistantAuthError) {
-          res.setHeader("cache-control", "no-store");
-          if (error.authenticateHeader) {
-            res.setHeader("www-authenticate", error.authenticateHeader);
-          }
-          res.status(error.status).json(error.toBody());
-          return;
-        }
-        if (error instanceof AssistantUnavailableError) {
-          // Server-side only -- never leaked to the client, which always gets the generic
-          // assistantUnavailableBody(). Logging the cause is necessary to diagnose Foundry/
-          // MCP/credential failures in this route, which otherwise surface as an opaque 503.
-          console.error("Athlete Assistant unavailable:", error.message, error.cause ?? "");
-          res.status(503).json(assistantUnavailableBody());
-          return;
-        }
-
-        console.error("Athlete Assistant /ask failed unexpectedly:", error);
-        res.status(503).json(assistantUnavailableBody());
-      }
-    },
-  );
+      console.error("Athlete Assistant /ask failed unexpectedly:", error);
+      res.status(503).json(assistantUnavailableBody());
+    }
+  });
 
   router.post("/mcp", async (req, res) => {
     await proxyMcpRequest(req, res);

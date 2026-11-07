@@ -48,7 +48,9 @@ export function createMcpToolsServer(options: CreateMcpToolsServerOptions = {}):
  */
 export function createApp(options: CreateMcpToolsServerOptions = {}) {
   const allowedHost = process.env.MCP_TOOLS_ALLOWED_HOST?.trim();
-  const app = createMcpExpressApp(allowedHost ? { host: "0.0.0.0", allowedHosts: [allowedHost] } : {});
+  const app = createMcpExpressApp(
+    allowedHost ? { host: "0.0.0.0", allowedHosts: [allowedHost] } : {},
+  );
 
   app.get("/healthz", (_req, res) => {
     res.status(200).json({ status: "ok", service: "mcp-tools" });

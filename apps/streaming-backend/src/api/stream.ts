@@ -2,10 +2,7 @@ import type { IncomingMessage, Server } from "node:http";
 import type { Request } from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { forbiddenBody, resolveAuthorizedAthleteId } from "../auth/authorization.js";
-import {
-  realtimeStreamBroker,
-  type RealtimeStreamBroker,
-} from "../services/realtime-stream.js";
+import { realtimeStreamBroker, type RealtimeStreamBroker } from "../services/realtime-stream.js";
 
 interface AttachStreamServerOptions {
   broker?: RealtimeStreamBroker;
@@ -26,11 +23,7 @@ function getRequestedAthleteIdFromUrl(requestUrl: string | undefined): string | 
   return match?.[1];
 }
 
-function writeUpgradeRejection(
-  socket: UpgradeSocket,
-  statusCode: 403 | 404,
-  body?: object,
-): void {
+function writeUpgradeRejection(socket: UpgradeSocket, statusCode: 403 | 404, body?: object): void {
   const reasonPhrase = statusCode === 403 ? "Forbidden" : "Not Found";
   const payload = body ? JSON.stringify(body) : "";
   socket.write(

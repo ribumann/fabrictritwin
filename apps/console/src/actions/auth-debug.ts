@@ -1,4 +1,3 @@
-
 import type { Request, Response } from "express";
 import { getHeaderValue } from "./forwarded-headers.js";
 
@@ -14,7 +13,9 @@ function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
     return undefined;
   }
   try {
-    const payload = Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const payload = Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(
+      "utf8",
+    );
     return JSON.parse(payload) as Record<string, unknown>;
   } catch {
     return undefined;

@@ -17,25 +17,115 @@ interface LegProfile {
 
 const RACE_DISTANCE_PROFILES: Record<RaceDistance, readonly LegProfile[]> = {
   olympic: [
-    { leg: "swim", distanceMeters: 1_500, plannedPaceSecPerKm: 108, baseHeartRate: 138, heartRateRange: 10 },
-    { leg: "T1", distanceMeters: 250, plannedPaceSecPerKm: 360, baseHeartRate: 142, heartRateRange: 8 },
-    { leg: "bike", distanceMeters: 40_000, plannedPaceSecPerKm: 97, baseHeartRate: 152, heartRateRange: 11 },
-    { leg: "T2", distanceMeters: 180, plannedPaceSecPerKm: 320, baseHeartRate: 156, heartRateRange: 8 },
-    { leg: "run", distanceMeters: 10_000, plannedPaceSecPerKm: 245, baseHeartRate: 163, heartRateRange: 9 },
+    {
+      leg: "swim",
+      distanceMeters: 1_500,
+      plannedPaceSecPerKm: 108,
+      baseHeartRate: 138,
+      heartRateRange: 10,
+    },
+    {
+      leg: "T1",
+      distanceMeters: 250,
+      plannedPaceSecPerKm: 360,
+      baseHeartRate: 142,
+      heartRateRange: 8,
+    },
+    {
+      leg: "bike",
+      distanceMeters: 40_000,
+      plannedPaceSecPerKm: 97,
+      baseHeartRate: 152,
+      heartRateRange: 11,
+    },
+    {
+      leg: "T2",
+      distanceMeters: 180,
+      plannedPaceSecPerKm: 320,
+      baseHeartRate: 156,
+      heartRateRange: 8,
+    },
+    {
+      leg: "run",
+      distanceMeters: 10_000,
+      plannedPaceSecPerKm: 245,
+      baseHeartRate: 163,
+      heartRateRange: 9,
+    },
   ],
   "70.3": [
-    { leg: "swim", distanceMeters: 1_900, plannedPaceSecPerKm: 114, baseHeartRate: 136, heartRateRange: 10 },
-    { leg: "T1", distanceMeters: 320, plannedPaceSecPerKm: 390, baseHeartRate: 141, heartRateRange: 8 },
-    { leg: "bike", distanceMeters: 90_000, plannedPaceSecPerKm: 106, baseHeartRate: 148, heartRateRange: 11 },
-    { leg: "T2", distanceMeters: 220, plannedPaceSecPerKm: 340, baseHeartRate: 154, heartRateRange: 8 },
-    { leg: "run", distanceMeters: 21_097, plannedPaceSecPerKm: 270, baseHeartRate: 160, heartRateRange: 10 },
+    {
+      leg: "swim",
+      distanceMeters: 1_900,
+      plannedPaceSecPerKm: 114,
+      baseHeartRate: 136,
+      heartRateRange: 10,
+    },
+    {
+      leg: "T1",
+      distanceMeters: 320,
+      plannedPaceSecPerKm: 390,
+      baseHeartRate: 141,
+      heartRateRange: 8,
+    },
+    {
+      leg: "bike",
+      distanceMeters: 90_000,
+      plannedPaceSecPerKm: 106,
+      baseHeartRate: 148,
+      heartRateRange: 11,
+    },
+    {
+      leg: "T2",
+      distanceMeters: 220,
+      plannedPaceSecPerKm: 340,
+      baseHeartRate: 154,
+      heartRateRange: 8,
+    },
+    {
+      leg: "run",
+      distanceMeters: 21_097,
+      plannedPaceSecPerKm: 270,
+      baseHeartRate: 160,
+      heartRateRange: 10,
+    },
   ],
   full: [
-    { leg: "swim", distanceMeters: 3_800, plannedPaceSecPerKm: 118, baseHeartRate: 134, heartRateRange: 9 },
-    { leg: "T1", distanceMeters: 360, plannedPaceSecPerKm: 420, baseHeartRate: 139, heartRateRange: 7 },
-    { leg: "bike", distanceMeters: 180_000, plannedPaceSecPerKm: 118, baseHeartRate: 145, heartRateRange: 10 },
-    { leg: "T2", distanceMeters: 250, plannedPaceSecPerKm: 360, baseHeartRate: 151, heartRateRange: 7 },
-    { leg: "run", distanceMeters: 42_195, plannedPaceSecPerKm: 305, baseHeartRate: 158, heartRateRange: 10 },
+    {
+      leg: "swim",
+      distanceMeters: 3_800,
+      plannedPaceSecPerKm: 118,
+      baseHeartRate: 134,
+      heartRateRange: 9,
+    },
+    {
+      leg: "T1",
+      distanceMeters: 360,
+      plannedPaceSecPerKm: 420,
+      baseHeartRate: 139,
+      heartRateRange: 7,
+    },
+    {
+      leg: "bike",
+      distanceMeters: 180_000,
+      plannedPaceSecPerKm: 118,
+      baseHeartRate: 145,
+      heartRateRange: 10,
+    },
+    {
+      leg: "T2",
+      distanceMeters: 250,
+      plannedPaceSecPerKm: 360,
+      baseHeartRate: 151,
+      heartRateRange: 7,
+    },
+    {
+      leg: "run",
+      distanceMeters: 42_195,
+      plannedPaceSecPerKm: 305,
+      baseHeartRate: 158,
+      heartRateRange: 10,
+    },
   ],
 };
 
@@ -100,13 +190,19 @@ function allocateSplitsPerLeg(legs: readonly LegProfile[], splitCount: number): 
  * `legDistanceMeters`, with light randomness for realism. The final chunk absorbs any rounding
  * remainder so the leg total is always exact.
  */
-function splitLegDistance(legDistanceMeters: number, count: number, random: { next(): number }): number[] {
+function splitLegDistance(
+  legDistanceMeters: number,
+  count: number,
+  random: { next(): number },
+): number[] {
   if (count === 1) {
     return [legDistanceMeters];
   }
   const weights = Array.from({ length: count }, () => 0.92 + random.next() * 0.18);
   const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
-  const chunks = weights.map((weight) => Math.max(1, Math.round((weight / weightSum) * legDistanceMeters)));
+  const chunks = weights.map((weight) =>
+    Math.max(1, Math.round((weight / weightSum) * legDistanceMeters)),
+  );
   const roundedSum = chunks.reduce((sum, chunk) => sum + chunk, 0);
   chunks[count - 1] = Math.max(1, chunks[count - 1]! + (legDistanceMeters - roundedSum));
   return chunks;
@@ -124,7 +220,10 @@ export function* createRaceDayGenerator(
 ): Generator<RaceDayTick, void, void> {
   const distance = options.distance ?? "olympic";
   const legs = RACE_DISTANCE_PROFILES[distance];
-  const splitCount = Math.max(legs.length, Math.trunc(options.splitCount ?? DEFAULT_RACE_SPLIT_COUNT));
+  const splitCount = Math.max(
+    legs.length,
+    Math.trunc(options.splitCount ?? DEFAULT_RACE_SPLIT_COUNT),
+  );
   const seed = deriveSeed(options.seed ?? DEFAULT_RACE_DAY_SEED, options.raceId);
   const random = createSeededRandom(seed);
   const baseDate = toUtcDate(options.date ?? new Date());
@@ -149,10 +248,13 @@ export function* createRaceDayGenerator(
 
       const splitDistanceMeters = legDistanceChunks[i]!;
       coveredInLeg += splitDistanceMeters;
-      coveredMeters = isFinal ? totalDistanceMeters : Math.min(totalDistanceMeters, coveredMeters + splitDistanceMeters);
+      coveredMeters = isFinal
+        ? totalDistanceMeters
+        : Math.min(totalDistanceMeters, coveredMeters + splitDistanceMeters);
       const legProgress = clamp(coveredInLeg / leg.distanceMeters, 0, 1);
 
-      const fatigueFactor = progress * (leg.leg === "run" ? 0.08 : leg.leg === "bike" ? 0.05 : 0.03);
+      const fatigueFactor =
+        progress * (leg.leg === "run" ? 0.08 : leg.leg === "bike" ? 0.05 : 0.03);
       const surge = Math.sin(progress * Math.PI * 4 + legIndex) * 0.02;
       const currentPaceSecPerKm = round(
         clamp(

@@ -1,4 +1,9 @@
-import type { IsoDateTime, SessionMetric, TrainingDiscipline, TrainingSession } from "../models/index.js";
+import type {
+  IsoDateTime,
+  SessionMetric,
+  TrainingDiscipline,
+  TrainingSession,
+} from "../models/index.js";
 import { toUtcDate } from "./date-utils.js";
 import { createSeededRandom, deriveSeed, nextUuid } from "./random.js";
 
@@ -120,7 +125,10 @@ function round(value: number, digits = 2): number {
 function buildLiveSession(options: LiveSessionGeneratorOptions): TrainingSession {
   const profile = DISCIPLINE_PROFILES[options.discipline];
   const idRandom = createSeededRandom(
-    deriveSeed(options.seed ?? DEFAULT_LIVE_SESSION_SEED, `${options.athleteId}:${options.discipline}:session-id`),
+    deriveSeed(
+      options.seed ?? DEFAULT_LIVE_SESSION_SEED,
+      `${options.athleteId}:${options.discipline}:session-id`,
+    ),
   );
 
   return {
@@ -216,7 +224,10 @@ export function* createLiveSessionGenerator(
         ? profile.routeRadiusKm
         : profile.routeRadiusKm * (0.72 + 0.28 * Math.sin(progress * Math.PI));
     const angle = progress * Math.PI * 2 * profile.laps;
-    const latitude = round(BASE_LATITUDE + sessionOffsetLat + (radiusKm / 111.32) * Math.cos(angle), 6);
+    const latitude = round(
+      BASE_LATITUDE + sessionOffsetLat + (radiusKm / 111.32) * Math.cos(angle),
+      6,
+    );
     const longitude = round(
       BASE_LONGITUDE + sessionOffsetLon + (radiusKm / longitudeScale) * Math.sin(angle),
       6,
@@ -246,7 +257,9 @@ export function* createLiveSessionGenerator(
  * Materializes the full live-session stream as an array, primarily for tests or batch-oriented
  * callers.
  */
-export function generateLiveSessionMetrics(options: LiveSessionGeneratorOptions): LiveSessionTick[] {
+export function generateLiveSessionMetrics(
+  options: LiveSessionGeneratorOptions,
+): LiveSessionTick[] {
   return [...createLiveSessionGenerator(options)];
 }
 

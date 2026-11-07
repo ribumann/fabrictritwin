@@ -13,10 +13,7 @@ import {
   type SeedHistoryResult,
   type TrainingDiscipline,
 } from "@triathlon-twin/simulator";
-import {
-  requireAthleteAuthorization,
-  type ForbiddenErrorBody,
-} from "../auth/authorization.js";
+import { requireAthleteAuthorization, type ForbiddenErrorBody } from "../auth/authorization.js";
 import {
   globalConcurrencyLock,
   type GlobalConcurrencyLock,
@@ -26,10 +23,7 @@ import {
   createDefaultSeededHistoryPreconditionChecker,
   type SeededHistoryPreconditionChecker,
 } from "../services/preconditions.js";
-import {
-  realtimeStreamBroker,
-  type RealtimeStreamBroker,
-} from "../services/realtime-stream.js";
+import { realtimeStreamBroker, type RealtimeStreamBroker } from "../services/realtime-stream.js";
 import { raceStateStore } from "../services/race-state.js";
 
 interface AthleteRequestBody {
@@ -130,7 +124,10 @@ interface StartRaceSimulationOptions {
 
 export interface CreateSimulateRouterOptions {
   environment?: string;
-  seedHistoryImpl?: (options: { athleteId: string; environment: string }) => Promise<SeedHistoryResult>;
+  seedHistoryImpl?: (options: {
+    athleteId: string;
+    environment: string;
+  }) => Promise<SeedHistoryResult>;
   triggerSessionImpl?: (options: StartLiveSessionOptions) => Promise<void>;
   triggerRaceImpl?: (options: StartRaceSimulationOptions) => Promise<void>;
   seededHistoryPreconditionChecker?: SeededHistoryPreconditionChecker;
@@ -184,7 +181,9 @@ function buildAcceptedResponse(result: SeedHistoryFreshResult): SeedHistoryAccep
   };
 }
 
-function buildConflictResponse(result: Extract<SeedHistoryResult, { outcome: "already-seeded" }>): SeedHistoryConflictResponse {
+function buildConflictResponse(
+  result: Extract<SeedHistoryResult, { outcome: "already-seeded" }>,
+): SeedHistoryConflictResponse {
   return {
     runId: result.runId,
     status: "already-seeded",

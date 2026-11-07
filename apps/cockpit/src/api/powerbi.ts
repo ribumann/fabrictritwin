@@ -1,11 +1,18 @@
 import type { Request, Response } from "express";
 import { canViewPowerBi, isAnonymousVisitor, powerBiCaller } from "./powerbi-access.js";
-import { createPowerBiService, PowerBiError, readPowerBiConfig, type PowerBiConfig } from "../services/powerbi.js";
+import {
+  createPowerBiService,
+  PowerBiError,
+  readPowerBiConfig,
+  type PowerBiConfig,
+} from "../services/powerbi.js";
 
-export function createPowerBiEmbedConfigAction(options: {
-  readConfig?: () => PowerBiConfig;
-  createService?: typeof createPowerBiService;
-} = {}) {
+export function createPowerBiEmbedConfigAction(
+  options: {
+    readConfig?: () => PowerBiConfig;
+    createService?: typeof createPowerBiService;
+  } = {},
+) {
   let config: PowerBiConfig | undefined;
   let service: ReturnType<typeof createPowerBiService> | undefined;
   return async (req: Request, res: Response): Promise<void> => {
@@ -26,11 +33,15 @@ export function createPowerBiEmbedConfigAction(options: {
       if (!isAnonymousVisitor(req)) {
         const caller = powerBiCaller(req);
         if (!caller) {
-          res.status(401).json({ error: { code: "unauthorized", message: "Sign in to view this report." } });
+          res
+            .status(401)
+            .json({ error: { code: "unauthorized", message: "Sign in to view this report." } });
           return;
         }
         if (!canViewPowerBi(caller, config)) {
-          res.status(403).json({ error: { code: "forbidden", message: "Not authorized for this report." } });
+          res
+            .status(403)
+            .json({ error: { code: "forbidden", message: "Not authorized for this report." } });
           return;
         }
       }
@@ -49,7 +60,11 @@ export function createPowerBiEmbedConfigAction(options: {
       console.warn(`[cockpit:powerbi] ${code}`);
       res.status(502).json({
         status: "unavailable",
-        error: { code: `powerbi-${code}`, message: "Power BI report access is unavailable. Check the embedding identity, model connection, and service permissions." },
+        error: {
+          code: `powerbi-${code}`,
+          message:
+            "Power BI report access is unavailable. Check the embedding identity, model connection, and service permissions.",
+        },
       });
     }
   };

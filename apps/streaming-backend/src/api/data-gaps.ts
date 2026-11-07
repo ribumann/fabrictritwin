@@ -1,9 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import {
-  requireAthleteAuthorization,
-  type ForbiddenErrorBody,
-} from "../auth/authorization.js";
+import { requireAthleteAuthorization, type ForbiddenErrorBody } from "../auth/authorization.js";
 import {
   createDataGapStatusService,
   type DataGapStatusResponse,
@@ -28,14 +25,11 @@ function getRequestedAthleteId(req: Request): string | undefined {
   return typeof req.params.athleteId === "string" ? req.params.athleteId : undefined;
 }
 
-export function createDataGapsRouter(
-  options: CreateDataGapsRouterOptions = {},
-): Router {
+export function createDataGapsRouter(options: CreateDataGapsRouterOptions = {}): Router {
   const router = Router();
   let defaultService: DataGapStatusService | undefined;
   const getService = (): DataGapStatusService => {
-    defaultService ??=
-      options.dataGapStatusService ?? createDataGapStatusService();
+    defaultService ??= options.dataGapStatusService ?? createDataGapStatusService();
     return defaultService;
   };
 
@@ -61,8 +55,7 @@ export function createDataGapsRouter(
         res.status(500).json({
           error: {
             code: "data_gap_query_failed",
-            message:
-              error instanceof Error ? error.message : "Data-gap query failed.",
+            message: error instanceof Error ? error.message : "Data-gap query failed.",
           },
         });
       }
