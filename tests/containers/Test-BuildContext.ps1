@@ -40,7 +40,7 @@ try {
 finally {
     Pop-Location
     foreach ($probe in $probes) {
-        if (Test-Path -LiteralPath $probe) { Remove-Item -LiteralPath $probe }
+        if (Test-Path -LiteralPath $probe) { Remove-Item -LiteralPath $probe -Force }
     }
-    if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse }
+    if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }
 }
