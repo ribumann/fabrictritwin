@@ -5,6 +5,14 @@ Eventhouse ingestion. Check the existing Eventstream's documented `/topology`:
 `triathlon_custom_endpoint` and `triathlon_main_stream` can be `Running` while
 `racesplit_stream` and `sessionmetric_stream` are `Paused`.
 
+Keep the existing Fabric capacity **Active** throughout recovery and the bounded
+ingestion check. A capacity pause/resume cycle can leave the derived streams
+paused again; re-read topology after activation and apply recovery only if needed.
+Coordinate the active window with the environment owner rather than changing
+unknown suspension schedules. Local DNS may retain a negative answer after
+activation; diagnose resolution for the same hostname without changing the
+endpoint, database, token audience, or TLS verification.
+
 After verifying the workspace, Eventstream, and KQL database IDs, use PowerShell 7:
 
 ```powershell
