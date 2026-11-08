@@ -12,6 +12,8 @@ async function relayUpstreamResponse(
   res: ExpressResponse,
 ): Promise<void> {
   const contentType = upstream.headers.get("content-type") ?? "application/json";
+  const retryAfter = upstream.headers.get("retry-after");
+  if (retryAfter) res.setHeader("Retry-After", retryAfter);
   const rawBody = await upstream.text();
 
   if (contentType.includes("application/json")) {
@@ -41,6 +43,7 @@ export async function proxyStreamingBackendGet(
     const upstream = await fetchImpl(buildUpstreamUrl(), {
       method: "GET",
       headers,
+      signal: AbortSignal.timeout(10_000),
     });
     await relayUpstreamResponse(upstream, res);
   } catch (error) {
@@ -74,6 +77,7 @@ export async function proxyStreamingBackendPost(
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(10_000),
     });
     await relayUpstreamResponse(upstream, res);
   } catch (error) {

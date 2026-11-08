@@ -25,7 +25,8 @@
     </form>
   </header>
 
-  <section id="banner" class="banner" hidden></section>
+  <section id="provenance" class="banner provenance" aria-label="Data provenance" hidden></section>
+  <section id="banner" class="banner" role="alert" hidden></section>
 
   <section class="status-strip">
     <div class="status-chip">
@@ -43,6 +44,45 @@
   </section>
 
   <main class="grid">
+    <section id="simulation-panel" class="card card-wide" hidden>
+      <div class="card-header">
+        <h2>Run a session or race</h2>
+        <span id="simulation-status" class="muted" role="status" aria-live="polite">Ready</span>
+      </div>
+      <p id="simulation-note" class="callout">Protected live controls require seeded history and backend authorization. The existing live lock is per backend process, not distributed across replicas.</p>
+      <form id="simulation-form" class="panel-form panel-form-inline">
+        <label class="panel-field">
+          Session discipline
+          <select id="simulation-discipline" name="discipline">
+            <option value="bike">Bike</option>
+            <option value="run">Run</option>
+            <option value="swim">Swim</option>
+            <option value="strength">Strength</option>
+          </select>
+        </label>
+        <button id="start-session" type="submit">Start session</button>
+        <button id="start-race" type="button">Start race</button>
+        <button id="cancel-simulation" type="button" hidden>Cancel run</button>
+      </form>
+      <p id="simulation-feedback" role="status" aria-live="polite"></p>
+      <p id="simulation-cooldown" class="muted" role="status" aria-live="polite"></p>
+      <progress id="simulation-progress" max="100" value="0" aria-label="Simulation progress" hidden></progress>
+      <dl id="session-summary" class="metric-list"></dl>
+    </section>
+
+    <section id="history-panel" class="card card-wide" hidden>
+      <div class="card-header">
+        <h2>Training history</h2>
+        <span id="history-status" class="muted"></span>
+      </div>
+      <p class="callout">Deterministic training load from the synthetic athlete's seeded history. Demonstration data, not medical advice.</p>
+      <div id="history-chart" class="history-chart"></div>
+      <details>
+        <summary>Read chart data</summary>
+        <div id="history-table" class="history-table"></div>
+      </details>
+    </section>
+
     <section class="card card-wide">
       <div class="card-header">
         <h2>Embedded Power BI report</h2>
@@ -85,7 +125,7 @@
       <ul id="race-live-splits" class="stack compact"></ul>
     </section>
 
-    <section class="card">
+    <section class="card card-wide">
       <div class="card-header">
         <h2>Post-race summary</h2>
         <span id="race-summary-status" class="muted">Loading…</span>
@@ -95,7 +135,7 @@
 
     <section class="card card-wide">
       <div class="card-header">
-        <h2>Foundry agent chat</h2>
+        <h2 id="assistant-heading">Foundry agent chat</h2>
         <span id="assistant-status" class="muted">Checking availability…</span>
       </div>
       <p id="assistant-note" class="callout">

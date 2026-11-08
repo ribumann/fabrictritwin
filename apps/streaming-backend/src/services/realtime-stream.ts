@@ -24,7 +24,14 @@ export interface SessionStatusFrame {
   status: "completed" | "missed";
 }
 
-export type StreamFrame = AlertFrame | MetricFrame | RaceSplitFrame | SessionStatusFrame;
+export interface SimulationStatusFrame {
+  type: "simulationStatus";
+  runId: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+}
+
+export type StreamFrame =
+  AlertFrame | MetricFrame | RaceSplitFrame | SessionStatusFrame | SimulationStatusFrame;
 
 export interface RealtimeStreamEvent {
   athleteId: string;

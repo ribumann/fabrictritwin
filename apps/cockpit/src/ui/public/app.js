@@ -33,6 +33,23 @@ const elements = {
   mcpParams: document.getElementById("mcp-params"),
   mcpSubmit: document.getElementById("mcp-submit"),
   mcpOutput: document.getElementById("mcp-output"),
+  provenance: document.getElementById("provenance"),
+  simulationPanel: document.getElementById("simulation-panel"),
+  simulationForm: document.getElementById("simulation-form"),
+  simulationStatus: document.getElementById("simulation-status"),
+  simulationNote: document.getElementById("simulation-note"),
+  simulationFeedback: document.getElementById("simulation-feedback"),
+  simulationCooldown: document.getElementById("simulation-cooldown"),
+  simulationProgress: document.getElementById("simulation-progress"),
+  simulationDiscipline: document.getElementById("simulation-discipline"),
+  startSession: document.getElementById("start-session"),
+  startRace: document.getElementById("start-race"),
+  cancelSimulation: document.getElementById("cancel-simulation"),
+  sessionSummary: document.getElementById("session-summary"),
+  historyPanel: document.getElementById("history-panel"),
+  historyChart: document.getElementById("history-chart"),
+  historyTable: document.getElementById("history-table"),
+  historyStatus: document.getElementById("history-status"),
 };
 
 const state = {
@@ -49,6 +66,12 @@ const state = {
   selectedMcpTool: "query_recovery_trend",
   mcpDays: "7",
   mcpRaceId: "",
+  synthetic: false,
+  runtime: null,
+  simulationPending: false,
+  retryUntil: 0,
+  statusTimer: null,
+  previousRunStatus: null,
 };
 
 const MCP_TOOL_METADATA = {
@@ -312,7 +335,9 @@ async function fetchJson(path) {
     const message =
       body?.error?.message ??
       `Request to ${path} failed with status ${response.status}.`;
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   return body;
 }
@@ -394,6 +419,12 @@ function updateAssistantAvailability() {
       ? "Ask the Athlete Assistant a grounded question about the selected athlete."
       : "Select an athlete to ask the Athlete Assistant a grounded question."
     : "Athlete Assistant is not enabled for this cockpit deployment.";
+  if (state.synthetic) {
+    elements.assistantStatus.textContent = available ? "Deterministic demo" : "Unavailable";
+    elements.assistantPanelChip.textContent = available ? "Deterministic demo" : "Unavailable";
+    elements.assistantNote.textContent =
+      "Deterministic explanation of synthetic data, not a Foundry model or LLM. No medical advice, cloud tools, or live athlete access.";
+  }
   elements.assistantForm.hidden = !available;
   elements.assistantTranscript.hidden = !available;
   elements.assistantForm.closest(".card").classList.toggle("panel-disabled", !available);
@@ -575,6 +606,21 @@ async function loadContext() {
   state.raceId = context.selectedRaceId ?? "";
   state.assistantPanelAvailable = context.assistantPanelAvailable !== false;
   state.directMcpPanelAvailable = context.directMcpPanelAvailable !== false;
+  state.synthetic = context.provenance?.source === "synthetic";
+  if (state.synthetic) {
+    elements.provenance.hidden = false;
+    elements.provenance.textContent = `${context.provenance.label} • Account-free synthetic demo. No cloud data or Azure credentials. Seed ${context.provenance.seed}; reference ${context.provenance.referenceDate}.`;
+    elements.contextForm.hidden = true;
+    elements.reportContainer.closest(".card").hidden = true;
+    elements.mcpForm.closest(".card").hidden = true;
+    document.getElementById("assistant-heading").textContent = "Synthetic assistant demonstration";
+    renderHistory(context.history ?? []);
+    state.runtime = context.runtime ?? null;
+    elements.simulationNote.textContent =
+      "One shared run, no queue; at most two starts per minute across visitors. Runs are compressed demonstrations. This single backend stores runs in memory; restart resets them. Cancelled or failed races have no finish summary.";
+  }
+  elements.simulationPanel.hidden = !state.athleteId;
+  updateSimulationControls();
   state.mcpRaceId = state.raceId || state.mcpRaceId;
   elements.athleteIdInput.value = state.athleteId;
   elements.raceIdInput.value = state.raceId;
@@ -597,6 +643,7 @@ function renderGapBanner(payload) {
 }
 
 async function refreshDataGapBanner() {
+  if (state.synthetic) return;
   if (!state.athleteId) {
     renderGapBanner({ gapDetected: false, activeGaps: [] });
     return;
@@ -682,7 +729,7 @@ function renderTelemetry() {
     ["Pace", metric ? `${formatNumber(metric.pace)} sec/km` : "—"],
     ["Cadence", metric ? `${metric.cadence} rpm` : "—"],
     ["Timestamp", metric ? formatTimestamp(metric.timestamp) : "—"],
-    ["Session status", state.latestSessionStatus ?? "Streaming"],
+    ["Session status", state.latestSessionStatus ?? "Waiting for a session"],
   ]);
 }
 
@@ -734,9 +781,10 @@ async function refreshRaceLive() {
     renderLiveRace();
     elements.raceLiveStatus.textContent = "Ready";
   } catch (error) {
-    elements.raceLiveStatus.textContent = "Waiting";
+    elements.raceLiveStatus.textContent = "Unavailable";
     state.raceSnapshot = null;
     renderLiveRace();
+    setDefinitionList(elements.raceLiveList, [["Error", error.message]]);
   }
 }
 
@@ -791,13 +839,14 @@ async function refreshRaceSummary() {
     renderRaceSummaryStats(summary);
     elements.raceSummaryStatus.textContent = "Ready";
   } catch (error) {
-    elements.raceSummaryStatus.textContent = "Waiting";
+    elements.raceSummaryStatus.textContent = error.status === 404 ? "Waiting for completion" : "Unavailable";
     elements.raceSummaryList.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
   }
 }
 
 let powerBiPanel;
 async function refreshPowerBi() {
+  if (state.synthetic) return;
   powerBiPanel ??= window.createPowerBiPanel({
     container: elements.reportContainer,
     status: elements.reportStatus,
@@ -837,7 +886,13 @@ function connectStream() {
   });
 
   socket.addEventListener("message", (event) => {
-    const payload = JSON.parse(event.data);
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      elements.streamStatus.textContent = "Invalid stream message";
+      return;
+    }
     if (payload.type === "metric") {
       state.latestMetric = payload;
       state.latestSessionStatus = "live";
@@ -903,7 +958,150 @@ async function refreshCockpit() {
     refreshRaceSummary(),
   ]);
   connectStream();
+  if (state.synthetic) {
+    await refreshSimulationStatus();
+    state.statusTimer ??= setInterval(refreshSimulationStatus, 2_000);
+  }
 }
+
+function renderHistory(history) {
+  elements.historyPanel.hidden = false;
+  const points = history.filter((point) =>
+    typeof point.date === "string" && Number.isFinite(point.trainingLoad),
+  ).slice(-112);
+  elements.historyStatus.textContent = `${points.length} training days`;
+  if (!points.length) {
+    elements.historyChart.textContent = "Training history is unavailable.";
+    return;
+  }
+  const maximum = Math.max(1, ...points.map((point) => point.trainingLoad));
+  const width = Math.max(240, Math.min(800, elements.historyChart.clientWidth || 800));
+  const firstDate = Date.parse(points[0].date);
+  const dateSpan = Math.max(1, Date.parse(points.at(-1).date) - firstDate);
+  const coordinates = points.map((point) =>
+    `${55 + (Date.parse(point.date) - firstDate) / dateSpan * (width - 70)},${205 - point.trainingLoad / maximum * 165}`,
+  ).join(" ");
+  elements.historyChart.innerHTML = `
+    <svg viewBox="0 0 ${width} 255" role="img" aria-label="Daily training load over ${points.length} synthetic training days">
+      <title>Daily synthetic training load</title>
+      <line class="chart-axis" x1="55" y1="40" x2="55" y2="205" />
+      <line class="chart-axis" x1="55" y1="205" x2="${width - 15}" y2="205" />
+      <text x="5" y="45">${escapeHtml(Math.round(maximum))}</text>
+      <text x="25" y="210">0</text>
+      <text x="55" y="235">${escapeHtml(points[0].date)}</text>
+      <text x="${width - 15}" y="235" text-anchor="end">${escapeHtml(points.at(-1).date)}</text>
+      <text x="${width / 2}" y="25" text-anchor="middle">Training load</text>
+      <polyline class="chart-line" points="${coordinates}" />
+    </svg>`;
+  elements.historyTable.innerHTML = renderMcpTable(points);
+}
+
+function updateSimulationControls() {
+  const running = state.runtime?.status === "running";
+  const retrySeconds = Math.max(0, Math.ceil((state.retryUntil - Date.now()) / 1_000));
+  const disabled = state.simulationPending || running || retrySeconds > 0;
+  elements.startSession.disabled = disabled || !state.athleteId;
+  elements.startRace.disabled = disabled || !state.raceId;
+  elements.simulationDiscipline.disabled = disabled;
+  elements.cancelSimulation.hidden = !state.synthetic || !running;
+  elements.cancelSimulation.disabled = state.simulationPending;
+  elements.simulationStatus.textContent = state.simulationPending ? "Submitting…" : state.runtime?.status ?? "Ready";
+  elements.simulationCooldown.textContent = retrySeconds
+    ? `Start controls available in ${retrySeconds}s. The shared two-starts-per-minute limit applies to all visitors.`
+    : "";
+  elements.simulationProgress.hidden = !running;
+  elements.simulationProgress.value = state.runtime?.progressPct ?? 0;
+}
+
+async function refreshSimulationStatus() {
+  try {
+    const payload = await fetchJson("/api/demo/status");
+    state.runtime = payload.runtime ?? payload;
+    const identity = `${state.runtime.runId}:${state.runtime.status}`;
+    const changed = identity !== state.previousRunStatus;
+    state.previousRunStatus = identity;
+    if (state.runtime.retryAfterSeconds > 0) {
+      state.retryUntil = Date.now() + state.runtime.retryAfterSeconds * 1_000;
+    }
+    if (changed && ["completed", "failed", "cancelled"].includes(state.runtime.status)) {
+      elements.simulationFeedback.textContent =
+        state.runtime.status === "completed"
+          ? "Run completed. Telemetry and the summary below are ready."
+          : `Run ${state.runtime.status}. ${state.runtime.error ?? "You can start another run when the cooldown ends."}`;
+      await Promise.all([refreshRaceLive(), refreshRaceSummary(), refreshAnalyses(), refreshAlerts()]);
+    }
+    if (state.runtime.kind === "session" && ["failed", "cancelled"].includes(state.runtime.status)) {
+      state.latestSessionStatus = state.runtime.status;
+      elements.telemetryStatus.textContent = state.runtime.status;
+      renderTelemetry();
+    }
+    if (state.runtime.kind === "session" && state.runtime.summary) {
+      const summary = state.runtime.summary;
+      setDefinitionList(elements.sessionSummary, [
+        ["Session", summary.session?.discipline ?? "Session"],
+        ["Status", state.runtime.status],
+        ["Simulated duration", `${summary.session?.plannedDurationMinutes ?? "—"} min`],
+        ["Telemetry samples", summary.sampleCount ?? "—"],
+        ["Final heart rate", summary.latestMetric ? `${summary.latestMetric.heartRate} bpm` : "—"],
+        ["Final power", summary.latestMetric?.power == null ? "—" : `${summary.latestMetric.power} W`],
+      ]);
+      if (summary.latestMetric) {
+        state.latestMetric = { sessionId: summary.session?.sessionId, metric: summary.latestMetric };
+        state.latestSessionStatus = state.runtime.status;
+        elements.telemetryStatus.textContent = state.runtime.status;
+        renderTelemetry();
+      }
+    }
+    updateSimulationControls();
+  } catch (error) {
+    elements.simulationStatus.textContent = "Status unavailable";
+    elements.simulationFeedback.textContent = `Cannot verify the shared run: ${error.message}. Refresh to reconnect; do not assume it stopped.`;
+    elements.startSession.disabled = true;
+    elements.startRace.disabled = true;
+  }
+}
+
+async function triggerSimulation(action) {
+  if (state.simulationPending) return;
+  state.simulationPending = true;
+  elements.simulationFeedback.textContent = "";
+  updateSimulationControls();
+  try {
+    const body = action === "cancel" ? { runId: state.runtime?.runId }
+      : action === "trigger-race" ? { athleteId: state.athleteId, raceId: state.raceId }
+      : { athleteId: state.athleteId, discipline: elements.simulationDiscipline.value };
+    const { response, parsedBody } = await postJson(`/api/simulate/${action}`, body);
+    if (!response.ok) {
+      const retry = Number(response.headers.get("retry-after"));
+      if (retry > 0) state.retryUntil = Date.now() + retry * 1_000;
+      throw new Error(parsedBody?.error?.message ?? `Request failed (${response.status}).`);
+    }
+    elements.simulationFeedback.textContent = action === "cancel"
+      ? "Cancellation requested. Waiting for the server's terminal status."
+      : `Run started. ${state.synthetic ? "Watch the telemetry below." : "Live controls require seeded history and backend authorization."}`;
+    if (action !== "cancel") {
+      state.latestMetric = null;
+      state.latestSessionStatus = null;
+      state.recentRaceSplits = [];
+      elements.sessionSummary.innerHTML = "";
+      renderTelemetry();
+      await refreshRaceSummary();
+    }
+  } catch (error) {
+    elements.simulationFeedback.textContent = error.message;
+  } finally {
+    state.simulationPending = false;
+    if (state.synthetic) await refreshSimulationStatus();
+    else updateSimulationControls();
+  }
+}
+
+elements.simulationForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void triggerSimulation("trigger-session");
+});
+elements.startRace.addEventListener("click", () => void triggerSimulation("trigger-race"));
+elements.cancelSimulation.addEventListener("click", () => void triggerSimulation("cancel"));
 
 elements.contextForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -931,10 +1129,13 @@ elements.assistantForm.addEventListener("submit", async (event) => {
   elements.assistantStatus.textContent = "Thinking…";
 
   try {
-    const { response, parsedBody } = await window.TriatwinAssistantSession.postQuestion(postJson, {
+    const payload = {
       athleteId: state.athleteId,
       question,
-    });
+    };
+    const { response, parsedBody } = state.synthetic
+      ? await postJson("/api/assistant", payload)
+      : await window.TriatwinAssistantSession.postQuestion(postJson, payload);
 
     renderAssistantSignIn(response.status === 401);
     if (!response.ok) {
@@ -1043,7 +1244,10 @@ elements.mcpForm.addEventListener("submit", async (event) => {
   }
 });
 
-window.addEventListener("beforeunload", disconnectStream);
+window.addEventListener("beforeunload", () => {
+  disconnectStream();
+  clearInterval(state.statusTimer);
+});
 
 // Colors the status chips/labels by meaning (good/bad/warn/busy) purely by observing
 // their rendered text -- additive only, so it never touches the ~35 call sites above

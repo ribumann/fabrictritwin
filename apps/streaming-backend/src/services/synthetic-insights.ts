@@ -25,6 +25,7 @@ export interface SyntheticProvenance {
 export interface SyntheticInsightsOptions {
   seed?: number;
   referenceDate?: string;
+  dataset?: SeedHistoryDataset;
 }
 
 const DAY_MS = 86_400_000;
@@ -79,11 +80,13 @@ export class SyntheticInsightsService implements RealtimeInsightsService {
   constructor(options: SyntheticInsightsOptions = {}) {
     const seed = options.seed ?? DEFAULT_HISTORY_SEED;
     const referenceDate = options.referenceDate ?? SYNTHETIC_REFERENCE_DATE;
-    this.dataset = generateSeedHistoryDataset({
-      athleteId: SYNTHETIC_ATHLETE_ID,
-      referenceDate,
-      seed,
-    });
+    this.dataset =
+      options.dataset ??
+      generateSeedHistoryDataset({
+        athleteId: SYNTHETIC_ATHLETE_ID,
+        referenceDate,
+        seed,
+      });
     this.provenance = {
       source: "synthetic",
       seed,

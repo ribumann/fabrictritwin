@@ -5,6 +5,7 @@ import { getServiceAccessToken } from "./service-auth.js";
 export interface AttachCockpitStreamRelayOptions {
   streamingBackendBaseUrl: string;
   getAccessToken?: () => Promise<string>;
+  anonymous?: boolean;
 }
 
 interface UpgradeSocket {
@@ -78,14 +79,14 @@ export function attachCockpitStreamRelay(
 
     void (async () => {
       try {
-        const accessToken = await getAccessToken();
+        const headers = options.anonymous
+          ? {}
+          : { authorization: `Bearer ${await getAccessToken()}` };
         webSocketServer.handleUpgrade(request, socket, head, (clientSocket) => {
           const upstream = new WebSocket(
             toUpstreamWebSocketUrl(options.streamingBackendBaseUrl, athleteId),
             {
-              headers: {
-                authorization: `Bearer ${accessToken}`,
-              },
+              headers,
             },
           );
 
