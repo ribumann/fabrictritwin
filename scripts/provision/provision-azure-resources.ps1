@@ -20,6 +20,8 @@ param(
     [string]$AcrSkuName = 'Basic',
 
     [string]$ImageTag = 'placeholder',
+    [ValidateSet('live', 'synthetic')]
+    [string]$DemoProfile,
     [string]$SimulatorDailyScheduleCron = '0 3 * * *',
     [string]$DeploymentName = "infra-$(Get-Date -Format 'yyyyMMdd-HHmmss')",
     [string]$TenantId,
@@ -33,6 +35,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($PSBoundParameters.ContainsKey('DemoProfile') -and $DemoProfile -cnotin @('live', 'synthetic')) {
+    throw '-DemoProfile must be exactly live or synthetic.'
+}
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
 $bicepMainFile = Join-Path $repoRoot 'infra' 'bicep' 'main.bicep'
@@ -175,6 +181,7 @@ Write-Host ''
 $armContext = Get-RuntimeArmContext -SubscriptionId $SubscriptionId -TenantId $TenantId
 $TenantId = $armContext.TenantId
 $preservedWorkloads = @()
+$existingProfiles = @()
 foreach ($workload in @('console', 'cockpit', 'streaming-backend', 'mcp-tools', 'simulator')) {
     $resourceType = if ($workload -eq 'simulator') { 'jobs' } else { 'containerApps' }
     $resourceId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.App/$resourceType/$NamePrefix-$workload"
@@ -182,9 +189,37 @@ foreach ($workload in @('console', 'cockpit', 'streaming-backend', 'mcp-tools', 
     if ($null -ne $existing) {
         if ($existing.id -ne $resourceId) { throw "Workload lookup returned an unexpected resource ID for '$workload'." }
         $preservedWorkloads += $workload
+        if ($workload -in @('cockpit', 'streaming-backend')) {
+            $profileEnv = @($existing.properties.template.containers.env | Where-Object name -eq 'DEMO_PROFILE')
+            $profile = if ($profileEnv.Count -eq 0) { 'live' } else { $profileEnv[0].value }
+            if ($profileEnv.Count -gt 1 -or $profile -cnotin @('live', 'synthetic')) {
+                throw "Existing '$workload' has an invalid DEMO_PROFILE; refusing to provision."
+            }
+            $existingProfiles += $profile
+            if ($PSBoundParameters.ContainsKey('DemoProfile') -and $DemoProfile -cne $profile) {
+                throw "Existing '$workload' uses profile '$profile'. Provisioning preserves workloads and cannot switch to '$DemoProfile'; use a separately reviewed runtime deployment."
+            }
+            if ($workload -eq 'streaming-backend' -and $profile -eq 'synthetic') {
+                $scale = $existing.properties.template.scale
+                $configuration = $existing.properties.configuration
+                $traffic = @($configuration.ingress.traffic)
+                if ($scale.minReplicas -ne 1 -or $scale.maxReplicas -ne 1 -or
+                    $configuration.activeRevisionsMode -ne 'Single' -or $traffic.Count -ne 1 -or
+                    $traffic[0].latestRevision -ne $true -or $traffic[0].weight -ne 100) {
+                    throw 'Existing synthetic backend must have min/max replicas 1, Single revision mode and 100% latest-revision traffic before provisioning.'
+                }
+            }
+        }
     }
 }
+if (@($existingProfiles | Select-Object -Unique).Count -gt 1) {
+    throw 'Existing Cockpit and Streaming Backend profiles disagree; refusing to provision.'
+}
+if (-not $PSBoundParameters.ContainsKey('DemoProfile')) {
+    $DemoProfile = if ($existingProfiles.Count -gt 0) { $existingProfiles[0] } else { 'live' }
+}
 Write-Host "Preserving existing workloads (images, env, secrets, auth): $($preservedWorkloads -join ', ')."
+Write-Host "Runtime profile: $DemoProfile (existing workloads remain unchanged)."
 Write-Host 'Their Bicep modules are intentionally bypassed; runtime overlays and deploy-container-apps.ps1 own subsequent changes.'
 
 Write-Host ''
@@ -232,6 +267,7 @@ $deploymentParams = @{
     operatorPrincipalId         = $entraResult.AdminObjectId
     acrSkuName                   = $AcrSkuName
     imageTag                     = $ImageTag
+    demoProfile                  = $DemoProfile
     simulatorDailyScheduleCron   = $SimulatorDailyScheduleCron
     preservedWorkloads           = $preservedWorkloads
 }

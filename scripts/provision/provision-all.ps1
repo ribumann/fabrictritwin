@@ -14,6 +14,8 @@ param(
     [string]$FabricCapacityAdminUpn = 'admin@example.invalid',
     [string]$TenantId,
     [string]$ImageTag = 'placeholder',
+    [ValidateSet('live', 'synthetic')]
+    [string]$DemoProfile,
     [string]$SimulatorDailyScheduleCron = '0 3 * * *',
     [string]$DefaultAthleteId,
     [switch]$SkipSimulatorConnectionsConfig,
@@ -69,6 +71,9 @@ try {
     if ($TenantId) {
         $azureParams['TenantId'] = $TenantId
     }
+    if ($PSBoundParameters.ContainsKey('DemoProfile')) {
+        $azureParams['DemoProfile'] = $DemoProfile
+    }
     if ($DefaultAthleteId) {
         $azureParams['DefaultAthleteId'] = $DefaultAthleteId
     }
@@ -120,6 +125,9 @@ if (-not $SkipSimulatorConnectionsConfig) {
         }
         if ($TenantId) {
             $connectionsParams['TenantId'] = $TenantId
+        }
+        if ($PSBoundParameters.ContainsKey('DemoProfile')) {
+            $connectionsParams['DemoProfile'] = $DemoProfile
         }
         if ($DefaultAthleteId) {
             $connectionsParams['DefaultAthleteId'] = $DefaultAthleteId

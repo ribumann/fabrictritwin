@@ -27,6 +27,10 @@ param registryLoginServer string
 @description('Container image tag to deploy. Defaults to a placeholder until build-and-push-images.ps1 (T041) publishes the first real image.')
 param imageTag string = 'placeholder'
 
+@description('Synthetic uses process-local admission and must not scale horizontally. Live leaves DEMO_PROFILE unset.')
+@allowed(['live', 'synthetic'])
+param demoProfile string = 'live'
+
 @description('Entra app registration client (application) ID used for Container Apps Easy Auth (from T019 provisioning script).')
 param authClientId string
 
@@ -117,10 +121,17 @@ resource streamingBackend 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     managedEnvironmentId: environmentId
     configuration: {
+      activeRevisionsMode: 'Single'
       ingress: {
         external: true
         targetPort: containerTargetPort
         transport: 'auto'
+        traffic: [
+          {
+            latestRevision: true
+            weight: 100
+          }
+        ]
       }
       registries: [
         {
@@ -160,7 +171,9 @@ resource streamingBackend 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'ATHLETE_ASSISTANT_MCP_PROJECT_CONNECTION_ID', value: athleteAssistantMcpProjectConnectionId }
             { name: 'ATHLETE_ASSISTANT_MCP_PROXY_URL', value: athleteAssistantMcpProxyUrl }
             { name: 'ATHLETE_ASSISTANT_MCP_INTERNAL_URL', value: athleteAssistantMcpInternalUrl }
-          ], !empty(eventstreamEventHubConnectionString) ? [
+          ], demoProfile == 'synthetic' ? [
+            { name: 'DEMO_PROFILE', value: 'synthetic' }
+          ] : [], !empty(eventstreamEventHubConnectionString) ? [
             { name: 'EVENTSTREAM_EVENTHUB_CONNECTION_STRING', secretRef: 'eventstream-eventhub-connection-string' }
           ] : [])
           resources: {
@@ -171,7 +184,7 @@ resource streamingBackend 'Microsoft.App/containerApps@2024-03-01' = {
       ]
       scale: {
         minReplicas: 1
-        maxReplicas: 3
+        maxReplicas: demoProfile == 'synthetic' ? 1 : 3
       }
     }
   }

@@ -359,6 +359,11 @@ Describe 'configure-simulator-connections.ps1 (T059b)' {
             }
         }
 
+        It 'forwards explicit live selection to the second Bicep pass' {
+            & $script:ConfigureScript -SubscriptionId $script:SubscriptionId -FabricWorkspaceId $script:WorkspaceId -DemoProfile live | Out-Null
+            $global:T059b_ArmParamsFileContents.parameters.demoProfile.value | Should -Be 'live'
+        }
+
         It 'finds existing higher-privilege assignments on later pages without downgrading them' {
             Mock -CommandName Invoke-RestMethod -ParameterFilter {
                 $Method -eq 'Get' -and $Uri -like '*/roleAssignments*'
