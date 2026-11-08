@@ -42,6 +42,13 @@ storage. `DEMO_PROFILE=synthetic` is an exact opt-in for both services; unset
 preserves live defaults and authorization. See
 [synthetic runtime details](docs/synthetic-runtime-foundation.md).
 
+For hosted synthetic use, keep the backend's service-authentication boundary:
+set the Cockpit's `STREAMING_BACKEND_BASE_URL` to the backend's HTTPS origin and
+configure the existing `STREAMING_BACKEND_SCOPE` for its managed identity.
+Only HTTP loopback (`localhost`, `127.0.0.1`, or `[::1]`) bypasses service-token
+acquisition for the local demo. A non-loopback HTTP upstream or a hosted HTTPS
+upstream without a scope fails at startup; it never retries anonymously.
+
 ## Development
 
 Use Node.js 24 or newer, npm, PowerShell 7 and Pester 5.6.1:

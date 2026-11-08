@@ -11,6 +11,7 @@ import { createPowerBiEmbedConfigAction } from "./api/powerbi.js";
 import { createRaceRouter } from "./api/race.js";
 import { createDemoRouter } from "./api/demo.js";
 import { createSimulateRouter } from "./api/simulate.js";
+import { resolveBackendConnection } from "./api/backend-connection.js";
 import { proxyStreamingBackendGet, proxyStreamingBackendPost } from "./api/proxy.js";
 import { attachCockpitStreamRelay } from "./api/stream-relay.js";
 
@@ -24,9 +25,10 @@ if (profile !== "live" && profile !== "synthetic") {
   throw new Error("DEMO_PROFILE must be exactly live or synthetic.");
 }
 const synthetic = profile === "synthetic";
+const { anonymous } = resolveBackendConnection(profile, streamingBackendBaseUrl);
 const proxyOptions = {
   streamingBackendBaseUrl,
-  ...(synthetic ? { buildAuthHeaders: async () => ({}) } : {}),
+  ...(anonymous ? { buildAuthHeaders: async () => ({}) } : {}),
 };
 
 app.use(express.json());
@@ -93,7 +95,7 @@ app.use("/api/alerts", createAlertsRouter(proxyOptions));
 app.use("/api/race", createRaceRouter(proxyOptions));
 app.use("/api/simulate", createSimulateRouter(proxyOptions));
 
-attachCockpitStreamRelay(server, { streamingBackendBaseUrl, synthetic });
+attachCockpitStreamRelay(server, { streamingBackendBaseUrl, anonymous });
 
 // Compare via pathToFileURL (not a raw `file://` template string) so this also
 // matches on Windows, where process.argv[1] is a drive-letter path with
