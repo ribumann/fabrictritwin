@@ -29,6 +29,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $scriptRoot = $PSScriptRoot
 
+if ($PSBoundParameters.ContainsKey('DemoProfile') -and $DemoProfile -cnotin @('live', 'synthetic')) {
+    throw '-DemoProfile must be exactly live or synthetic.'
+}
+
 if (-not $LakehouseDisplayName) {
     $LakehouseDisplayName = "$($NamePrefix.Replace('-', '_'))_lakehouse"
 }

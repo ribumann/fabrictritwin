@@ -36,6 +36,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $scriptRoot = $PSScriptRoot
 
+if ($PSBoundParameters.ContainsKey('DemoProfile') -and $DemoProfile -cnotin @('live', 'synthetic')) {
+    throw '-DemoProfile must be exactly live or synthetic.'
+}
+
 if ($ConfigureRuntime -and (-not $TenantId -or -not $DefaultAthleteId)) {
     throw '-ConfigureRuntime requires explicit -TenantId and -DefaultAthleteId; the current CLI user is never treated as an authorized athlete.'
 }

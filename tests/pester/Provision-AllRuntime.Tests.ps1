@@ -73,4 +73,8 @@ Describe 'Full provisioning runtime ordering' {
         $global:ProvisionCalls[2].Params.DemoProfile | Should -Be 'synthetic'
         $global:ProvisionCalls[1].Params.ContainsKey('DemoProfile') | Should -BeFalse
     }
+    It 'rejects profile casing before any setup calls' {
+        { & $script:Orchestrator -SubscriptionId $global:RuntimeFixture.SubscriptionId -DemoProfile Synthetic } | Should -Throw '*exactly live or synthetic*'
+        $global:ProvisionCalls.Count | Should -Be 0
+    }
 }

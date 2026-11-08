@@ -364,6 +364,13 @@ Describe 'configure-simulator-connections.ps1 (T059b)' {
             $global:T059b_ArmParamsFileContents.parameters.demoProfile.value | Should -Be 'live'
         }
 
+        It 'rejects profile casing before any Fabric or Azure calls' {
+            { & $script:ConfigureScript -SubscriptionId $script:SubscriptionId -DemoProfile Synthetic } | Should -Throw '*exactly live or synthetic*'
+            Should -Invoke Invoke-RestMethod -Times 0
+            Should -Invoke Invoke-WebRequest -Times 0
+            Should -Invoke az -Times 0
+        }
+
         It 'finds existing higher-privilege assignments on later pages without downgrading them' {
             Mock -CommandName Invoke-RestMethod -ParameterFilter {
                 $Method -eq 'Get' -and $Uri -like '*/roleAssignments*'
