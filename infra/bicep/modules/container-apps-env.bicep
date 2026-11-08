@@ -1,5 +1,5 @@
 // Azure Container Apps environment + Log Analytics workspace shared by the Streaming
-// Backend, MCP Tool Server, Console, and Simulator Job (Container Apps Job).
+// Backend, MCP Tool Server, Cockpit, and Simulator Job (Container Apps Job).
 metadata description = 'Container Apps environment + Log Analytics workspace'
 
 @description('Azure region for the Container Apps environment.')

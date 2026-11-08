@@ -2,10 +2,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('simulator', 'cockpit', 'streaming-backend', 'mcp-tools', 'console')]
+    [ValidateSet('simulator', 'cockpit', 'streaming-backend', 'mcp-tools')]
     [string]$App,
     [Parameter(Mandatory)]
-    [ValidatePattern('^local/(simulator|cockpit|streaming-backend|mcp-tools|console):[a-f0-9]{40}$')]
+    [ValidatePattern('^local/(simulator|cockpit|streaming-backend|mcp-tools):[a-f0-9]{40}$')]
     [string]$Image
 )
 
@@ -51,7 +51,7 @@ if ($App -eq 'simulator') {
     return
 }
 
-$ports = @{ cockpit = 3300; 'streaming-backend' = 3000; 'mcp-tools' = 3100; console = 3200 }
+$ports = @{ cockpit = 3300; 'streaming-backend' = 3000; 'mcp-tools' = 3100 }
 $container = docker run --detach @runtimeArguments $Image
 if ($LASTEXITCODE -ne 0) { throw "Could not start $App." }
 try {

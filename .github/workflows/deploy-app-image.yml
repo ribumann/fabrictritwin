@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       app:
-        description: Existing workload to update (no Console or infrastructure deployment)
+        description: Existing workload image to update (no infrastructure deployment)
         required: true
         type: choice
         options:

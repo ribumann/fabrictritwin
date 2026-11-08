@@ -76,7 +76,7 @@ $mapJson = Merge-RuntimePrincipalMap -ExistingJson $mapJson -Additions $Authoriz
 $serviceMap = @{ $projectPrincipalId = $AthleteId.ToString() }
 $callerClientIds = @($projectClientId)
 $backendPrincipalId = $null
-foreach ($workload in @('console', 'cockpit', 'streaming-backend')) {
+foreach ($workload in @('cockpit', 'streaming-backend')) {
     $identityId = "$root/Microsoft.ManagedIdentity/userAssignedIdentities/$NamePrefix-id-$workload"
     $identity = Invoke-RuntimeArm -Context $context -ResourceId $identityId -ApiVersion '2023-01-31'
     $principalId = [guid]::Parse($identity.properties.principalId).ToString()

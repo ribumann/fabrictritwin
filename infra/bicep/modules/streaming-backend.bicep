@@ -37,9 +37,6 @@ param authClientId string
 @description('Entra tenant ID for Easy Auth OpenID Connect issuer.')
 param tenantId string = subscription().tenantId
 
-@description('Operator-supplied configuration; see the parameter name and deployment guide.')
-param consoleManagedIdentityClientId string = ''
-
 @description('Client (application) ID of the Cockpit app\'s user-assigned managed identity, allow-listed so its app-only REST/WS proxy tokens pass Easy Auth authorization on the Streaming Backend. Empty string omits the allow-list entry (e.g. first bootstrap pass before the Cockpit MI exists).')
 param cockpitManagedIdentityClientId string = ''
 
@@ -215,10 +212,7 @@ resource easyAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
             authClientId
           ]
           defaultAuthorizationPolicy: {
-            allowedApplications: concat(
-              consoleManagedIdentityClientId == '' ? [] : [
-                consoleManagedIdentityClientId
-              ],
+            allowedApplications:             concat(
               cockpitManagedIdentityClientId == '' ? [] : [
                 cockpitManagedIdentityClientId
               ],

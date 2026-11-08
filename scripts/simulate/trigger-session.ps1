@@ -6,7 +6,7 @@ Triggers an on-demand live training session via the deployed Streaming Backend A
 .DESCRIPTION
 Implements T074 (specs/001-triathlon-training-twin/tasks.md). This is a thin wrapper around the
 Streaming Backend `POST /api/simulate/trigger-session` endpoint so workstation/CI callers use the
-same trigger path as the Demo Control Console UI.
+same trigger path as Cockpit.
 
 Easy Auth bearer-token acquisition depends on the Entra app registration and deployment-specific
 audience configuration, which is not derivable safely from this repository alone. For that reason

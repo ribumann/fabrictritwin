@@ -43,7 +43,7 @@ Describe 'Deployment subscription isolation' {
 
     It 'scopes registry, app, ingress and job deployment calls without changing the default' {
         & $script:DeployScript -SubscriptionId '00000000-0000-0000-0000-000000000000' -ImageTag 'v1'
-        Should -Invoke -CommandName az -Times 9 -Exactly -ParameterFilter { $args -contains 'update' }
+        Should -Invoke -CommandName az -Times 7 -Exactly -ParameterFilter { $args -contains 'update' }
         Should -Invoke -CommandName az -Times 0 -Exactly -ParameterFilter {
             $args -notcontains '--subscription' -or $args -notcontains '00000000-0000-0000-0000-000000000000'
         }
@@ -88,7 +88,7 @@ Describe 'build-and-push-images.ps1 (T041)' {
         }
     }
 
-    Context 'Builds all five apps by default' {
+    Context 'Builds all four remaining apps by default' {
         BeforeAll {
             Mock -CommandName az -MockWith {
                 $global:LASTEXITCODE = 0
@@ -99,9 +99,9 @@ Describe 'build-and-push-images.ps1 (T041)' {
             }
         }
 
-        It 'invokes az acr build once per app (5 times, incl. cockpit)' {
+        It 'invokes az acr build once per app' {
             & $script:BuildScript -SubscriptionId '00000000-0000-0000-0000-000000000000' -ImageTag 'v1'
-            Should -Invoke -CommandName az -Times 5 -Exactly -ParameterFilter { $args -contains 'build' -and $args -contains 'acr' }
+            Should -Invoke -CommandName az -Times 4 -Exactly -ParameterFilter { $args -contains 'build' -and $args -contains 'acr' }
         }
     }
 
@@ -116,8 +116,8 @@ Describe 'build-and-push-images.ps1 (T041)' {
             }
         }
 
-        It 'invokes az acr build exactly once, for console' {
-            & $script:BuildScript -SubscriptionId '00000000-0000-0000-0000-000000000000' -ImageTag 'v1' -Apps 'console'
+        It 'invokes az acr build exactly once, for cockpit' {
+            & $script:BuildScript -SubscriptionId '00000000-0000-0000-0000-000000000000' -ImageTag 'v1' -Apps 'cockpit'
             Should -Invoke -CommandName az -Times 1 -Exactly -ParameterFilter { $args -contains 'build' -and $args -contains 'acr' }
         }
     }
@@ -170,7 +170,7 @@ Describe 'deploy-container-apps.ps1 (T042)' {
         }
     }
 
-    Context 'Rolls all five apps/job by default' {
+    Context 'Rolls the three Container Apps and one Job by default' {
         BeforeAll {
             Mock -CommandName az -MockWith {
                 $global:LASTEXITCODE = 0
@@ -184,10 +184,10 @@ Describe 'deploy-container-apps.ps1 (T042)' {
             }
         }
 
-        It 'updates the four Container Apps (image + ingress target-port each) and the one Job (5 total)' {
+        It 'updates the three Container Apps (image + ingress target-port each) and the one Job (4 total)' {
             & $script:DeployScript -SubscriptionId '00000000-0000-0000-0000-000000000000' -ImageTag 'v1'
-            Should -Invoke -CommandName az -Times 4 -Exactly -ParameterFilter { $args -contains 'containerapp' -and $args -contains 'update' -and $args -notcontains 'job' -and $args -notcontains 'ingress' }
-            Should -Invoke -CommandName az -Times 4 -Exactly -ParameterFilter { $args -contains 'containerapp' -and $args -contains 'ingress' -and $args -contains 'update' }
+            Should -Invoke -CommandName az -Times 3 -Exactly -ParameterFilter { $args -contains 'containerapp' -and $args -contains 'update' -and $args -notcontains 'job' -and $args -notcontains 'ingress' }
+            Should -Invoke -CommandName az -Times 3 -Exactly -ParameterFilter { $args -contains 'containerapp' -and $args -contains 'ingress' -and $args -contains 'update' }
             Should -Invoke -CommandName az -Times 1 -Exactly -ParameterFilter { $args -contains 'containerapp' -and $args -contains 'job' -and $args -contains 'update' }
         }
     }

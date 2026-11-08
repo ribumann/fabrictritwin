@@ -28,7 +28,7 @@ try {
     foreach ($required in @('package.json', 'package-lock.json', 'tsconfig.base.json')) {
         if (-not (Test-Path -LiteralPath (Join-Path $context $required))) { throw "Missing build input: $required" }
     }
-    foreach ($app in @('simulator', 'cockpit', 'streaming-backend', 'mcp-tools', 'console')) {
+    foreach ($app in @('simulator', 'cockpit', 'streaming-backend', 'mcp-tools')) {
         foreach ($required in @('package.json', 'tsconfig.json', 'src/index.ts')) {
             if (-not (Test-Path -LiteralPath (Join-Path $context "apps/$app/$required"))) {
                 throw "Missing workspace build input: $app/$required"

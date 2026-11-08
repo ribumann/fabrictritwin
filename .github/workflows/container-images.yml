@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [simulator, cockpit, streaming-backend, mcp-tools, console]
+        app: [simulator, cockpit, streaming-backend, mcp-tools]
     env:
       APP: ${{ matrix.app }}
       IMAGE_REVISION: ${{ github.sha }}

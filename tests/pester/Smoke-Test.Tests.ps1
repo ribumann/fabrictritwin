@@ -221,7 +221,7 @@ Describe 'Smoke Test (T045): live infrastructure connectivity/health checks' -Ta
                 '-o', 'json'
             ) -AsJson
 
-            $apps.Count | Should -BeGreaterThan 0 -Because 'deploy-container-apps.ps1 (T042) publishes ingress-enabled apps (console, streaming-backend)'
+            $apps.Count | Should -BeGreaterThan 0 -Because 'deploy-container-apps.ps1 (T042) publishes the remaining ingress-enabled apps (Cockpit, Streaming Backend)'
 
             $unreachable = [System.Collections.Generic.List[string]]::new()
             foreach ($app in $apps) {

@@ -86,7 +86,7 @@ BeforeAll {
         $s = $global:AssistantAuthTestState
         $s.Applications[$s.BackendObject] = @{
             id = $s.BackendObject; appId = $s.BackendClient; displayName = 'triatwin-dev-easyauth'
-            web = @{ redirectUris = @('https://old/callback', 'https://console/callback') }
+            web = @{ redirectUris = @('https://old/callback', 'https://legacy.example/callback') }
             api = @{ oauth2PermissionScopes = @(@{ id = '53d326ba-123b-4567-a854-6205d5ea8896'; value = 'user_impersonation'; isEnabled = $true }) }
             requiredResourceAccess = @(@{ resourceAppId = 'graph-app'; resourceAccess = @(@{ id = 'user-read'; type = 'Scope' }) })
             passwordCredentials = @(@{ keyId = 'unmanaged-key'; displayName = 'unmanaged'; endDateTime = [DateTimeOffset]::UtcNow.AddDays(300).ToString('o') })

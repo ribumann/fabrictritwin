@@ -2,7 +2,7 @@
 
 `Container images (build only)` is independent of `CI` and the manual deployment
 workflow. Every PR (including forks), main push and manual dispatch builds the
-five existing Containerfiles with the repository root as context:
+four remaining Containerfiles with the repository root as context:
 
 | Local repository | Runtime | Simulator runtime dependency |
 | --- | --- | --- |
@@ -10,7 +10,6 @@ five existing Containerfiles with the repository root as context:
 | `local/cockpit` | HTTP 3300, static UI and Power BI vendor bundle | Yes |
 | `local/streaming-backend` | HTTP 3000 | Yes |
 | `local/mcp-tools` | HTTP 3100, internal service | No |
-| `local/console` | HTTP 3200, retained until parity/retirement | Yes |
 
 Images are tagged with the exact checked-out `github.sha` (the merge revision on
 PRs), built for `linux/amd64`, and labelled with that source revision. Checkout is
@@ -24,9 +23,9 @@ digest and cannot be used as the deployment workflow's approved ACR digest.
 
 All build, production-dependency and runtime stages use the same pinned public
 Node 24 Alpine multi-platform index digest. `npm ci` uses the committed root
-lockfile and all five workspace manifests; production installs omit dev
-dependencies. Cockpit, Console and backend compile and package Simulator before
-their own runtime code. To update Node, resolve and review the public index digest,
+lockfile and all four remaining workspace manifests; production installs omit dev
+dependencies. Cockpit and backend compile and package Simulator before their
+own runtime code. To update Node, resolve and review the public index digest,
 replace all 15 `FROM` references together, and require this workflow to pass.
 Dependency updates must update the root lockfile and pass CI. Pinning inputs makes
 rebuilds reproducible in dependency selection, not guaranteed byte-identical:
@@ -48,8 +47,7 @@ job is invoked. Backend startup requires three OneLake settings even for health
 checks: the test container receives synthetic workspace/lakehouse names and an
 `example.invalid` URL, never credentials or a real target. Network isolation is
 still enforced. Existing full credential-free unit tests remain in `CI`. These
-checks prove image packaging/startup, not live Azure/Fabric integration or complete
-Cockpit/Console feature parity.
+checks prove image packaging/startup, not live Azure/Fabric integration.
 
 For a local Linux/amd64 Docker daemon, from the repository root:
 

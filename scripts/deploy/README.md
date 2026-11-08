@@ -6,11 +6,10 @@ and main pushes without Azure credentials. Existing PowerShell scripts remain
 reusable; imported provisioning, teardown, image-build and scheduling workflows
 remain quarantined. This foundation intentionally does not enable them.
 
-`Container images (build only)` separately builds and smoke-tests all five current
+`Container images (build only)` separately builds and smoke-tests all four current
 production images on PRs, main pushes and manual dispatch. See
 [the build-only contract](../../tests/containers/README.md). It has no registry
-push, Azure identity or deployment step; Console remains in the image matrix until
-UI parity and its retirement are separately reviewed.
+push, Azure identity or deployment step.
 
 `Publish one approved app image` is a **manual, main-only** workflow using the
 separate `azure-build` environment. `publish: false` verifies the actual OIDC
@@ -19,7 +18,8 @@ into the registry or requiring push permission. It works while `PUBLISH_ENABLED`
 is unset or `false`. `publish: true` additionally requires `PUBLISH_ENABLED` to be
 exactly `true` and environment approval for each job. The selected image is built
 and smoke-tested before Azure login, then pushed to its matching repository with
-the full main commit SHA as its tag. Console is not publishable here.
+the full main commit SHA as its tag. The retired Console is not a build or
+publication target.
 
 The summary records the source revision, app and digest returned by Docker's
 push. Supply that digest, not the tag or local image ID, to the deployment
@@ -67,10 +67,12 @@ the preflight still performs only reads but its token is no longer read-only.
 `Deploy one existing app image` is a **manual, main-only** workflow. Its default
 `deploy: false` performs read-only preflight; an update also requires
 `deploy: true`, an enabled environment and environment approval. It updates one
-existing `cockpit`, `streaming-backend`, `mcp-tools` app or `simulator` job, never
-Console. Supply an existing, reviewed `sha256:<64 lowercase hex>` digest from
+existing `cockpit`, `streaming-backend`, `mcp-tools` app or `simulator` job. Supply
+an existing, reviewed `sha256:<64 lowercase hex>` digest from
 that app's repository in the configured ACR. There is no tag fallback, Docker
 build, image push, resource creation/deletion, job start or capacity resume.
+These repository changes do not delete any pre-existing Console cloud resources
+or authorization state; that exact-scope cleanup is separate and review-gated.
 
 ## Administrator prerequisites (not provisioned by this change)
 

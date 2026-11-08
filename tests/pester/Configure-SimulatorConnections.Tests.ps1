@@ -23,14 +23,12 @@ BeforeAll {
     $script:AuthObjectId = '33333333-3333-3333-3333-333333333333'
     $script:ServicePrincipalId = '44444444-4444-4444-4444-444444444444'
     $script:AdminObjectId = '55555555-5555-5555-5555-555555555555'
-    $script:ConsoleFqdn = 'triatwin-dev-console.polandcentral.azurecontainerapps.io'
     $script:StreamingBackendFqdn = 'triatwin-dev-streaming.polandcentral.azurecontainerapps.io'
     $script:DeploymentOutputsJson = (@{
             fabricCapacityName           = @{ value = 'triatwin-dev-fabric' }
             containerRegistryLoginServer = @{ value = 'triatwindev.azurecr.io' }
             keyVaultUri                  = @{ value = 'https://triatwin-dev-kv.vault.azure.net/' }
             streamingBackendFqdn         = @{ value = $script:StreamingBackendFqdn }
-            consoleFqdn                  = @{ value = $script:ConsoleFqdn }
             foundryProjectName           = @{ value = 'triatwin-dev-foundry' }
         } | ConvertTo-Json -Depth 5 -Compress)
 

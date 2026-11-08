@@ -1,4 +1,4 @@
-// Managed identities for the Streaming Backend, MCP Tool Server, Console, Simulator,
+// Managed identities for the Streaming Backend, MCP Tool Server, Cockpit, Simulator,
 // Athlete Assistant (Foundry Agent), and provisioning scripts — one dedicated identity per
 // workload. Constitution Principle VI (Single-Tenant Least-Privilege Footprint): each
 // workload gets its own user-assigned identity so RBAC role assignments can be scoped
@@ -22,12 +22,6 @@ resource streamingBackendIdentity 'Microsoft.ManagedIdentity/userAssignedIdentit
 
 resource mcpToolServerIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${namePrefix}-id-mcp-tools'
-  location: location
-  tags: tags
-}
-
-resource consoleIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: '${namePrefix}-id-console'
   location: location
   tags: tags
 }
@@ -63,10 +57,6 @@ output streamingBackendIdentityClientId string = streamingBackendIdentity.proper
 output mcpToolServerIdentityId string = mcpToolServerIdentity.id
 output mcpToolServerIdentityPrincipalId string = mcpToolServerIdentity.properties.principalId
 output mcpToolServerIdentityClientId string = mcpToolServerIdentity.properties.clientId
-
-output consoleIdentityId string = consoleIdentity.id
-output consoleIdentityPrincipalId string = consoleIdentity.properties.principalId
-output consoleIdentityClientId string = consoleIdentity.properties.clientId
 
 output cockpitIdentityId string = cockpitIdentity.id
 output cockpitIdentityPrincipalId string = cockpitIdentity.properties.principalId
