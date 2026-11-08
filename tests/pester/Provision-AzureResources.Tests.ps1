@@ -83,13 +83,19 @@ BeforeAll {
         $global:T038_ExistingWorkloads = @()
         $global:T038_LookupStatus = 404
         $global:T038_DeploymentParameters = $null
+        $global:T038_ProfileEnv = @{}
+        $global:T038_BackendScale = @{ minReplicas = 1; maxReplicas = 1 }
+        $global:T038_BackendConfiguration = @{ activeRevisionsMode = 'Single'; ingress = @{ traffic = @(@{ latestRevision = $true; weight = 100 }) } }
 
         Mock -CommandName Invoke-WebRequest -MockWith {
             param($Uri, $Method)
             if ($Method -ne 'GET') { throw 'Unexpected mutating ARM request.' }
             $name = (([uri]$Uri).AbsolutePath -split '/')[-1] -replace '^triatwin-dev-', ''
             if ($name -in $global:T038_ExistingWorkloads) {
-                return @{ StatusCode = 200; Content = (@{ id = ([uri]$Uri).AbsolutePath; name = "triatwin-dev-$name"; properties = @{ template = @{ containers = @(@{ image = "acr/$name`:unique" }) } } } | ConvertTo-Json -Depth 10) }
+                return @{ StatusCode = 200; Content = (@{ id = ([uri]$Uri).AbsolutePath; name = "triatwin-dev-$name"; properties = @{
+                    configuration = $global:T038_BackendConfiguration
+                    template = @{ scale = $global:T038_BackendScale; containers = @(@{ image = "acr/$name`:unique"; env = @($global:T038_ProfileEnv[$name]) }) }
+                } } | ConvertTo-Json -Depth 10) }
             }
             return @{ StatusCode = $global:T038_LookupStatus; Content = '{"error":{"code":"ResourceNotFound"}}' }
         }
@@ -290,6 +296,66 @@ Describe 'provision-azure-resources.ps1 (T038)' {
             $global:T038_LookupStatus = 403
             { & $script:ProvisionScript -SubscriptionId $script:SubscriptionId } | Should -Throw '*HTTP 403*'
             Should -Invoke az -Times 0 -ParameterFilter { $args[0] -eq 'deployment' }
+            Should -Invoke Get-MgApplication -Times 0
+        }
+
+        It 'defaults new workloads to live and forwards explicit synthetic selection' {
+            & $script:ProvisionScript -SubscriptionId $script:SubscriptionId | Out-Null
+            $global:T038_DeploymentParameters.parameters.demoProfile.value | Should -Be 'live'
+            & $script:ProvisionScript -SubscriptionId $script:SubscriptionId -DemoProfile synthetic | Out-Null
+            $global:T038_DeploymentParameters.parameters.demoProfile.value | Should -Be 'synthetic'
+        }
+
+        It 'inherits synthetic from a preserved backend when creating a missing Cockpit' {
+            $global:T038_ExistingWorkloads = @('streaming-backend')
+            $global:T038_ProfileEnv['streaming-backend'] = @{ name = 'DEMO_PROFILE'; value = 'synthetic' }
+            & $script:ProvisionScript -SubscriptionId $script:SubscriptionId | Out-Null
+            $global:T038_DeploymentParameters.parameters.demoProfile.value | Should -Be 'synthetic'
+        }
+
+        It 'rejects an explicit profile switch instead of silently skipping preserved workloads' {
+            $global:T038_ExistingWorkloads = @('cockpit', 'streaming-backend')
+            { & $script:ProvisionScript -SubscriptionId $script:SubscriptionId -DemoProfile synthetic } | Should -Throw '*cannot switch*'
+            Should -Invoke Get-MgApplication -Times 0
+            Should -Invoke az -Times 0 -ParameterFilter { $args[0] -eq 'deployment' }
+        }
+
+        It 'rejects mismatched existing profiles' {
+            $global:T038_ExistingWorkloads = @('cockpit', 'streaming-backend')
+            $global:T038_ProfileEnv['cockpit'] = @{ name = 'DEMO_PROFILE'; value = 'synthetic' }
+            { & $script:ProvisionScript -SubscriptionId $script:SubscriptionId } | Should -Throw '*profiles disagree*'
+            Should -Invoke Get-MgApplication -Times 0
+        }
+
+        It 'rejects invalid retained profile <Value>' -TestCases @(
+            @{ Value = '' }, @{ Value = 'Synthetic' }, @{ Value = 'unknown' }
+        ) {
+            param($Value)
+            $global:T038_ExistingWorkloads = @('cockpit')
+            $global:T038_ProfileEnv['cockpit'] = @{ name = 'DEMO_PROFILE'; value = $Value }
+            { & $script:ProvisionScript -SubscriptionId $script:SubscriptionId } | Should -Throw '*invalid DEMO_PROFILE*'
+            Should -Invoke Get-MgApplication -Times 0
+        }
+
+        It 'rejects invalid explicit casing before external calls' {
+            { & $script:ProvisionScript -SubscriptionId $script:SubscriptionId -DemoProfile Synthetic } | Should -Throw '*exactly live or synthetic*'
+            Should -Invoke Invoke-WebRequest -Times 0
+        }
+
+        It 'rejects unsafe retained synthetic backend <Setting>' -TestCases @(
+            @{ Setting = 'minReplicas' }, @{ Setting = 'maxReplicas' },
+            @{ Setting = 'revisionMode' }, @{ Setting = 'traffic' }
+        ) {
+            param($Setting)
+            $global:T038_ExistingWorkloads = @('streaming-backend')
+            $global:T038_ProfileEnv['streaming-backend'] = @{ name = 'DEMO_PROFILE'; value = 'synthetic' }
+            switch ($Setting) {
+                minReplicas { $global:T038_BackendScale.minReplicas = 0 }
+                maxReplicas { $global:T038_BackendScale.maxReplicas = 3 }
+                revisionMode { $global:T038_BackendConfiguration.activeRevisionsMode = 'Multiple' }
+                traffic { $global:T038_BackendConfiguration.ingress.traffic[0].weight = 50 }
+            }
+            { & $script:ProvisionScript -SubscriptionId $script:SubscriptionId } | Should -Throw '*Single revision mode*'
             Should -Invoke Get-MgApplication -Times 0
         }
     }
