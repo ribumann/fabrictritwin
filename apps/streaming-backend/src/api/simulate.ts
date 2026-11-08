@@ -24,7 +24,7 @@ import {
   type SeededHistoryPreconditionChecker,
 } from "../services/preconditions.js";
 import { realtimeStreamBroker, type RealtimeStreamBroker } from "../services/realtime-stream.js";
-import { raceStateStore } from "../services/race-state.js";
+import { createRaceCatalog, raceStateStore, type RaceCatalog } from "../services/race-state.js";
 
 interface AthleteRequestBody {
   athleteId?: string;
@@ -135,6 +135,7 @@ export interface CreateSimulateRouterOptions {
   eventstreamPublisherFactory?: () => EventstreamPublisher;
   streamBroker?: RealtimeStreamBroker;
   runIdFactory?: () => string;
+  raceCatalog?: RaceCatalog;
 }
 
 const LIVE_SESSION_SAMPLE_COUNT = 36;
@@ -223,8 +224,18 @@ async function startLiveSessionSimulation(options: StartLiveSessionOptions): Pro
   void (async () => {
     let publisher: EventstreamPublisher | undefined;
     let sessionId: string | undefined;
+    let status: "completed" | "failed" = "failed";
 
     try {
+      options.streamBroker.publish({
+        athleteId: options.athleteId,
+        frame: {
+          type: "simulationStatus",
+          runId: options.runId,
+          kind: "session",
+          status: "running",
+        },
+      });
       publisher = options.eventstreamPublisherFactory();
 
       for (const tick of createLiveSessionGenerator({
@@ -245,6 +256,7 @@ async function startLiveSessionSimulation(options: StartLiveSessionOptions): Pro
       if (sessionId) {
         options.streamBroker.publishSessionStatus(options.athleteId, sessionId, "completed");
       }
+      status = "completed";
     } catch (error) {
       // Logged server-side (not just surfaced via the broker's "missed" status) because this loop
       // runs detached from the original HTTP response -- console.error is the only remaining signal
@@ -272,6 +284,10 @@ async function startLiveSessionSimulation(options: StartLiveSessionOptions): Pro
         }
       }
       options.concurrencyLock.release(options.runId);
+      options.streamBroker.publish({
+        athleteId: options.athleteId,
+        frame: { type: "simulationStatus", runId: options.runId, kind: "session", status },
+      });
     }
   })().catch((error) => {
     // Safety net: releases the lock even if an error escapes the try/finally above (e.g. a throw
@@ -286,12 +302,22 @@ async function startLiveSessionSimulation(options: StartLiveSessionOptions): Pro
 }
 
 async function startRaceSimulation(options: StartRaceSimulationOptions): Promise<void> {
-  // The current API contract provides only `raceId`; until a Lakehouse-backed race lookup lands,
-  // assume the seeded demo's default next-race path (Olympic distance) for the built-in runner.
+  // The trigger validates the race against the authorized athlete's catalog before publishing.
   void (async () => {
     let publisher: EventstreamPublisher | undefined;
+    let status: "completed" | "failed" = "failed";
 
     try {
+      options.streamBroker.publish({
+        athleteId: options.athleteId,
+        frame: {
+          type: "simulationStatus",
+          runId: options.runId,
+          kind: "race",
+          raceId: options.raceId,
+          status: "running",
+        },
+      });
       publisher = options.eventstreamPublisherFactory();
       raceStateStore.startRace({
         athleteId: options.athleteId,
@@ -317,6 +343,7 @@ async function startRaceSimulation(options: StartRaceSimulationOptions): Promise
           await delay(LIVE_RACE_EMIT_INTERVAL_MS);
         }
       }
+      status = "completed";
     } catch (error) {
       // Logged server-side since this loop runs detached from the original HTTP response --
       // console.error is the only remaining signal for diagnosing a mid-run failure.
@@ -341,6 +368,16 @@ async function startRaceSimulation(options: StartRaceSimulationOptions): Promise
         }
       }
       options.concurrencyLock.release(options.runId);
+      options.streamBroker.publish({
+        athleteId: options.athleteId,
+        frame: {
+          type: "simulationStatus",
+          runId: options.runId,
+          kind: "race",
+          raceId: options.raceId,
+          status,
+        },
+      });
     }
   })().catch((error) => {
     // Safety net: releases the lock even if an error escapes the try/finally above. release() is
@@ -502,6 +539,15 @@ export function createSimulateRouter(options: CreateSimulateRouterOptions = {}):
           return;
         }
 
+        const raceCatalog = options.raceCatalog ?? createRaceCatalog({ environment });
+        const race = await raceCatalog.findRaceForAthlete(athleteId, raceId);
+        if (!race || race.athleteId !== athleteId || race.raceId !== raceId) {
+          res.status(403).json({
+            error: { code: "forbidden", message: "Not authorized for this athlete." },
+          });
+          return;
+        }
+
         const runId = runIdFactory();
         const acquireResult = concurrencyLock.tryAcquire({ runId, athleteId, kind: "race" });
         if (!acquireResult.acquired) {
@@ -514,7 +560,7 @@ export function createSimulateRouter(options: CreateSimulateRouterOptions = {}):
             runId,
             athleteId,
             raceId,
-            assumedDistance: "olympic",
+            assumedDistance: race.distance,
             concurrencyLock,
             eventstreamPublisherFactory,
             streamBroker,

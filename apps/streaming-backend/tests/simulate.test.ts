@@ -334,6 +334,20 @@ describe("POST /api/simulate/seed-history", () => {
         hasSeededHistory: vi.fn(async () => true),
       },
       triggerRaceImpl,
+      raceCatalog: {
+        findRaceForAthlete: async (athleteId, raceId) => ({
+          athleteId,
+          raceId,
+          name: "Seeded race",
+          date: "2026-09-03",
+          distance: "olympic",
+          goalTimeSeconds: 7200,
+          status: "upcoming",
+          predictedFinishTimeSeconds: null,
+          actualFinishTimeSeconds: null,
+          pacingEvennessStdDev: null,
+        }),
+      },
       runIdFactory: () => "run-live-race",
     });
 

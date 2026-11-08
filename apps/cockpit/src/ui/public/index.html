@@ -44,12 +44,17 @@
   </section>
 
   <main class="grid">
-    <section id="simulation-panel" class="card card-wide" hidden>
+    <section id="simulation-panel" class="card card-wide">
       <div class="card-header">
         <h2>Run a session or race</h2>
         <span id="simulation-status" class="muted" role="status" aria-live="polite">Ready</span>
       </div>
-      <p id="simulation-note" class="callout">Protected live controls require seeded history and backend authorization. The existing live lock is per backend process, not distributed across replicas.</p>
+      <p id="simulation-note" class="callout">
+        Choose an athlete and race above. Live starts publish generated telemetry to the
+        configured Fabric pipeline only when you select Start. Seeded history and Cockpit service
+        authorization are required. No live cancellation or per-minute quota is available; the
+        backend lock is process-local, not distributed.
+      </p>
       <form id="simulation-form" class="panel-form panel-form-inline">
         <label class="panel-field">
           Session discipline
@@ -60,8 +65,8 @@
             <option value="strength">Strength</option>
           </select>
         </label>
-        <button id="start-session" type="submit">Start session</button>
-        <button id="start-race" type="button">Start race</button>
+        <button id="start-session" type="submit" disabled>Start session</button>
+        <button id="start-race" type="button" disabled>Start race</button>
         <button id="cancel-simulation" type="button" hidden>Cancel run</button>
       </form>
       <p id="simulation-feedback" role="status" aria-live="polite"></p>
@@ -100,12 +105,13 @@
       <dl id="analyses-list" class="metric-list"></dl>
     </section>
 
-    <section class="card">
-      <div class="card-header">
-        <h2>Active alerts</h2>
-        <span id="alerts-status" class="muted">Loading…</span>
-      </div>
-      <ul id="alerts-list" class="stack"></ul>
+    <section class="card alerts-card">
+      <details>
+        <summary class="alerts-summary">
+          <h2>Active alerts</h2> <span id="alerts-status" class="muted">(Loading…)</span>
+        </summary>
+        <ul id="alerts-list" class="stack"></ul>
+      </details>
     </section>
 
     <section class="card">

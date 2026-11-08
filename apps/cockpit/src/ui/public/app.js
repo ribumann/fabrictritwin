@@ -72,6 +72,7 @@ const state = {
   retryUntil: 0,
   statusTimer: null,
   previousRunStatus: null,
+  receivedSessionSamples: 0,
 };
 
 const MCP_TOOL_METADATA = {
@@ -706,7 +707,12 @@ async function loadContext() {
     elements.simulationNote.textContent =
       "One shared run, no queue; at most two starts per minute across visitors. Runs are compressed demonstrations. This single backend stores runs in memory; restart resets them. Cancelled or failed races have no finish summary.";
   }
-  elements.simulationPanel.hidden = !state.athleteId;
+  elements.simulationPanel.hidden = false;
+  if (!state.synthetic) {
+    elements.provenance.hidden = false;
+    elements.provenance.textContent =
+      "Fabric-connected runtime. Start controls generate demonstration telemetry through the live publisher, not athlete sensors. Completion confirms publisher delivery, not downstream Fabric ingestion.";
+  }
   updateSimulationControls();
   state.mcpRaceId = state.raceId || state.mcpRaceId;
   elements.athleteIdInput.value = state.athleteId;
@@ -785,24 +791,27 @@ function renderAlertItem(alert) {
 
 async function refreshAlerts() {
   if (!state.athleteId) {
-    elements.alertsStatus.textContent = "Athlete ID required";
+    elements.alertsStatus.textContent = "(Athlete ID required)";
     setList(elements.alertsList, [], "No athlete selected.");
     return;
   }
 
-  elements.alertsStatus.textContent = "Loading…";
+  elements.alertsStatus.textContent = "(Loading…)";
   try {
     const payload = await fetchJson(
       `/api/alerts/${encodeURIComponent(state.athleteId)}?active=true`,
     );
+    if (!Array.isArray(payload.alerts)) {
+      throw new Error("The backend did not return a valid alerts list.");
+    }
     setList(
       elements.alertsList,
-      (payload.alerts ?? []).map(renderAlertItem),
+      payload.alerts.map(renderAlertItem),
       "No active alerts.",
     );
-    elements.alertsStatus.textContent = `${payload.alerts?.length ?? 0} active`;
+    elements.alertsStatus.textContent = `(${payload.alerts.length})`;
   } catch (error) {
-    elements.alertsStatus.textContent = "Unavailable";
+    elements.alertsStatus.textContent = "(Unavailable)";
     setList(elements.alertsList, [], error.message);
   }
 }
@@ -826,7 +835,15 @@ function renderLiveRace() {
 
   setDefinitionList(elements.raceLiveList, [
     ["Race", live?.name ?? state.raceId ?? "—"],
-    ["Status", live?.status ?? (latestSplit ? "live" : "waiting")],
+    [
+      "Status",
+      !state.synthetic &&
+      state.runtime?.kind === "race" &&
+      state.runtime.raceId === state.raceId &&
+      state.runtime.status === "failed"
+        ? "failed"
+        : (live?.status ?? (latestSplit ? "live" : "waiting")),
+    ],
     ["Distance", live?.distance ?? "—"],
     ["Progress", formatPercent(live?.progressPct)],
     ["Projected finish", formatSeconds(live?.projectedFinishTimeSeconds)],
@@ -912,6 +929,20 @@ function renderRaceSummaryStats(summary) {
 }
 
 async function refreshRaceSummary() {
+  if (
+    !state.synthetic &&
+    state.runtime?.kind === "race" &&
+    state.runtime.raceId === state.raceId &&
+    ["running", "failed"].includes(state.runtime.status)
+  ) {
+    elements.raceSummaryStatus.textContent =
+      state.runtime.status === "running" ? "Waiting for completion" : "No finish summary";
+    elements.raceSummaryList.textContent =
+      state.runtime.status === "running"
+        ? "Waiting for this live race to finish."
+        : "Live race failed; partial splits may remain.";
+    return;
+  }
   if (!state.raceId) {
     elements.raceSummaryStatus.textContent = "Race ID required";
     elements.raceSummaryList.innerHTML = '<div class="empty-state">No data available.</div>';
@@ -970,9 +1001,11 @@ function connectStream() {
 
   socket.addEventListener("open", () => {
     elements.streamStatus.textContent = "Connected";
+    updateSimulationControls();
   });
 
   socket.addEventListener("message", (event) => {
+    if (state.stream !== socket) return;
     let payload;
     try {
       payload = JSON.parse(event.data);
@@ -981,6 +1014,13 @@ function connectStream() {
       return;
     }
     if (payload.type === "metric") {
+      if (
+        !state.synthetic &&
+        state.runtime?.kind === "session" &&
+        payload.sessionId === state.runtime.runId
+      ) {
+        state.receivedSessionSamples += 1;
+      }
       state.latestMetric = payload;
       state.latestSessionStatus = "live";
       elements.telemetryStatus.textContent = "Streaming";
@@ -996,6 +1036,7 @@ function connectStream() {
     }
 
     if (payload.type === "raceSplit") {
+      if (payload.raceId !== state.raceId) return;
       state.recentRaceSplits = [
         payload.split,
         ...state.recentRaceSplits.filter(
@@ -1009,6 +1050,36 @@ function connectStream() {
       if (payload.split.isFinish) {
         void refreshRaceSummary();
       }
+      return;
+    }
+
+    if (payload.type === "simulationStatus" && !state.synthetic) {
+      if (payload.status === "running") {
+        beginLiveRun(payload);
+      } else if (state.runtime?.runId === payload.runId) {
+        state.runtime.status = payload.status;
+        elements.simulationFeedback.textContent =
+          payload.status === "completed"
+            ? "Run completed through the live publisher. Downstream Fabric ingestion must be verified separately."
+            : "Live run failed. It may have published partial telemetry; no finish summary is available. Check backend logs before retrying.";
+        if (state.runtime.kind === "session") {
+          elements.telemetryStatus.textContent = payload.status;
+          state.latestSessionStatus = payload.status;
+          renderTelemetry();
+          renderLiveSessionSummary();
+        } else if (payload.raceId === state.raceId) {
+          if (payload.status === "completed") {
+            void refreshRaceLive();
+            void refreshRaceSummary();
+          } else {
+            elements.raceLiveStatus.textContent = "Failed";
+            renderLiveRace();
+            elements.raceSummaryStatus.textContent = "No finish summary";
+            elements.raceSummaryList.textContent = "Live race failed; partial splits may remain.";
+          }
+        }
+      }
+      updateSimulationControls();
       return;
     }
 
@@ -1027,6 +1098,11 @@ function connectStream() {
     if (state.stream === socket) {
       elements.streamStatus.textContent = "Disconnected";
       state.stream = null;
+      if (!state.synthetic && state.runtime?.status === "running") {
+        elements.simulationFeedback.textContent =
+          "Stream disconnected; run outcome is unknown. Reload to reconnect before retrying. Reload does not cancel the backend run.";
+      }
+      updateSimulationControls();
     }
   });
 
@@ -1036,6 +1112,7 @@ function connectStream() {
 }
 
 async function refreshCockpit() {
+  connectStream();
   await Promise.allSettled([
     refreshPowerBi(),
     refreshAnalyses(),
@@ -1044,10 +1121,11 @@ async function refreshCockpit() {
     refreshRaceLive(),
     refreshRaceSummary(),
   ]);
-  connectStream();
   if (state.synthetic) {
     await refreshSimulationStatus();
     state.statusTimer ??= setInterval(refreshSimulationStatus, 2_000);
+  } else {
+    state.statusTimer ??= setInterval(updateSimulationControls, 1_000);
   }
 }
 
@@ -1083,20 +1161,62 @@ function renderHistory(history) {
   elements.historyTable.innerHTML = renderMcpTable(points);
 }
 
+function beginLiveRun(run) {
+  if (state.runtime?.runId === run.runId) return;
+  state.runtime = { ...run, status: "running" };
+  state.receivedSessionSamples = 0;
+  elements.sessionSummary.innerHTML = "";
+  if (run.kind === "session") {
+    state.latestMetric = null;
+    state.latestSessionStatus = null;
+    renderTelemetry();
+  } else if (run.raceId === state.raceId) {
+    state.recentRaceSplits = [];
+    state.raceSnapshot = null;
+    elements.raceSummaryList.textContent = "Waiting for this live race to finish.";
+    elements.raceSummaryStatus.textContent = "Running";
+    renderLiveRace();
+  }
+}
+
+function renderLiveSessionSummary() {
+  if (
+    state.runtime?.status !== "completed" ||
+    state.latestMetric?.sessionId !== state.runtime.runId
+  ) {
+    elements.sessionSummary.innerHTML = "";
+    return;
+  }
+  const metric = state.latestMetric.metric;
+  setDefinitionList(elements.sessionSummary, [
+    ["Session", state.runtime.runId],
+    ["Status", "Completed by live publisher"],
+    ["Samples received in this browser", state.receivedSessionSamples],
+    ["Final heart rate", `${metric.heartRate} bpm`],
+    ["Final power", metric.power == null ? "—" : `${metric.power} W`],
+    ["Final sample time (simulated)", formatTimestamp(metric.timestamp)],
+  ]);
+}
+
 function updateSimulationControls() {
   const running = state.runtime?.status === "running";
   const retrySeconds = Math.max(0, Math.ceil((state.retryUntil - Date.now()) / 1_000));
-  const disabled = state.simulationPending || running || retrySeconds > 0;
+  const disabled = state.simulationPending || running || retrySeconds > 0 ||
+    (!state.synthetic && state.stream?.readyState !== WebSocket.OPEN);
   elements.startSession.disabled = disabled || !state.athleteId;
-  elements.startRace.disabled = disabled || !state.raceId;
+  elements.startRace.disabled = disabled || !state.athleteId || !state.raceId;
   elements.simulationDiscipline.disabled = disabled;
   elements.cancelSimulation.hidden = !state.synthetic || !running;
   elements.cancelSimulation.disabled = state.simulationPending;
-  elements.simulationStatus.textContent = state.simulationPending ? "Submitting…" : state.runtime?.status ?? "Ready";
+  elements.simulationStatus.textContent = state.simulationPending ? "Submitting…" : !state.athleteId
+      ? "Athlete ID required"
+      : !state.synthetic && state.stream?.readyState !== WebSocket.OPEN
+        ? "Stream connection required"
+        : (state.runtime?.status ?? "Ready");
   elements.simulationCooldown.textContent = retrySeconds
-    ? `Start controls available in ${retrySeconds}s. The shared two-starts-per-minute limit applies to all visitors.`
+    ? `Start controls available in ${retrySeconds}s.${state.synthetic ? " The shared two-starts-per-minute limit applies to all visitors." : " Retry time supplied by the backend."}`
     : "";
-  elements.simulationProgress.hidden = !running;
+  elements.simulationProgress.hidden = !running || !state.synthetic;
   elements.simulationProgress.value = state.runtime?.progressPct ?? 0;
 }
 
@@ -1163,10 +1283,28 @@ async function triggerSimulation(action) {
       if (retry > 0) state.retryUntil = Date.now() + retry * 1_000;
       throw new Error(parsedBody?.error?.message ?? `Request failed (${response.status}).`);
     }
-    elements.simulationFeedback.textContent = action === "cancel"
+    if (!state.synthetic) {
+      if (
+        response.status !== 202 ||
+        typeof parsedBody?.runId !== "string" ||
+        parsedBody.status !== "started"
+      ) {
+        throw new Error(
+          "Unexpected live start response; acceptance is unverified. Do not retry blindly.",
+        );
+      }
+      beginLiveRun({
+        runId: parsedBody.runId,
+        kind: action === "trigger-race" ? "race" : "session",
+        raceId: action === "trigger-race" ? state.raceId : undefined,
+      });
+    }
+    if (state.synthetic || state.runtime?.status === "running") {
+      elements.simulationFeedback.textContent = action === "cancel"
       ? "Cancellation requested. Waiting for the server's terminal status."
-      : `Run started. ${state.synthetic ? "Watch the telemetry below." : "Live controls require seeded history and backend authorization."}`;
-    if (action !== "cancel") {
+      : `Run started. ${state.synthetic ? "Watch the telemetry below." : "Publishing generated telemetry through the live Fabric pipeline; watch the stream below."}`;
+    }
+    if (state.synthetic && action !== "cancel") {
       state.latestMetric = null;
       state.latestSessionStatus = null;
       state.recentRaceSplits = [];
@@ -1175,7 +1313,11 @@ async function triggerSimulation(action) {
       await refreshRaceSummary();
     }
   } catch (error) {
-    elements.simulationFeedback.textContent = error.message;
+    elements.simulationFeedback.textContent =
+      error.message +
+      (!state.synthetic
+        ? " A timeout or connection failure may occur after acceptance; do not retry blindly."
+        : "");
   } finally {
     state.simulationPending = false;
     if (state.synthetic) await refreshSimulationStatus();
@@ -1192,8 +1334,18 @@ elements.cancelSimulation.addEventListener("click", () => void triggerSimulation
 
 elements.contextForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (state.simulationPending) {
+    elements.simulationFeedback.textContent = "Wait for the current start request before changing context.";
+    return;
+  }
+  disconnectStream();
   state.athleteId = elements.athleteIdInput.value.trim();
   state.raceId = elements.raceIdInput.value.trim();
+  state.runtime = null;
+  state.receivedSessionSamples = 0;
+  elements.sessionSummary.innerHTML = "";
+  elements.simulationPanel.hidden = false;
+  updateSimulationControls();
   if (!state.mcpRaceId || state.selectedMcpTool === "query_race_splits") {
     state.mcpRaceId = state.raceId;
   }
@@ -1202,7 +1354,13 @@ elements.contextForm.addEventListener("submit", (event) => {
   updateAssistantAvailability();
   updateMcpAvailability();
   setQueryParameters();
-  void refreshCockpit();
+  void loadContext()
+    .then(refreshCockpit)
+    .catch((error) => {
+      elements.simulationFeedback.textContent = `Cannot apply athlete/race context: ${error.message}`;
+      elements.startSession.disabled = true;
+      elements.startRace.disabled = true;
+    });
 });
 
 elements.assistantForm.addEventListener("submit", async (event) => {

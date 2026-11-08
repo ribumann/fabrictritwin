@@ -28,6 +28,8 @@ export interface SimulationStatusFrame {
   type: "simulationStatus";
   runId: string;
   status: "running" | "completed" | "failed" | "cancelled";
+  kind?: "session" | "race";
+  raceId?: string;
 }
 
 export type StreamFrame =
