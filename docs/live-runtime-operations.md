@@ -9,6 +9,9 @@ Do not paste tokens, credentials, resource IDs, athlete IDs, raw logs, or actual
 metrics into public issues or commits. Query and log output may contain private
 configuration or data; inspect and redact it locally.
 
+For diagrams separating live requests, history/telemetry, the synthetic target,
+and protected image releases, see [Release architecture](release-architecture.md).
+
 ## What must become fresh
 
 The checked-in path is:
