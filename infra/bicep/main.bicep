@@ -32,7 +32,7 @@ param fabricCapacitySkuName string = 'F4'
 @description('UPN of the Fabric capacity administrator.')
 param fabricCapacityAdminUpn string
 
-@description('Entra app registration client ID for Streaming Backend / Console Easy Auth (from T019 provisioning script).')
+@description('Entra app registration client ID for Streaming Backend Easy Auth (from T019 provisioning script).')
 param authClientId string
 
 @description('Entra object IDs (users/groups) granted the "Foundry User" RBAC role on the Foundry account -- the identity-passthrough prerequisite for the Fabric Data Agent OBO tool call (ADR-008). Populated by provision-azure-resources.ps1 (T035), which resolves fabricCapacityAdminUpn to an object ID; no Entra app registration/consent grant is involved.')
@@ -45,7 +45,7 @@ param operatorPrincipalId string = ''
 @allowed(['Basic', 'Standard', 'Premium'])
 param acrSkuName string = 'Basic'
 
-@description('Container image tag to deploy for all five apps. Defaults to a placeholder until build-and-push-images.ps1 (T041) publishes real images.')
+@description('Container image tag to deploy for the four remaining workloads. Defaults to a placeholder until build-and-push-images.ps1 (T041) publishes real images.')
 param imageTag string = 'placeholder'
 
 @description('Explicit application runtime profile. Live preserves existing cloud-backed behavior; synthetic requires matching runtime images and protected hosted proxy authentication.')
@@ -61,16 +61,12 @@ resource existingBackend 'Microsoft.App/containerApps@2024-03-01' existing = {
 resource existingMcp 'Microsoft.App/containerApps@2024-03-01' existing = {
   name: '${namePrefix}-mcp-tools'
 }
-resource existingConsole 'Microsoft.App/containerApps@2024-03-01' existing = {
-  name: '${namePrefix}-console'
-}
 resource existingCockpit 'Microsoft.App/containerApps@2024-03-01' existing = {
   name: '${namePrefix}-cockpit'
 }
 
 var backendFqdn = contains(preservedWorkloads, 'streaming-backend') ? existingBackend.properties.configuration.ingress.fqdn : streamingBackend!.outputs.fqdn
 var mcpFqdn = contains(preservedWorkloads, 'mcp-tools') ? existingMcp.properties.configuration.ingress.fqdn : mcpToolServer!.outputs.fqdn
-var consoleFqdnValue = contains(preservedWorkloads, 'console') ? existingConsole.properties.configuration.ingress.fqdn : console!.outputs.fqdn
 var cockpitFqdnValue = contains(preservedWorkloads, 'cockpit') ? existingCockpit.properties.configuration.ingress.fqdn : cockpit!.outputs.fqdn
 
 @description('Cron expression (UTC) for the simulator daily generation run.')
@@ -101,7 +97,7 @@ param eventhouseQueryUri string = ''
 @description('Eventhouse/KQL database name used by the Streaming Backend\'s direct analyses/alerts query path (User Story 4), for example triatwin-dev-realtime. Left blank until Fabric item wiring is completed.')
 param eventhouseDatabaseName string = ''
 
-@description('Default athleteId used by the Demo Control Console\'s trigger buttons (T062) once a Data Agent/simulator run has produced a seeded athlete ID. Leave empty until then.')
+@description('Default athleteId used by Cockpit trigger controls once a Data Agent/simulator run has produced a seeded athlete ID. Leave empty until then.')
 param defaultAthleteId string = ''
 
 @description('Workspace ID of the existing Fabric/Power BI workspace that holds the dashboard report embedded by the cockpit. Leave empty until provisioned/configured.')
@@ -182,7 +178,6 @@ module containerRegistry 'modules/container-registry.bicep' = {
     acrPullPrincipalIds: [
       managedIdentities.outputs.streamingBackendIdentityPrincipalId
       managedIdentities.outputs.mcpToolServerIdentityPrincipalId
-      managedIdentities.outputs.consoleIdentityPrincipalId
       managedIdentities.outputs.cockpitIdentityPrincipalId
       managedIdentities.outputs.simulatorIdentityPrincipalId
     ]
@@ -229,7 +224,6 @@ module streamingBackend 'modules/streaming-backend.bicep' = if (!contains(preser
     eventhouseQueryUri: eventhouseQueryUri
     eventhouseDatabaseName: eventhouseDatabaseName
     athletePrincipalMapJson: athletePrincipalMapJson
-    consoleManagedIdentityClientId: managedIdentities.outputs.consoleIdentityClientId
     cockpitManagedIdentityClientId: managedIdentities.outputs.cockpitIdentityClientId
     assistantManagedIdentityClientId: managedIdentities.outputs.foundryAgentIdentityClientId
     foundryProjectEndpoint: foundryAgent.outputs.projectEndpoint
@@ -260,23 +254,6 @@ module mcpToolServer 'modules/mcp-tool-server.bicep' = if (!contains(preservedWo
     // Apps assigns to an internal-ingress app) -- computed here, not read back from this same
     // module's own output, to avoid a circular dependency.
     internalFqdn: '${namePrefix}-mcp-tools.internal.${containerAppsEnv.outputs.defaultDomain}'
-  }
-}
-
-module console 'modules/console.bicep' = if (!contains(preservedWorkloads, 'console')) {
-  name: 'console'
-  params: {
-    location: location
-    namePrefix: namePrefix
-    tags: tags
-    environmentId: containerAppsEnv.outputs.environmentId
-    userAssignedIdentityId: managedIdentities.outputs.consoleIdentityId
-    userAssignedIdentityClientId: managedIdentities.outputs.consoleIdentityClientId
-    registryLoginServer: containerRegistry.outputs.registryLoginServer
-    imageTag: imageTag
-    authClientId: authClientId
-    streamingBackendBaseUrl: 'https://${backendFqdn}'
-    defaultAthleteId: defaultAthleteId
   }
 }
 
@@ -349,6 +326,5 @@ output fabricCapacityName string = fabricCapacity.outputs.capacityName
 output containerRegistryLoginServer string = containerRegistry.outputs.registryLoginServer
 output keyVaultUri string = keyVault.outputs.keyVaultUri
 output streamingBackendFqdn string = backendFqdn
-output consoleFqdn string = consoleFqdnValue
 output cockpitFqdn string = cockpitFqdnValue
 output foundryProjectName string = foundryAgent.outputs.projectName

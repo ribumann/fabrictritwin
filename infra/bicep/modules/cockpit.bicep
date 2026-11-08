@@ -160,7 +160,7 @@ resource easyAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
     }
     globalValidation: {
       // AllowAnonymous: Cockpit's own MI already authorizes almost all functionality
-      // (Power BI embed access control has its own explicit allowlist check; MCP/console
+      // (Power BI embed access control has its own explicit allowlist check; MCP
       // actions call the backend via MI). Only the Athlete Assistant's native Fabric Data
       // Agent grounding needs a signed-in human (platform restriction -- see ADR-008); the
       // Assistant gracefully degrades to MCP-tool-only MI-mode for anonymous visitors.

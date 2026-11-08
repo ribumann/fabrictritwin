@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-Builds and pushes the five application container images (console, cockpit,
+Builds and pushes the four remaining application container images (cockpit,
 streaming-backend, mcp-tools, simulator) to the project's Azure Container Registry via `az acr build`.
 
 .DESCRIPTION
@@ -50,8 +50,8 @@ and Containerfile path -- consumed by deploy-container-apps.ps1 (T042).
 Builds and pushes all four images tagged `v1`.
 
 .EXAMPLE
-./build-and-push-images.ps1 -SubscriptionId 7e6d4db3-7e33-54a8-9961-0da1b232e787 -ImageTag v2 -Apps console
-Rebuilds only the console image tagged `v2`.
+./build-and-push-images.ps1 -SubscriptionId 7e6d4db3-7e33-54a8-9961-0da1b232e787 -ImageTag v2 -Apps cockpit
+Rebuilds only the Cockpit image tagged `v2`.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -65,8 +65,8 @@ param(
     [Parameter(Mandatory)]
     [string]$ImageTag,
 
-    [ValidateSet('console', 'cockpit', 'streaming-backend', 'mcp-tools', 'simulator')]
-    [string[]]$Apps = @('console', 'cockpit', 'streaming-backend', 'mcp-tools', 'simulator')
+    [ValidateSet('cockpit', 'streaming-backend', 'mcp-tools', 'simulator')]
+    [string[]]$Apps = @('cockpit', 'streaming-backend', 'mcp-tools', 'simulator')
 )
 
 $ErrorActionPreference = 'Stop'

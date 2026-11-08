@@ -8,8 +8,7 @@
     "apps/simulator",
     "apps/streaming-backend",
     "apps/mcp-tools",
-    "apps/cockpit",
-    "apps/console"
+    "apps/cockpit"
   ],
   "scripts": {
     "lint": "eslint \"apps/*/src/**/*.ts\"",

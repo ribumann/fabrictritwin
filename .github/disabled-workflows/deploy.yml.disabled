@@ -15,7 +15,7 @@ on:
         default: rg-triathlon-twin-demo
         type: string
       apps:
-        description: Comma-separated subset of apps to build/deploy (console,streaming-backend,mcp-tools,simulator). Empty = all four.
+        description: Comma-separated subset of apps to build/deploy (cockpit,streaming-backend,mcp-tools,simulator). Empty = all four.
         required: false
         default: ''
         type: string

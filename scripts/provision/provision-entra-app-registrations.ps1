@@ -85,7 +85,7 @@ function Set-EasyAuthApiConfiguration {
     `RequestedAccessTokenVersion = 2` is required so that genuine v2.0-endpoint token requests
     (see get-bearer-token.ps1's device-code flow) come back with an `iss` claim
     (`https://login.microsoftonline.com/{tenant}/v2.0`) matching Easy Auth's configured
-    `openIdIssuer` (console.bicep / streaming-backend.bicep both use the v2.0 issuer format).
+    `openIdIssuer` (the streaming-backend module uses the v2.0 issuer format).
     NOTE: `az account get-access-token` (both `--resource` and `--scope` forms) is documented
     to always return v1.0-format tokens regardless of this setting, and Windows' WAM broker
     additionally caches that v1 token outside `az cache purge`'s reach

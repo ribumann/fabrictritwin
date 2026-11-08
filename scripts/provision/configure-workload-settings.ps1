@@ -26,7 +26,7 @@ $ErrorActionPreference = 'Stop'
 $context = Get-RuntimeArmContext -SubscriptionId $SubscriptionId -TenantId $TenantId
 $resourceRoot = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.App"
 $changed = @()
-foreach ($workload in @('streaming-backend', 'simulator', 'mcp-tools', 'console', 'cockpit')) {
+foreach ($workload in @('streaming-backend', 'simulator', 'mcp-tools', 'cockpit')) {
     $envMap = @{}
     $secrets = @{}
     if ($workload -in @('streaming-backend', 'simulator')) {
@@ -44,7 +44,7 @@ foreach ($workload in @('streaming-backend', 'simulator', 'mcp-tools', 'console'
         if ($EventhouseQueryUri) { $envMap.EVENTHOUSE_QUERY_URI = $EventhouseQueryUri }
         if ($EventhouseDatabaseName) { $envMap.EVENTHOUSE_DATABASE_NAME = $EventhouseDatabaseName }
     }
-    if ($workload -in @('console', 'cockpit') -and $DefaultAthleteId) {
+    if ($workload -eq 'cockpit' -and $DefaultAthleteId) {
         $envMap.DEFAULT_ATHLETE_ID = [guid]::Parse($DefaultAthleteId).ToString()
     }
     $updateMap = $workload -eq 'streaming-backend' -and ($DefaultAthleteId -or $AuthorizedAthletePrincipalMap.Count -gt 0)
@@ -57,7 +57,7 @@ foreach ($workload in @('streaming-backend', 'simulator', 'mcp-tools', 'console'
         $mapJson = Merge-RuntimePrincipalMap -ExistingJson $mapJson -Additions $AuthorizedAthletePrincipalMap
         if ($DefaultAthleteId) {
             $serviceMap = @{}
-            foreach ($caller in @('console', 'cockpit')) {
+            foreach ($caller in @('cockpit')) {
                 $identity = Invoke-RuntimeArm -Context $context -ResourceId "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.ManagedIdentity/userAssignedIdentities/$NamePrefix-id-$caller" -ApiVersion '2023-01-31'
                 $serviceMap[[guid]::Parse($identity.properties.principalId).ToString()] = $DefaultAthleteId
             }

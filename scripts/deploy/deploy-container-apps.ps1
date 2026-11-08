@@ -1,12 +1,12 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-Rolls the Console, Cockpit, Streaming Backend, MCP Tool Server Container Apps and the Simulator
+Rolls the Cockpit, Streaming Backend, MCP Tool Server Container Apps and the Simulator
 Container Apps Job to a freshly built image tag.
 
 .DESCRIPTION
 Implements T042 (specs/001-triathlon-training-twin/tasks.md). Wraps `az containerapp update`
-(for the four ingress-based Container Apps from T020/T021/T022/T123) and
+(for the three remaining ingress-based Container Apps) and
 `az containerapp job update` (for the Simulator Job from T023) to switch each resource's
 container image to `<registryLoginServer>/<app>:<imageTag>`, replacing whatever image
 (including the `imageTag = 'placeholder'` bootstrap image) is currently deployed.
@@ -27,7 +27,7 @@ including during -WhatIf.
 Resource group containing the Container Apps/Job. Defaults to 'rg-triathlon-twin-demo'.
 
 .PARAMETER NamePrefix
-Resource name prefix used to derive each Container App/Job's name (`<namePrefix>-console`,
+Resource name prefix used to derive each Container App/Job's name (`<namePrefix>-cockpit`,
 etc., per the `infra/bicep/modules/*.bicep` naming convention). Defaults to 'triatwin-dev'.
 
 .PARAMETER RegistryName
@@ -38,7 +38,7 @@ removed), matching `container-registry.bicep`'s naming convention.
 Tag to deploy, matching the tag just built by build-and-push-images.ps1 (T041). Required.
 
 .PARAMETER Apps
-Which of the five apps to roll. Defaults to all five. Accepts any subset for faster
+Which of the four remaining workloads to roll. Defaults to all four. Accepts any subset for faster
 iteration on a single app.
 
 .OUTPUTS
@@ -47,7 +47,7 @@ PSCustomObject array, one entry per updated app, with AppName, ResourceType
 
 .EXAMPLE
 ./deploy-container-apps.ps1 -SubscriptionId 7e6d4db3-7e33-54a8-9961-0da1b232e787 -ImageTag v1
-Rolls all four apps/job to the `v1` image tag.
+Rolls all three apps and the simulator job to the `v1` image tag.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -61,8 +61,8 @@ param(
     [Parameter(Mandatory)]
     [string]$ImageTag,
 
-    [ValidateSet('console', 'cockpit', 'streaming-backend', 'mcp-tools', 'simulator')]
-    [string[]]$Apps = @('console', 'cockpit', 'streaming-backend', 'mcp-tools', 'simulator')
+    [ValidateSet('cockpit', 'streaming-backend', 'mcp-tools', 'simulator')]
+    [string[]]$Apps = @('cockpit', 'streaming-backend', 'mcp-tools', 'simulator')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -70,7 +70,6 @@ $ErrorActionPreference = 'Stop'
 # Each app's Container App/Job resource name and Azure resource type, per the corresponding
 # infra/bicep/modules/*.bicep file's `name:` property.
 $appResourceMap = @{
-    'console'           = @{ ResourceName = "$NamePrefix-console"; ResourceType = 'containerapp' }
     'cockpit'           = @{ ResourceName = "$NamePrefix-cockpit"; ResourceType = 'containerapp' }
     'streaming-backend' = @{ ResourceName = "$NamePrefix-streaming-backend"; ResourceType = 'containerapp' }
     'mcp-tools'         = @{ ResourceName = "$NamePrefix-mcp-tools"; ResourceType = 'containerapp' }
@@ -78,7 +77,6 @@ $appResourceMap = @{
 }
 
 $appTargetPortMap = @{
-    'console'           = 3200
     'cockpit'           = 3300
     'streaming-backend' = 3000
     'mcp-tools'         = 3100

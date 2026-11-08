@@ -98,7 +98,7 @@ function Assert-ResourceGroup {
 function Get-WorkloadManagedIdentityPrincipalId {
     <#
     Best-effort lookup of a workload's user-assigned managed identity object id (principalId),
-    used to authorize service-to-service callers like the Console and Cockpit in
+    used to authorize the Cockpit service identity in
     ATHLETE_PRINCIPAL_MAP (FR-017). Returns $null (not an error) when the identity does not exist
     yet -- e.g. the very first bootstrap run, before managed-identities.bicep has ever deployed --
     so the caller can fall back to an admin-only mapping for that run and pick up the managed
@@ -182,7 +182,7 @@ $armContext = Get-RuntimeArmContext -SubscriptionId $SubscriptionId -TenantId $T
 $TenantId = $armContext.TenantId
 $preservedWorkloads = @()
 $existingProfiles = @()
-foreach ($workload in @('console', 'cockpit', 'streaming-backend', 'mcp-tools', 'simulator')) {
+foreach ($workload in @('cockpit', 'streaming-backend', 'mcp-tools', 'simulator')) {
     $resourceType = if ($workload -eq 'simulator') { 'jobs' } else { 'containerApps' }
     $resourceId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.App/$resourceType/$NamePrefix-$workload"
     $existing = Invoke-RuntimeArm -Context $armContext -ResourceId $resourceId -AllowNotFound
@@ -298,10 +298,6 @@ if (-not [string]::IsNullOrWhiteSpace($DefaultAthleteId)) {
     # Only explicit humans are authorized. Runtime setup adds the distinct Foundry project
     # identity after it exists; the account identity is not a substitute for that caller.
     $athletePrincipalMap = (Merge-RuntimePrincipalMap -Additions $AuthorizedAthletePrincipalMap) | ConvertFrom-Json -AsHashtable
-    $consolePrincipalId = Get-WorkloadManagedIdentityPrincipalId -ResourceGroupName $ResourceGroupName -NamePrefix $NamePrefix -WorkloadName 'console'
-    if ($consolePrincipalId) {
-        $athletePrincipalMap[$consolePrincipalId] = $DefaultAthleteId
-    }
     $cockpitPrincipalId = Get-WorkloadManagedIdentityPrincipalId -ResourceGroupName $ResourceGroupName -NamePrefix $NamePrefix -WorkloadName 'cockpit'
     if ($cockpitPrincipalId) {
         $athletePrincipalMap[$cockpitPrincipalId] = $DefaultAthleteId
@@ -362,7 +358,6 @@ $fabricCapacityName = $outputs.fabricCapacityName.value
 $containerRegistryLoginServer = $outputs.containerRegistryLoginServer.value
 $keyVaultUri = $outputs.keyVaultUri.value
 $streamingBackendFqdn = $outputs.streamingBackendFqdn.value
-$consoleFqdn = $outputs.consoleFqdn.value
 $cockpitFqdn = $outputs.cockpitFqdn.value
 $foundryProjectName = $outputs.foundryProjectName.value
 
@@ -383,9 +378,6 @@ if ($LakehouseOneLakeFileSystem -or $LakehouseOneLakePath -or $EventstreamEventH
 Write-Host ''
 Write-Host '--- Step 4/4: Entra app registration (T019, second pass -- register Easy Auth callback URLs) ---'
 $redirectUris = @()
-if ($consoleFqdn) {
-    $redirectUris += "https://$consoleFqdn/.auth/login/aad/callback"
-}
 if ($cockpitFqdn) {
     $redirectUris += "https://$cockpitFqdn/.auth/login/aad/callback"
 }
@@ -407,7 +399,6 @@ $result = [PSCustomObject]@{
     ContainerRegistryLoginServer  = $containerRegistryLoginServer
     KeyVaultUri                   = $keyVaultUri
     StreamingBackendFqdn          = $streamingBackendFqdn
-    ConsoleFqdn                   = $consoleFqdn
     CockpitFqdn                   = $cockpitFqdn
     FoundryProjectName            = $foundryProjectName
     AuthClientId                  = $entraResult.AuthClientId

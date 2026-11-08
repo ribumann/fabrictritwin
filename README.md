@@ -5,8 +5,10 @@ training analyses, alerts, and a Cockpit operator interface.
 
 The same Cockpit supports an account-free synthetic demo and protected live
 execution. Live execution requires your own Azure, Fabric and optional
-Foundry/Power BI configuration. The legacy Console remains for a following,
-narrow cleanup; no separate UI is needed for the synthetic demo.
+Foundry/Power BI configuration. Cockpit is the only operator UI shipped by this
+repository. Legacy Console source, provisioning, and release targets are retired.
+This does not delete a previously deployed cloud Console app or identity; exact
+cloud cleanup remains a separate, review-gated operation.
 No private deployment history or operational data is included.
 
 ## Account-free demo
@@ -99,7 +101,8 @@ See [security reporting guidance](SECURITY.md) for vulnerability disclosures.
 - [x] Publish the portable configuration/identity inventory and contributor/security guidance.
 - [ ] Add safe Actions CI and prove protected deployment before application changes.
 - [x] Provide an account-free synthetic demo using the same Cockpit.
-- [ ] Consolidate the Console into the Cockpit with bounded anonymous race controls.
+- [x] Consolidate the operator UI into Cockpit and retire the legacy Console from source and release configuration.
+- [ ] Inventory and separately approve cleanup of any pre-existing cloud Console app, identity, and stale callback/authorization entries.
 - [ ] Verify live Fabric/Foundry paths and document human consent/platform gates.
 - [ ] Complete portable architecture, costs, recovery, demo and operator documentation.
 

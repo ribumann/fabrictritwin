@@ -5,13 +5,10 @@ synthetic target**, and the **protected image-release lane**. Arrows describe
 data or request paths, not proof of availability. No operator-specific resource
 names, identities, athlete identifiers, credentials, or measurements belong here.
 
-Source baseline: main at `9c618c69a7cf4887170089663542acd67e287c75`
-([runbook #10](https://github.com/ribumann/fabrictritwin/pull/10)).
-Status snapshot: **7 November 2026**. The bounded synthetic runtime/UI is a
-separate, **unmerged candidate**
-([#9](https://github.com/ribumann/fabrictritwin/pull/9), inspected head
-`2e567a3317f26131dce7814c73840dc701d7e87d`). Its diagram is a target,
-not a claim that main or the public deployment already runs it.
+Source baseline: main at `61a0ab8` (account-free Cockpit demo, with the
+subsequent hosted-profile safeguards and runtime fixes). Status snapshot:
+**8 November 2026**. These diagrams describe checked-in source, not proof of
+the current resources or serving revision in any tenant.
 
 ## Live request and identity boundaries
 
@@ -26,7 +23,6 @@ flowchart LR
     Query["Eventhouse queries"]
     Optional["Delegated Fabric: human sign-in"]
     PowerBI["Optional Power BI embedding"]
-    Legacy["Legacy Console: removal pending"]
 
     Visitor -->|"Same-origin HTTPS API / WSS"| Cockpit
     Cockpit -->|"Service-identity token"| Auth
@@ -40,7 +36,6 @@ flowchart LR
     Optional -.->|"Native Fabric Data Agent"| Foundry
     Cockpit -.->|"Embedding service-principal credential"| PowerBI
     PowerBI -.->|"Short-lived report embed token via Cockpit"| Visitor
-    Legacy -.->|"Existing service-auth calls"| Auth
 ```
 
 Cockpit is the single intended operator UI and public custom-domain entry point.
@@ -48,8 +43,10 @@ Its anonymous surface does **not** make the backend anonymous: Cockpit authentic
 REST and WebSocket upstream calls using its workload identity, and backend
 authorization maps the caller to an allowed athlete. Backend external ingress
 remains authenticated; MCP ingress is internal-only, not a second public UI.
-The legacy Console still exists and is removal-pending, not a second intended
-operator surface.
+Legacy Console source, provisioning, and release targets are retired. A
+previously deployed Console app or identity may still exist: incremental
+provisioning does not delete it, and existing authorization/callback entries are
+preserved until exact-scope cloud cleanup is separately reviewed and approved.
 
 Anonymous live assistant calls use Foundry with MCP tools; this remains a
 cloud-backed assistant, not a credential-free one. Foundry calls the authenticated
@@ -123,11 +120,11 @@ The simulator job and backend can publish using the configured Eventstream SAS.
 In-process WebSocket frames and completion summaries are a separate delivery path:
 they do not establish that the corresponding rows reached Eventhouse.
 
-At this documentation snapshot, daily job -> notebook -> public API freshness
-and a current-date, MCP-grounded assistant response were verified in the existing
-environment. Bounded legacy race WebSocket delivery/completion was also observed,
-but a Fabric ingestion failure had paused derived streams and recovery remained
-under investigation. Do not treat that as healthy end-to-end telemetry ingestion.
+An earlier live validation observed daily job -> notebook -> public API freshness
+and a current-date, MCP-grounded assistant response in its environment. Bounded
+legacy race WebSocket delivery/completion was also observed, but a Fabric
+ingestion failure had paused derived streams at that time. Do not treat those
+historical observations as current health or healthy end-to-end telemetry ingestion.
 Use the [live runbook](live-runtime-operations.md) to recheck the actual serving
 revision and individual source dates; neither HTTP 200 nor an aggregate `asOf`
 establishes freshness of every component.
@@ -138,12 +135,12 @@ Sources: [daily generator](../apps/simulator/src/index.ts),
 [KQL definitions](../infra/fabric/eventhouse/DatabaseSchema.kql),
 and [live simulation](../apps/streaming-backend/src/api/simulate.ts).
 
-## Account-free synthetic target: isolated local processes
+## Account-free synthetic demo: isolated local processes
 
 ```mermaid
 flowchart LR
     Browser["Local browser"]
-    Launcher["Candidate demo launcher"]
+    Launcher["Local demo launcher"]
     Cockpit["One Cockpit process"]
     Backend["Exactly one backend process"]
     Memory["Bounded in-memory history / state"]
@@ -162,20 +159,20 @@ flowchart LR
     Assistant -->|"Explicit synthetic provenance"| Backend
 ```
 
-On the baseline main, exact `DEMO_PROFILE=synthetic` selects only the existing
-history/insights foundation; route authorization and other live execution paths
-remain unchanged. Unset means `live`; invalid profiles fail explicitly, and live
-errors must not fall back to synthetic data. See the
-[foundation's current contract](synthetic-runtime-foundation.md).
+Exact `DEMO_PROFILE=synthetic` selects the local synthetic history/insights and
+bounded session/race experience; unset means `live`, invalid profiles fail
+explicitly, and live errors do not fall back to synthetic data. The account-free
+launcher supervises one Cockpit and one backend, sets the profile on both, waits
+for readiness and stops its companion on failure. Package restore/build needs
+downloads; the synthetic application path needs no Azure/Fabric account,
+credentials, cloud storage, MCP, Foundry, Power BI or cloud ingestion. This is
+logical/process isolation, not an OS network sandbox.
 
-The candidate adds a credential-free runner and anonymous fixed-context routes
-to the same Cockpit, with deterministic data/provenance, bounded session/race
-controls, streaming, cancellation, completion summaries and a clearly labelled
-non-LLM assistant. Its launcher supervises one Cockpit and one backend, sets the
-profile on both, waits for readiness and stops the companion on failure.
-Package restore/build requires downloads; the synthetic application path needs
-no Azure/Fabric account, credentials, cloud storage, MCP, Foundry, Power BI or
-cloud ingestion. This is logical/process isolation, not an OS network sandbox.
+The local Cockpit-to-backend HTTP loopback is the only service-auth bypass.
+Hosted Cockpit-to-backend calls retain managed-identity authentication, and
+hosted synthetic use requires exactly one backend instance because admission and
+state are process-local. See the
+[hosted runtime profile safeguards](hosted-runtime-profiles.md).
 
 Admission is **one active run per backend process**, no queue, and at most two
 starts per rolling minute per process, with explicit busy/rate feedback. State
@@ -185,15 +182,12 @@ up to **three replicas**; hosted synthetic use requires separately enforced
 no distributed lock or environment-wide rate limit. The image-only updater
 below preserves scale; it cannot establish this prerequisite.
 
-Candidate sources (not present on the baseline):
-[launcher](https://github.com/ribumann/fabrictritwin/blob/2e567a3317f26131dce7814c73840dc701d7e87d/scripts/demo.mjs),
-[profile mounting](https://github.com/ribumann/fabrictritwin/blob/2e567a3317f26131dce7814c73840dc701d7e87d/apps/streaming-backend/src/index.ts),
-and [bounded routes](https://github.com/ribumann/fabrictritwin/blob/2e567a3317f26131dce7814c73840dc701d7e87d/apps/streaming-backend/src/api/synthetic.ts).
-Earlier candidate cloud CI succeeded; fresh checks for this head were pending.
-Hosted synthetic empty-auth proxy compatibility remained under correction while
-preserving the backend's live Easy Auth boundary. Neither CI success nor the
-local target is a final clean-clone/browser handoff,
-Console retirement, merge, image publication, or public synthetic deployment.
+Sources: [demo launcher](../scripts/demo.mjs),
+[backend profile mounting](../apps/streaming-backend/src/index.ts),
+and [bounded synthetic routes](../apps/streaming-backend/src/api/synthetic.ts).
+Local CI and image validation establish source/build behavior only; neither
+proves hosted deployment, live Fabric health, image publication, or cloud
+Console cleanup.
 
 ## Release lane: validation is not publication or deployment
 
@@ -231,8 +225,8 @@ it does not promote the PR's local image or deploy it.
 The separate main-only `azure-deploy` lane requires exact
 `DEPLOYMENT_ENABLED=true`, environment approval, a reviewed existing digest and
 `deploy: true` for a write. It updates one existing Cockpit, backend, MCP app or
-simulator job per dispatch; Console is excluded from publication/deployment
-but still included in build-only CI pending retirement. There is no infrastructure
+simulator job per dispatch; the retired Console is absent from build,
+publication, and deployment targets. There is no infrastructure
 provisioning, secret/identity/scale/domain overlay change, capacity resume or job
 start. Tags are not immutable; review app, source revision, publication run and
 digest together. Environment names alone do not enforce protection.

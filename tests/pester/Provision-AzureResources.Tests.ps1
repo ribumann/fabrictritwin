@@ -17,14 +17,12 @@ BeforeAll {
     $script:AuthObjectId = '33333333-3333-3333-3333-333333333333'
     $script:ServicePrincipalId = '44444444-4444-4444-4444-444444444444'
     $script:AdminObjectId = '55555555-5555-5555-5555-555555555555'
-    $script:ConsoleFqdn = 'triatwin-dev-console.polandcentral.azurecontainerapps.io'
     $script:StreamingBackendFqdn = 'triatwin-dev-streaming.polandcentral.azurecontainerapps.io'
     $script:DeploymentOutputsJson = (@{
             fabricCapacityName           = @{ value = 'triatwin-dev-fabric' }
             containerRegistryLoginServer = @{ value = 'triatwindev.azurecr.io' }
             keyVaultUri                  = @{ value = 'https://triatwin-dev-kv.vault.azure.net/' }
             streamingBackendFqdn         = @{ value = $script:StreamingBackendFqdn }
-            consoleFqdn                  = @{ value = $script:ConsoleFqdn }
             foundryProjectName           = @{ value = 'triatwin-dev-foundry' }
         } | ConvertTo-Json -Depth 5 -Compress)
 
@@ -251,7 +249,6 @@ Describe 'provision-azure-resources.ps1 (T038)' {
             $result.ContainerRegistryLoginServer | Should -Be 'triatwindev.azurecr.io'
             $result.KeyVaultUri | Should -Be 'https://triatwin-dev-kv.vault.azure.net/'
             $result.StreamingBackendFqdn | Should -Be $script:StreamingBackendFqdn
-            $result.ConsoleFqdn | Should -Be $script:ConsoleFqdn
             $result.FoundryProjectName | Should -Be 'triatwin-dev-foundry'
             $result.AuthClientId | Should -Be $script:AuthClientId
             $result.AdminObjectId | Should -Be $script:AdminObjectId
@@ -275,8 +272,8 @@ Describe 'provision-azure-resources.ps1 (T038)' {
             $redirectUpdate = $global:T038_UpdateMgApplicationCalls | Where-Object { $_.Web } | Select-Object -Last 1
             $redirectUpdate | Should -Not -BeNullOrEmpty
             $redirectUpdate.ApplicationId | Should -Be $script:AuthObjectId
-            $redirectUpdate.Web.RedirectUris | Should -Contain "https://$($script:ConsoleFqdn)/.auth/login/aad/callback"
             $redirectUpdate.Web.RedirectUris | Should -Contain "https://$($script:StreamingBackendFqdn)/.auth/login/aad/callback"
+            $redirectUpdate.Web.RedirectUris | Should -Not -Contain 'https://triatwin-dev-console.polandcentral.azurecontainerapps.io/.auth/login/aad/callback'
         }
 
         It 'preserves only present workloads in a mixed deployment without copying their images or secrets' {
@@ -286,7 +283,7 @@ Describe 'provision-azure-resources.ps1 (T038)' {
             $global:T038_DeploymentParameters.parameters.preservedWorkloads.value | Should -Be @('cockpit', 'streaming-backend', 'simulator')
             $global:T038_DeploymentParameters.parameters.PSObject.Properties.Name | Should -Not -Contain 'eventstreamEventHubConnectionString'
             $global:T038_DeploymentParameters | ConvertTo-Json -Depth 20 | Should -Not -Match ':unique'
-            Should -Invoke Invoke-WebRequest -Times 5 -Exactly -ParameterFilter {
+            Should -Invoke Invoke-WebRequest -Times 4 -Exactly -ParameterFilter {
                 $Method -eq 'GET' -and $Uri -like "https://management.azure.com/subscriptions/$global:T038_SubscriptionId/resourceGroups/rg-triathlon-twin-demo/providers/Microsoft.App/*"
             }
             Should -Invoke az -Times 0 -ParameterFilter { $args[0] -eq 'account' -and $args[1] -eq 'set' }
@@ -369,8 +366,6 @@ Describe 'provision-azure-resources.ps1 (T038)' {
             $result = & $script:ProvisionScript -SubscriptionId $script:SubscriptionId
 
             $result.AuthClientId | Should -Be $script:AuthClientId
-            $result.ConsoleFqdn | Should -Be $script:ConsoleFqdn
-
             Should -Invoke -CommandName az -Times 1 -Exactly -ParameterFilter {
                 $args.Count -ge 2 -and $args[0] -eq 'group' -and $args[1] -eq 'exists'
             }

@@ -10,6 +10,7 @@ function New-RuntimeFixture {
         ProjectOid = '77777777-7777-7777-7777-777777777777'
         ProjectClientId = '88888888-8888-8888-8888-888888888888'
         BackendOid = '99999999-9999-9999-9999-999999999999'
+        ConsoleOid = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
         UserOid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
         Resources = @{}
         Requests = [System.Collections.Generic.List[object]]::new()
@@ -36,7 +37,7 @@ function New-RuntimeFixture {
         $identityId = "$($f.Root)/Microsoft.ManagedIdentity/userAssignedIdentities/triatwin-dev-id-$workload"
         $oid = switch ($workload) {
             'streaming-backend' { $f.BackendOid }
-            'console' { 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' }
+            'console' { $f.ConsoleOid }
             default { 'cccccccc-cccc-cccc-cccc-cccccccccccc' }
         }
         $f.Resources[$identityId] = @{ id = $identityId; properties = @{ principalId = $oid; clientId = $oid } }

@@ -5,7 +5,7 @@ app="${1:?app is required}"
 revision="${2:?revision is required}"
 image="${3:?image is required}"
 case "$app" in
-  simulator|cockpit|streaming-backend|mcp-tools|console) ;;
+  simulator|cockpit|streaming-backend|mcp-tools) ;;
   *) echo 'Invalid application.' >&2; exit 1 ;;
 esac
 if [[ ! "$revision" =~ ^[a-f0-9]{40}$ ]]; then

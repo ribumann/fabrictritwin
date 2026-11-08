@@ -324,7 +324,7 @@ function toJsonLines(records: readonly unknown[]): string {
  * Deterministically derives the "goal race" id `seedHistory` will assign a given athlete when no
  * explicit `goalRaceId` override is supplied (the normal case -- no caller in this repo passes
  * one). Pure function of `athleteId` (and the same default seed `seedHistory` uses), so any
- * consumer -- e.g. the Demo Control Console's "Trigger Race" button, which needs a real raceId to
+ * consumer -- e.g. Cockpit's "Trigger Race" action, which needs a real raceId to
  * pre-fill without an extra authenticated round-trip to the Streaming Backend/Lakehouse -- can
  * compute the exact same id `seedHistory` already wrote to the Race table, with no I/O.
  */

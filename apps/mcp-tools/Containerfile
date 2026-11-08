@@ -3,7 +3,6 @@ FROM node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4
 WORKDIR /workspace
 
 COPY package.json package-lock.json ./
-COPY apps/console/package.json apps/console/package.json
 COPY apps/streaming-backend/package.json apps/streaming-backend/package.json
 COPY apps/mcp-tools/package.json apps/mcp-tools/package.json
 COPY apps/cockpit/package.json apps/cockpit/package.json
@@ -20,7 +19,6 @@ FROM node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4
 WORKDIR /workspace
 
 COPY package.json package-lock.json ./
-COPY apps/console/package.json apps/console/package.json
 COPY apps/streaming-backend/package.json apps/streaming-backend/package.json
 COPY apps/mcp-tools/package.json apps/mcp-tools/package.json
 COPY apps/cockpit/package.json apps/cockpit/package.json

@@ -96,6 +96,8 @@ Describe 'Runtime connection reconciliation' {
         $policy.allowedApplications | Should -Contain $f.ProjectClientId
         $policy.allowedApplications | Should -Contain $f.CockpitClientId
         $policy.allowedApplications | Should -Contain 'dddddddd-dddd-dddd-dddd-dddddddddddd'
+        $policy.allowedApplications | Should -Not -Contain $f.ConsoleOid
+        @($f.Requests | Where-Object Uri -Match 'triatwin-dev-console|triatwin-dev-id-console').Count | Should -Be 0
         # Foundry's project-managed-identity MCP callback is rejected by Easy Auth despite a
         # fully valid, allow-listed token (a platform limitation -- see mcp-caller.ts); this
         # path must be excluded so the backend's own JWKS-verified check (which still enforces
@@ -247,8 +249,8 @@ Describe 'Runtime connection reconciliation' {
             EventhouseDatabaseName = 'realtime'; DefaultAthleteId = $f.AthleteId
         }
         $result = & $script:SettingsScript @settings
-        $result.ChangedWorkloads.Count | Should -Be 5
-        foreach ($workload in @('streaming-backend', 'simulator', 'mcp-tools', 'console', 'cockpit')) {
+        $result.ChangedWorkloads.Count | Should -Be 4
+        foreach ($workload in @('streaming-backend', 'simulator', 'mcp-tools', 'cockpit')) {
             $kind = if ($workload -eq 'simulator') { 'jobs' } else { 'containerApps' }
             $resource = $f.Resources["$($f.Root)/Microsoft.App/$kind/triatwin-dev-$workload"]
             $resource.properties.template.containers[0].image | Should -Be "registry.example.test/$workload`:distinct-tag"
@@ -257,6 +259,7 @@ Describe 'Runtime connection reconciliation' {
             ($resource.properties.configuration.secrets | Where-Object name -eq keep-secret).value | Should -Be 'DO-NOT-LEAK-NATIVE-SECRET'
             ($resource.properties.template.containers[0].env | Where-Object name -eq KEEP_SETTING).value | Should -Be "keep-$workload"
         }
+        @($f.Requests | Where-Object Uri -Match 'triatwin-dev-console|triatwin-dev-id-console').Count | Should -Be 0
         $f.Requests.Clear()
         (& $script:SettingsScript @settings).ChangedWorkloads.Count | Should -Be 0
         @($f.Requests | Where-Object Method -eq 'PATCH').Count | Should -Be 0

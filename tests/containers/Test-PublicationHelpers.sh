@@ -10,7 +10,7 @@ EOF
 chmod +x "$tmp/docker"
 export PATH="$tmp:$PATH" TEST_BUILD_ARGS="$tmp/build-args"
 revision=0123456789abcdef0123456789abcdef01234567
-for app in simulator cockpit streaming-backend mcp-tools console; do
+for app in simulator cockpit streaming-backend mcp-tools; do
   bash scripts/deploy/build-container-image.sh "$app" "$revision" "local/$app:$revision"
   grep -Fx -- "apps/$app/Containerfile" "$TEST_BUILD_ARGS" > /dev/null
   grep -Fx -- "org.opencontainers.image.revision=$revision" "$TEST_BUILD_ARGS" > /dev/null
