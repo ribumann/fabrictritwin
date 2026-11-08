@@ -51,6 +51,39 @@ Only HTTP loopback (`localhost`, `127.0.0.1`, or `[::1]`) bypasses service-token
 acquisition for the local demo. A non-loopback HTTP upstream or a hosted HTTPS
 upstream without a scope fails at startup; it never retries anonymously.
 
+## Fabric-connected public runtime
+
+Keep `DEMO_PROFILE` unset (or `live`) to use the existing Fabric configuration.
+The same Cockpit exposes **Start session** and **Start race**: choose/apply an
+athlete above, and use the derived goal race or an explicit seeded race ID.
+Starts use the Cockpit's existing managed identity and backend athlete allowlist;
+they do not require forwarding a visitor's token or opening backend Easy Auth.
+Seeded history is required; missing history returns 422 and unauthorized context
+returns 403. No public seed/admin action is provided.
+
+Nothing runs until a visitor selects Start. These are simulator-generated
+demonstrations delivered through the **real configured Eventstream publisher**,
+not sensor readings or the account-free synthetic profile. Sessions emit 36
+samples over about 70 seconds; races emit 48 splits over about 47 seconds using
+the selected race's catalog distance. Invalid/foreign races are denied before
+publication. The Cockpit displays actual
+stream lifecycle, received session metrics and race summaries. Publisher
+completion is **not** proof of downstream Fabric ingestion.
+**Active alerts (N)** is collapsed by default; select it to read the unchanged
+alert details. Refresh updates the real returned count without closing an open
+disclosure. Loading/unavailable states are not reported as zero alerts.
+
+Live admission rejects concurrent runs with 409 **per backend process**. It has
+no synthetic two-per-minute quota, cancellation, persisted session summary,
+distributed lock, or stream replay. Session summaries describe samples received
+in the current browser, not a complete durable audit. Disconnection/reload or
+restart can lose run observations; a timeout is not proof that a start failed.
+Multiple backend replicas can split control requests, streams and race state;
+there is no environment-wide single-run guarantee. UAT and ingestion evidence
+must use the actual deployed configuration; local/synthetic proof cannot replace
+them. Leave any existing deployed Console running until separately authorized
+to retire it; source consolidation does not delete its cloud resource.
+
 ## Development
 
 Use Node.js 24 or newer, npm, PowerShell 7 and Pester 5.6.1:
