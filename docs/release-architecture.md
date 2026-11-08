@@ -3,10 +3,11 @@
 These diagrams separate the **live Azure/Fabric topology**, the **account-free
 synthetic target**, and the **protected image-release lane**. Arrows describe
 data or request paths, not proof of availability. No operator-specific resource
-names, identities, athlete identifiers, credentials, or measurements belong here.
+names, identities, athlete identifiers, credentials, or raw measurements belong
+here.
 
-Source baseline: main at `61a0ab8` (account-free Cockpit demo, with the
-subsequent hosted-profile safeguards and runtime fixes). Status snapshot:
+Source baseline: main at `33e726c` (including the MCP readable formatter and
+Console source retirement). Status snapshot:
 **8 November 2026**. These diagrams describe checked-in source, not proof of
 the current resources or serving revision in any tenant.
 
@@ -46,7 +47,8 @@ remains authenticated; MCP ingress is internal-only, not a second public UI.
 Legacy Console source, provisioning, and release targets are retired. A
 previously deployed Console app or identity may still exist: incremental
 provisioning does not delete it, and existing authorization/callback entries are
-preserved until exact-scope cloud cleanup is separately reviewed and approved.
+preserved. The deployed Console is intentionally left running; cloud cleanup is
+not a release prerequisite.
 
 Anonymous live assistant calls use Foundry with MCP tools; this remains a
 cloud-backed assistant, not a credential-free one. Foundry calls the authenticated
@@ -120,13 +122,25 @@ The simulator job and backend can publish using the configured Eventstream SAS.
 In-process WebSocket frames and completion summaries are a separate delivery path:
 they do not establish that the corresponding rows reached Eventhouse.
 
-An earlier live validation observed daily job -> notebook -> public API freshness
-and a current-date, MCP-grounded assistant response in its environment. Bounded
-legacy race WebSocket delivery/completion was also observed, but a Fabric
-ingestion failure had paused derived streams at that time. Do not treat those
-historical observations as current health or healthy end-to-end telemetry ingestion.
-Use the [live runbook](live-runtime-operations.md) to recheck the actual serving
-revision and individual source dates; neither HTTP 200 nor an aggregate `asOf`
+**Dated evidence, not a continuing health guarantee:** on 7 November 2026,
+the daily job, its notebook and public analytics showed freshness in one
+environment. Following a prior derived-stream failure and repair, an authorized
+existing Console session trigger was accepted on 8 November at 16:41 UTC. The
+same run's Eventstream-to-Eventhouse aggregate contained 36 `SessionMetric`
+rows with 36 distinct simulated timestamps, from 16:41:02.737 to 17:33:02.737
+UTC. The recorded ingestion time was 16:42:15.8930759 UTC; the later event
+times represent accelerated simulation, not future ingestion. This includes the
+final metric of that 52-simulated-minute run. A separate earlier race observation
+included 85 fresh `RaceSplit` rows including the finish. On 8 November, source,
+default and derived streams and destination were observed running, with capacity
+active.
+
+These are bounded observations, not proof of every session, current availability,
+or the revision now serving traffic. A direct user WebSocket attempt returned 403;
+there is no user WebSocket proof from that attempt. Anonymous MCP-grounded
+assistant and historical race delivery observations do not prove delegated human
+consent. Use the [live runbook](live-runtime-operations.md) for the actual
+serving revision and source dates; neither HTTP 200 nor an aggregate `asOf`
 establishes freshness of every component.
 
 Sources: [daily generator](../apps/simulator/src/index.ts),
@@ -231,12 +245,13 @@ provisioning, secret/identity/scale/domain overlay change, capacity resume or jo
 start. Tags are not immutable; review app, source revision, publication run and
 digest together. Environment names alone do not enforce protection.
 
-At this snapshot, publication/deployment enable flags were unset, the build
-identity had Reader-only registry access, and the `publish: false`
-[preflight run](https://github.com/ribumann/fabrictritwin/actions/runs/42413076801)
-was waiting for the user reviewer gate. No new image had been pushed or deployed
-through this lane. Read-only OIDC success, CI success and old live TLS/runtime
-evidence cannot replace write authorization or new-image verification.
+Publication and deployment are separate actions. The MCP readable formatter and
+Console retirement are present in the source baseline, but their presence here
+does not establish which images have been published or which revisions are
+serving. Confirm the selected app's actual source revision, pushed digest and
+traffic-serving revision in the operator's release record. Read-only OIDC
+success, CI success and historical runtime evidence cannot replace these facts.
+Final acceptance belongs to the user rather than another automated QA cycle.
 
 Sources: [CI](../.github/workflows/ci.yml),
 [build-only image CI](../.github/workflows/container-images.yml),

@@ -12,6 +12,34 @@ configuration or data; inspect and redact it locally.
 For diagrams separating live requests, history/telemetry, the synthetic target,
 and protected image releases, see [Release architecture](release-architecture.md).
 
+## Release operator handoff
+
+The public demo is the **live cloud-connected Fabric runtime with generated
+synthetic data**, not the `DEMO_PROFILE=synthetic` in-memory bypass. Keep the
+existing deployed Console running; removing its source and release targets does
+not remove its cloud app or identity, and no cleanup is required for this release.
+The source baseline includes the readable direct MCP formatter, but that is not
+proof that its image has been deployed. Likewise, an image push is not a
+deployment: consult the operator's release record for each app's source revision,
+digest and traffic-serving revision.
+
+On 8 November 2026, an accepted existing Console-triggered session produced 36
+distinct-timestamp `SessionMetric` rows in Eventhouse, including its final
+metric. Its 52 simulated minutes span future event timestamps relative to
+ingestion, not future ingestion. A separate race observation included 85 fresh
+`RaceSplit` rows including the finish. On 7 November, daily job, notebook and
+public analytics freshness were observed. These observations are dated and
+environment-specific; they do not establish ongoing health or acceptance of
+the current serving revision. Direct user WebSocket access returned 403 and
+is not proven. Human sign-in and delegated Fabric consent are not proven by
+anonymous assistant responses.
+
+The user owns final UAT of the actual public runtime, including the Cockpit
+experience and any relevant human sign-in/consent. No further automated release
+QA is planned, and this handoff does not claim that UAT passed. The read-only
+checks and recovery guidance below remain available for later diagnosis, not as
+a required additional release test suite.
+
 ## What must become fresh
 
 The checked-in path is:
@@ -146,8 +174,8 @@ separate in-memory analyses/alerts foundation with fixed reference data, no
 live fallback, and unchanged route authorization. See
 [Synthetic history and insights foundation](synthetic-runtime-foundation.md).
 Neither local mock tests nor a synthetic response proves live Fabric health.
-The live history path above also does not verify real-time telemetry ingestion,
-WebSocket delivery, race summaries, Power BI, or a unified account-free release.
+The live history path above alone does not verify real-time telemetry ingestion,
+WebSocket delivery, race summaries, Power BI, or an account-free release.
 An anonymous assistant response using grounded MCP tools is a separate check;
 the native Fabric Data Agent requires delegated human sign-in.
 

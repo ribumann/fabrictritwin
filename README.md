@@ -9,6 +9,10 @@ Foundry/Power BI configuration. Cockpit is the only operator UI shipped by this
 repository. Legacy Console source, provisioning, and release targets are retired.
 This does not delete a previously deployed cloud Console app or identity; exact
 cloud cleanup remains a separate, review-gated operation.
+The public runtime demo remains cloud-connected to an existing Fabric environment
+and uses generated synthetic data. This is different from the account-free
+`DEMO_PROFILE=synthetic` local in-memory path below. The deployed legacy Console
+is intentionally left running; source retirement does not retire the cloud app.
 No private deployment history or operational data is included.
 
 ## Account-free demo
@@ -97,13 +101,17 @@ See [security reporting guidance](SECURITY.md) for vulnerability disclosures.
 
 - [x] Publish fresh history with MIT licensing and dependency notices.
 - [x] Keep imported cloud automation inactive and remove private deployment defaults.
-- [ ] Land and verify Copilot cloud setup, reporting unavailable tools and baseline failures.
+- [x] Add Copilot cloud setup and credential-free CI; cloud availability and baseline limitations are documented separately.
 - [x] Publish the portable configuration/identity inventory and contributor/security guidance.
-- [ ] Add safe Actions CI and prove protected deployment before application changes.
+- [x] Add credential-free Actions CI and guarded, manual image publication and deployment workflows.
 - [x] Provide an account-free synthetic demo using the same Cockpit.
 - [x] Consolidate the operator UI into Cockpit and retire the legacy Console from source and release configuration.
-- [ ] Inventory and separately approve cleanup of any pre-existing cloud Console app, identity, and stale callback/authorization entries.
-- [ ] Verify live Fabric/Foundry paths and document human consent/platform gates.
-- [ ] Complete portable architecture, costs, recovery, demo and operator documentation.
+- [x] Record bounded live Fabric evidence and the remaining human consent/platform gates.
+- [x] Document the live architecture, operator recovery, demo profiles and release handoff.
+- [ ] User acceptance testing of the actual serving public runtime.
 
-Each remaining item is an independently reviewed, bounded pull request.
+The deployed legacy Console remains running; no cloud cleanup is required for
+this release. Publication of an image, deployment of a revision and a successful
+user acceptance test are separate events. The user owns final UAT; no further
+automated release QA is planned. See the [operator handoff](docs/live-runtime-operations.md#release-operator-handoff)
+and [dated evidence and limitations](docs/release-architecture.md#live-history-schema-and-telemetry-are-distinct-paths).
