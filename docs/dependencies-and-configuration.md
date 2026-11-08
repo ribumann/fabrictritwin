@@ -29,6 +29,17 @@ For live freshness checks and operator-controlled recovery, see
 
 ## Configuration inventory
 
+Cockpit's live **Direct MCP Query** panel formats JSON-RPC responses, SSE event
+messages, and JSON text content as labeled summaries and tables. It keeps every
+returned array and nested field, displays reported errors without inferring
+athlete health, and adds units only for known tool fields. Timestamps use the
+browser's locale; date-only strings remain unchanged. The expandable **Raw
+response** preserves the received body for diagnostics. Readable previews are
+limited to 100 rows/items/fields per section, 1,000 values, 12 nesting levels,
+and 2,000 characters per text value; omitted content remains in the raw response.
+This is presentation only: endpoints, authentication, and synthetic-profile
+availability are unchanged.
+
 The deployment entry point is `infra/bicep/main.bicep`; its modules and the
 PowerShell scripts are the authoritative configuration interface. Script
 parameters are declared in each script's `param` block. Pass a tenant and

@@ -591,9 +591,68 @@ h2 {
 
 /* Scalar fields shown above an MCP result table (e.g. training phase, ACWR). */
 .mcp-summary {
+  grid-template-columns: minmax(0, 1fr);
   margin: 0 0 0.9rem;
   padding-bottom: 0.9rem;
   border-bottom: 1px solid var(--border);
+}
+
+.mcp-summary dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+  font-weight: 400;
+  margin-bottom: 0.5rem;
+}
+
+.mcp-summary .mcp-summary {
+  margin: 0;
+}
+
+.mcp-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mcp-items {
+  padding-left: 1.5rem;
+}
+
+.mcp-items li + li {
+  margin-top: 0.75rem;
+}
+
+.mcp-table-scroll {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.mcp-table-scroll:focus-visible,
+.mcp-raw summary:focus-visible,
+.mcp-envelope summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mcp-raw {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.mcp-raw summary,
+.mcp-envelope summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.mcp-envelope {
+  margin-block: 0.75rem;
+}
+
+.mcp-raw pre {
+  max-height: 24rem;
+  overflow: auto;
 }
 
 .mcp-table {
@@ -606,7 +665,11 @@ h2 {
   padding: 0.55rem 0.8rem;
   text-align: left;
   border-bottom: 1px solid var(--border);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 7rem;
+  max-width: 30rem;
+  vertical-align: top;
 }
 
 .mcp-table th {
