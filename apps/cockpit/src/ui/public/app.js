@@ -208,90 +208,177 @@ function formatMcpCellValue(value) {
   return JSON.stringify(value);
 }
 
-function renderMcpTable(records) {
+function renderMcpTable(records, depth = 0, budget = { remaining: Infinity }) {
   if (!records.length) {
     return '<div class="empty-state">No rows returned.</div>';
   }
-  const columns = [...new Set(records.flatMap((record) => Object.keys(record)))];
-  const head = columns.map((column) => `<th>${escapeHtml(humanizeKey(column))}</th>`).join("");
+  const preview = Number.isFinite(budget.remaining);
+  const rowLimit = preview ? 100 : records.length;
+  const columns = [
+    ...new Set(records.slice(0, rowLimit).flatMap((record) => Object.keys(record))),
+  ].slice(0, preview ? 100 : Infinity);
+  if (!columns.length) return '<div class="empty-state">Rows contain no fields.</div>';
+  const head = columns
+    .map((column) => `<th scope="col">${escapeHtml(humanizeKey(column))}</th>`)
+    .join("");
   const rows = records
+    .slice(0, rowLimit)
     .map((record) => {
       const cells = columns
-        .map((column) => `<td>${escapeHtml(formatMcpCellValue(record[column]))}</td>`)
+        .map(
+          (column) =>
+            `<td>${renderMcpValue(record[column], depth + 1, column, budget)}</td>`,
+        )
         .join("");
       return `<tr>${cells}</tr>`;
     })
     .join("");
-  return `<table class="mcp-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+  const limited =
+    records.length > rowLimit ||
+    records.some((record) => Object.keys(record).some((key) => !columns.includes(key)));
+  return `<div class="mcp-table-scroll" role="region" aria-label="Query rows" tabindex="0"><table class="mcp-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>${limited ? '<p class="empty-state">Table preview limited to 100 rows and 100 fields. Full data is in the raw response.</p>' : ""}`;
 }
 
-function renderMcpKeyValue(entries) {
+function renderMcpKeyValue(entries, depth = 0, budget = { remaining: 1000 }) {
   if (!entries.length) {
     return "";
   }
   return `<dl class="metric-list mcp-summary">${entries
     .map(
       ([key, value]) =>
-        `<dt>${escapeHtml(humanizeKey(key))}</dt><dd>${escapeHtml(formatMcpCellValue(value))}</dd>`,
+        `<dt>${escapeHtml(humanizeKey(key))}</dt><dd>${renderMcpValue(value, depth + 1, key, budget)}</dd>`,
     )
     .join("")}</dl>`;
 }
 
 function renderMcpError(error) {
   const message =
-    typeof error === "string" ? error : (error?.message ?? JSON.stringify(error));
+    typeof error === "string" ? error : (error?.message ?? "The tool returned an error.");
   const code = isPlainObject(error) ? error.code : null;
   return `<div class="mcp-error">${
-    code ? `<span class="mcp-error-code">${escapeHtml(String(code))}</span>` : ""
-  }${escapeHtml(message)}</div>`;
+    code !== null && code !== undefined
+      ? `<span class="mcp-error-code">${escapeHtml(String(code))}</span>`
+      : ""
+  }${renderMcpText(String(message))}</div>`;
 }
 
-// Renders an MCP tool result as a readable table/summary rather than a flat JSON
-// dump: scalar fields (e.g. training phase, projected finish) render as a small
-// key/value summary, the first array-of-records field renders as a table, and
-// error shapes render as a callout. Anything that doesn't fit this pattern falls
-// back to the syntax-highlighted JSON tree.
-function renderMcpResult(target, value) {
+function parseMcpText(text) {
+  if (/^\s*[\[{]/.test(text)) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      // Non-JSON text is a valid MCP content block, not a failed query.
+    }
+  }
+  if (!/^(?:event|data|id|retry):/m.test(text)) return text;
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split(/\n\n+/)
+    .filter((block) => block.trim())
+    .map((block) => {
+      const data = [];
+      const fields = {};
+      const other = [];
+      for (const line of block.split("\n")) {
+        const match = /^(event|data|id|retry): ?(.*)$/.exec(line);
+        if (!match) {
+          other.push(line);
+        } else if (match[1] === "data") {
+          data.push(match[2]);
+        } else {
+          fields[match[1]] = match[2];
+        }
+      }
+      if (data.length) {
+        const joined = data.join("\n");
+        try {
+          fields.data = JSON.parse(joined);
+        } catch {
+          fields.data = joined;
+        }
+      }
+      if (other.length) fields.text = other.join("\n");
+      return fields;
+    });
+}
+
+function renderMcpText(text) {
+  if (!text.length) return '<span class="empty-state">No text returned.</span>';
+  const escaped = escapeHtml(text.slice(0, 2000));
+  return `<span class="mcp-text">${escaped}</span>${text.length > 2000 ? '<span class="empty-state"> Text preview limited; full text is in the raw response.</span>' : ""}`;
+}
+
+function renderMcpValue(value, depth = 0, key = "", budget = { remaining: 1000 }) {
+  if (budget.remaining-- <= 0)
+    return '<span class="empty-state">Further data is in the raw response.</span>';
+  if (depth >= 12)
+    return '<span class="empty-state">Nested data is in the raw response.</span>';
   if (typeof value === "string") {
-    target.textContent = value;
-    return;
+    const parsed = parseMcpText(value);
+    if (parsed !== value) return renderMcpValue(parsed, depth + 1, key, budget);
+    return renderMcpText(formatMcpCellValue(value));
   }
-
-  if (isPlainObject(value) && "error" in value) {
-    target.innerHTML = renderMcpError(value.error);
-    return;
-  }
-
   if (Array.isArray(value)) {
-    target.innerHTML = value.every(isPlainObject)
-      ? renderMcpTable(value)
-      : `<div class="json-tree">${jsonValueToHtml(value, 0)}</div>`;
-    return;
+    if (!value.length) return '<div class="empty-state">No rows returned.</div>';
+    if (
+      value.every(isPlainObject) &&
+      !value.some((item) => "jsonrpc" in item || "event" in item || item.type === "text")
+    ) {
+      return renderMcpTable(value, depth, budget);
+    }
+    return `<ol class="mcp-items">${value
+      .slice(0, 100)
+      .map((item) => `<li>${renderMcpValue(item, depth + 1, "", budget)}</li>`)
+      .join(
+        "",
+      )}</ol>${value.length > 100 ? '<p class="empty-state">List preview limited to 100 items. Full data is in the raw response.</p>' : ""}`;
   }
-
   if (isPlainObject(value)) {
-    const listKey = Object.keys(value).find((key) => Array.isArray(value[key]));
-    if (listKey) {
-      const records = value[listKey];
-      const summaryHtml = renderMcpKeyValue(
-        Object.entries(value).filter(([key]) => key !== listKey),
-      );
-      const tableHtml = records.every(isPlainObject)
-        ? renderMcpTable(records)
-        : `<div class="json-tree">${jsonValueToHtml(records, 0)}</div>`;
-      target.innerHTML = `${summaryHtml}${tableHtml}`;
-      return;
-    }
-
     const entries = Object.entries(value);
-    if (entries.every(([, entryValue]) => !isPlainObject(entryValue) && !Array.isArray(entryValue))) {
-      target.innerHTML =
-        renderMcpKeyValue(entries) || '<div class="empty-state">No data returned.</div>';
-      return;
+    if (!entries.length) return '<div class="empty-state">No data returned.</div>';
+    if (value.jsonrpc === "2.0" && "result" in value) {
+      return `${renderMcpValue(value.result, depth + 1, "", budget)}<details class="mcp-envelope"><summary>Response metadata</summary>${renderMcpKeyValue(
+        entries.filter(([name]) => name !== "result"),
+        depth,
+        budget,
+      )}</details>`;
     }
+    if ("structuredContent" in value && Array.isArray(value.content)) {
+      const error =
+        value.isError === true
+          ? '<div class="mcp-error">The tool reported an error. See the returned content below.</div>'
+          : "";
+      return `${error}${renderMcpValue(value.structuredContent, depth + 1, "", budget)}<details class="mcp-envelope"><summary>Content blocks and tool metadata</summary>${renderMcpKeyValue(
+        entries.filter(([name]) => name !== "structuredContent"),
+        depth,
+        budget,
+      )}</details>`;
+    }
+    const error =
+      "error" in value
+        ? renderMcpError(value.error)
+        : value.isError === true
+          ? '<div class="mcp-error">The tool reported an error. See the returned content below.</div>'
+          : "";
+    return `${error}${renderMcpKeyValue(entries.slice(0, 100), depth, budget)}${entries.length > 100 ? '<p class="empty-state">Summary preview limited to 100 fields. Full data is in the raw response.</p>' : ""}`;
   }
+  const units = {
+    sleepDebtMinutes: " min",
+    durationMinutes: " min",
+    currentPaceSecPerKm: " sec/km",
+    plannedPaceSecPerKm: " sec/km",
+    projectedFinishTimeSeconds: " sec",
+    currentHeartRate: " bpm",
+    maxHeartRate: " bpm",
+  };
+  return `${escapeHtml(formatMcpCellValue(value))}${typeof value === "number" ? (units[key] ?? "") : ""}`;
+}
 
-  target.innerHTML = `<div class="json-tree">${jsonValueToHtml(value, 0)}</div>`;
+function renderMcpResult(target, value, rawBody) {
+  const raw =
+    rawBody ?? (typeof value === "string" ? value : JSON.stringify(value, null, 2));
+  target.innerHTML = `<div class="mcp-readable">${renderMcpValue(value)}</div><details class="mcp-raw"><summary>Raw response</summary><pre class="json-tree"></pre></details>`;
+  target.querySelector(".mcp-raw pre").textContent = raw ?? String(value);
 }
 
 function formatNumber(value, digits = 2) {
@@ -1218,7 +1305,7 @@ elements.mcpForm.addEventListener("submit", async (event) => {
       tool: state.selectedMcpTool,
       arguments: args,
     });
-    renderMcpResult(elements.mcpOutput, parsedBody);
+    renderMcpResult(elements.mcpOutput, parsedBody, rawBody);
     elements.mcpStatus.textContent = response.ok ? "Complete" : `Failed (${response.status})`;
     if (!response.ok && !rawBody) {
       renderMcpResult(elements.mcpOutput, {
