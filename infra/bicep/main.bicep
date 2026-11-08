@@ -48,6 +48,10 @@ param acrSkuName string = 'Basic'
 @description('Container image tag to deploy for all five apps. Defaults to a placeholder until build-and-push-images.ps1 (T041) publishes real images.')
 param imageTag string = 'placeholder'
 
+@description('Explicit application runtime profile. Live preserves existing cloud-backed behavior; synthetic requires matching runtime images and protected hosted proxy authentication.')
+@allowed(['live', 'synthetic'])
+param demoProfile string = 'live'
+
 @description('Existing workload names retained by incremental deployment. Set by provision-azure-resources.ps1 after scoped reads. Runtime overlays and deploy-container-apps.ps1 own changes to existing workloads.')
 param preservedWorkloads array = []
 
@@ -214,6 +218,7 @@ module streamingBackend 'modules/streaming-backend.bicep' = if (!contains(preser
     userAssignedIdentityClientId: managedIdentities.outputs.streamingBackendIdentityClientId
     registryLoginServer: containerRegistry.outputs.registryLoginServer
     imageTag: imageTag
+    demoProfile: demoProfile
     authClientId: authClientId
     keyVaultUri: keyVault.outputs.keyVaultUri
     simulatorEnvironment: simulatorEnvironment
@@ -286,6 +291,7 @@ module cockpit 'modules/cockpit.bicep' = if (!contains(preservedWorkloads, 'cock
     userAssignedIdentityClientId: managedIdentities.outputs.cockpitIdentityClientId
     registryLoginServer: containerRegistry.outputs.registryLoginServer
     imageTag: imageTag
+    demoProfile: demoProfile
     authClientId: authClientId
     streamingBackendBaseUrl: 'https://${backendFqdn}'
     defaultAthleteId: defaultAthleteId

@@ -27,6 +27,10 @@ param registryLoginServer string
 @description('Container image tag to deploy. Defaults to a placeholder until build-and-push-images.ps1 publishes the first real image.')
 param imageTag string = 'placeholder'
 
+@description('Must match the Streaming Backend profile. Live leaves DEMO_PROFILE unset; synthetic does not disable hosting authentication.')
+@allowed(['live', 'synthetic'])
+param demoProfile string = 'live'
+
 @description('Entra app registration client (application) ID used for Container Apps Easy Auth.')
 param authClientId string
 
@@ -128,7 +132,9 @@ resource cockpit 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'POWERBI_CONNECTION_ID', value: powerBiConnectionId }
             { name: 'POWERBI_CONNECTION_NAME', value: powerBiConnectionName }
             { name: 'POWERBI_CONNECTION_CREDENTIAL_KEY_ID', value: powerBiConnectionCredentialKeyId }
-          ], !empty(powerBiClientSecret) ? [
+          ], demoProfile == 'synthetic' ? [
+            { name: 'DEMO_PROFILE', value: 'synthetic' }
+          ] : [], !empty(powerBiClientSecret) ? [
             { name: 'POWERBI_CLIENT_SECRET', secretRef: 'powerbi-client-secret' }
           ] : [])
           resources: {

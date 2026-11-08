@@ -14,6 +14,8 @@ param(
     [string]$FabricCapacityAdminUpn = 'admin@example.invalid',
     [string]$TenantId,
     [string]$ImageTag = 'placeholder',
+    [ValidateSet('live', 'synthetic')]
+    [string]$DemoProfile,
     [string]$SimulatorDailyScheduleCron = '0 3 * * *',
     [string]$DefaultAthleteId,
     [switch]$SkipSimulatorConnectionsConfig,
@@ -33,6 +35,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $scriptRoot = $PSScriptRoot
+
+if ($PSBoundParameters.ContainsKey('DemoProfile') -and $DemoProfile -cnotin @('live', 'synthetic')) {
+    throw '-DemoProfile must be exactly live or synthetic.'
+}
 
 if ($ConfigureRuntime -and (-not $TenantId -or -not $DefaultAthleteId)) {
     throw '-ConfigureRuntime requires explicit -TenantId and -DefaultAthleteId; the current CLI user is never treated as an authorized athlete.'
@@ -68,6 +74,9 @@ try {
     }
     if ($TenantId) {
         $azureParams['TenantId'] = $TenantId
+    }
+    if ($PSBoundParameters.ContainsKey('DemoProfile')) {
+        $azureParams['DemoProfile'] = $DemoProfile
     }
     if ($DefaultAthleteId) {
         $azureParams['DefaultAthleteId'] = $DefaultAthleteId
@@ -120,6 +129,9 @@ if (-not $SkipSimulatorConnectionsConfig) {
         }
         if ($TenantId) {
             $connectionsParams['TenantId'] = $TenantId
+        }
+        if ($PSBoundParameters.ContainsKey('DemoProfile')) {
+            $connectionsParams['DemoProfile'] = $DemoProfile
         }
         if ($DefaultAthleteId) {
             $connectionsParams['DefaultAthleteId'] = $DefaultAthleteId

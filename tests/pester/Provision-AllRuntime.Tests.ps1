@@ -6,7 +6,7 @@ BeforeAll {
 [CmdletBinding(SupportsShouldProcess)]
 param(
     $SubscriptionId, $TenantId, $ResourceGroupName, $NamePrefix, $Location, $FabricLocation,
-    $FoundryLocation, $FabricCapacityAdminUpn, $ImageTag, $SimulatorDailyScheduleCron,
+    $FoundryLocation, $FabricCapacityAdminUpn, $ImageTag, $SimulatorDailyScheduleCron, $DemoProfile,
     $DefaultAthleteId, $FabricCapacityName, $FabricWorkspaceName, $FabricWorkspaceId,
     $AuthorizedUserObjectIds, $AthleteId, $CockpitAppName, $WorkspaceId, $ReportId,
     $AllowedPrincipalIds, $ApproveTenantSettings, $FabricDataAgentId, $FabricConnectionName,
@@ -65,5 +65,16 @@ Describe 'Full provisioning runtime ordering' {
     It 'keeps legacy foundation-only behavior without invoking optional credential scripts' {
         & $script:Orchestrator -SubscriptionId $global:RuntimeFixture.SubscriptionId | Out-Null
         $global:ProvisionCalls.Count | Should -Be 3
+        foreach ($call in $global:ProvisionCalls) { $call.Params.ContainsKey('DemoProfile') | Should -BeFalse }
+    }
+    It 'forwards an explicit profile to both provisioning passes only' {
+        & $script:Orchestrator -SubscriptionId $global:RuntimeFixture.SubscriptionId -DemoProfile synthetic | Out-Null
+        $global:ProvisionCalls[0].Params.DemoProfile | Should -Be 'synthetic'
+        $global:ProvisionCalls[2].Params.DemoProfile | Should -Be 'synthetic'
+        $global:ProvisionCalls[1].Params.ContainsKey('DemoProfile') | Should -BeFalse
+    }
+    It 'rejects profile casing before any setup calls' {
+        { & $script:Orchestrator -SubscriptionId $global:RuntimeFixture.SubscriptionId -DemoProfile Synthetic } | Should -Throw '*exactly live or synthetic*'
+        $global:ProvisionCalls.Count | Should -Be 0
     }
 }
