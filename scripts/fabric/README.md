@@ -71,6 +71,15 @@ triathlon tables. Its proposed ownership ledger is:
 | `mining_telemetry_json_map`, `mining_state_json_map` | Root-document JSON mappings on the respective raw tables |
 | `mining_telemetry_*`, `mining_state_*` | Two proposed Eventstream filters, derived streams and destinations |
 
+Each route comprises an owned `*_filter`, `*_stream`, and
+`*_direct_ingestion` node. The candidate generator below adds only those six
+nodes to the shared item. It performs no cloud requests, requires no cloud
+permission and incurs no hosted cost. A future approved update requires
+permissions on the exact existing Eventstream and database; associated
+connection and compute costs must be reviewed. Rollback removes only those
+six nodes and any separately approved mining-owned objects, not shared items
+or unrelated changes.
+
 `infra/fabric/eventhouse/MiningSchema.kql` is a proposed definition, not an
 apply script. It does not validate v2 events, quarantine malformed events,
 deduplicate retries, create the catalog, implement incidents or provide the
@@ -91,6 +100,38 @@ their workspace/database IDs, approved hashes and the exact non-mining preimage.
 reports node names only; it does not generate a candidate or validate its
 complete schema. An operator must review the candidate's full definition and
 destination input schemas against the actual API and event contract.
+
+`new-mining-definition-candidate.ps1` can generate a **review-only** candidate
+from an exact hash-pinned private `getDefinition` response using PowerShell
+7.5 or later. It retains the original three definition parts and the order and
+content of existing nodes, and requires separate, operator-supplied input
+schema columns for the two v2 envelopes. The schema file is a JSON object with
+`telemetry` and `state` arrays; each column has `name`, `type`, `fields`, and
+`items`, with the latter two null. These schemas are not supplied by this
+repository: their types and full raw-event behavior need hosted proof. In
+particular, typed schemas might drop unknown fields or coerce invalid values
+before the root JSON mapping, preventing strict validation. Do not treat
+passing offline tests as proof that raw input is retained.
+
+```powershell
+.\scripts\fabric\new-mining-definition-candidate.ps1 `
+  -SubscriptionId '<subscription-guid>' -TenantId '<tenant-guid>' `
+  -WorkspaceId '<workspace-guid>' -EventstreamId '<eventstream-guid>' `
+  -KqlDatabaseId '<kql-database-item-guid>' `
+  -BaselinePath '<private-get-definition-response.json>' `
+  -BaselineSha256 '<approved-response-sha256>' `
+  -InputSchemasPath '<private-reviewed-input-schemas.json>' `
+  -TelemetryConnectionName '<unique-mining-telemetry-connection>' `
+  -StateConnectionName '<unique-mining-state-connection>' `
+  -OutputPath '<new-private-candidate.json>'
+```
+
+The generator checks the original triathlon topology through the offline
+planner and refuses an existing output file or connection-name collision. It
+does not verify the origin of the response, data-connection creation, target
+permissions, input schema types, or the candidate against the hosted service.
+Keep the preimage, candidate and schema files private. A sample schema used in
+a test is not a deployable schema.
 
 ```powershell
 .\scripts\fabric\plan-mining-definition.ps1 `
