@@ -1,0 +1,21 @@
+{
+  "owner": "mining-D01-old-json-v1",
+  "catalogSha256": "0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
+  "referenceRevision": "60e98f44f12a8abc0ddf13eadc1c12b3ae35798e",
+  "entityTypes": [
+    { "name": "Plant", "id": "41001000000001", "propertyBase": "42001000000100" },
+    { "name": "Line", "id": "41001000000002", "propertyBase": "42001000000200" },
+    { "name": "Module", "id": "41001000000003", "propertyBase": "42001000000300" },
+    { "name": "Equipment", "id": "41001000000004", "propertyBase": "42001000000400" },
+    { "name": "Tag", "id": "41001000000005", "propertyBase": "42001000000500" },
+    { "name": "Stream", "id": "41001000000006", "propertyBase": "42001000000600" }
+  ],
+  "relationships": [
+    { "name": "PlantHasLine", "id": "43001000000001", "source": "Plant", "target": "Line" },
+    { "name": "LineHasModule", "id": "43001000000002", "source": "Line", "target": "Module" },
+    { "name": "ModuleHasEquipment", "id": "43001000000003", "source": "Module", "target": "Equipment" },
+    { "name": "EquipmentHasTag", "id": "43001000000004", "source": "Equipment", "target": "Tag" },
+    { "name": "ModuleSendsStream", "id": "43001000000005", "source": "Module", "target": "Stream" },
+    { "name": "StreamTargetsModule", "id": "43001000000006", "source": "Stream", "target": "Module" }
+  ]
+}
