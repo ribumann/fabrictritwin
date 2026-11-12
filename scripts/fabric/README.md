@@ -57,3 +57,74 @@ Official references:
 
 The support matrix excludes CustomEndpoint sources and Eventhouse DirectIngestion
 destinations, but includes derived streams.
+
+## Mining: offline definition review only
+
+The mining extension shares the existing endpoint and database, not the
+triathlon tables. Its proposed ownership ledger is:
+
+| Owned object | Purpose |
+| --- | --- |
+| `mining_TelemetryRaw`, `mining_PlantStateEvents` | Raw v2 JSON documents and ingestion times; seven-day soft-delete period |
+| `mining_PlantCatalog` | Versioned module, equipment, tag and stream records |
+| `mining_AlertTransitions` | Alert transitions; 30-day soft-delete period |
+| `mining_telemetry_json_map`, `mining_state_json_map` | Root-document JSON mappings on the respective raw tables |
+| `mining_telemetry_*`, `mining_state_*` | Two proposed Eventstream filters, derived streams and destinations |
+
+`infra/fabric/eventhouse/MiningSchema.kql` is a proposed definition, not an
+apply script. It does not validate v2 events, quarantine malformed events,
+deduplicate retries, create the catalog, implement incidents or provide the
+five analytics contracts. Do not query these raw tables as validated readings.
+Kusto soft-delete periods are minimum availability periods, not guaranteed
+immediate deletion; the table-only commands leave database recoverability and
+other tables unchanged.
+
+`plan-mining-definition.ps1` compares three **local** decoded `eventstream.json`
+files: an operator-approved baseline, an independently reviewed candidate, and
+a freshly acquired current definition. Store these files privately: they may
+contain connection details. Hash the exact baseline and candidate bytes with
+`Get-FileHash -Algorithm SHA256`. The candidate must preserve the baseline and
+add exactly the six named mining nodes above, routing the flattened v2
+`PlantTelemetry` and `PlantStateEvent` discriminators to their respective
+mining tables. The planner checks node references, both triathlon destinations,
+their workspace/database IDs, approved hashes and the exact non-mining preimage. It
+reports node names only; it does not generate a candidate or validate its
+complete schema. An operator must review the candidate's full definition and
+destination input schemas against the actual API and event contract.
+
+```powershell
+.\scripts\fabric\plan-mining-definition.ps1 `
+  -SubscriptionId '<subscription-guid>' -TenantId '<tenant-guid>' `
+  -WorkspaceId '<workspace-guid>' -EventstreamId '<eventstream-guid>' `
+  -KqlDatabaseId '<kql-database-item-guid>' `
+  -BaselinePath '<private-baseline.json>' -CurrentPath '<private-current.json>' `
+  -DesiredPath '<private-reviewed-candidate.json>' `
+  -BaselineSha256 '<approved-baseline-sha256>' -DesiredSha256 '<approved-candidate-sha256>'
+```
+
+`-Mode Verify` checks that the current local snapshot matches the candidate.
+It is **not** hosted verification: subscription, tenant and Eventstream IDs
+are supplied context only. The script does not authenticate, establish which
+item produced a snapshot, verify KQL objects, or prove ingestion.
+`-Mode Apply` always fails. Fabric's documented update replaces the complete
+definition and does not document atomic revision matching. Before considering
+an actual update, arrange an authorized serialized maintenance window, re-read
+the exact target and preimage immediately before the write, review the complete
+candidate and all definition parts, and retain the private preimage for
+recovery. A recheck is not atomic compare-and-swap; concurrent edits remain a
+risk. Confirm Eventstream schemas, KQL objects, permissions, retention and
+rollback with the environment owner first. Never run this review as permission
+to resume capacity or make cloud changes.
+
+For rollback, review and remove only the six named mining nodes from a freshly
+read definition, retaining every other part; do not restore a stale whole-item
+snapshot over unrelated edits. Mining table deletion is a separate destructive
+decision requiring explicit approval and a check for downstream use; never
+tear down the database. The legacy resume helper deliberately rejects this
+expanded topology until separately extended and tested. G4 actual ingestion
+and G5 queries remain unimplemented and require a hosted verification window.
+
+References: [Eventstream definition](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/eventstream-definition),
+[update definition](https://learn.microsoft.com/en-us/rest/api/fabric/eventstream/items/update-eventstream-definition),
+[JSON mapping](https://learn.microsoft.com/en-us/kusto/management/json-mapping?view=microsoft-fabric),
+and [retention policy](https://learn.microsoft.com/en-us/kusto/management/retention-policy?view=microsoft-fabric).
