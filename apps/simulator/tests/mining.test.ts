@@ -164,12 +164,26 @@ describe("D01 mining contracts and catalog", () => {
         value: Number.NaN,
       }),
     ).toThrow(/finite/);
+    for (const quality of ["uncertain", "bad"] as const) {
+      expect(() => assertD01NumericTelemetryEvent({ ...numeric, quality })).not.toThrow();
+    }
+    expect(() =>
+      assertD01NumericTelemetryEvent({
+        ...numeric,
+        quality: "invalid",
+      }),
+    ).toThrow(/quality/);
     expect(() =>
       assertD01NumericTelemetryEvent({
         ...numeric,
         entityType: "PlantTelemetry",
       }),
     ).toThrow(/unexpected fields/);
+
+    const numericSchema = JSON.parse(
+      readFileSync(new URL("../src/mining/numeric-event-v2.schema.json", import.meta.url), "utf8"),
+    ) as { properties: { quality: { enum: string[] } } };
+    expect(numericSchema.properties.quality.enum).toEqual(["good", "uncertain", "bad"]);
 
     const state: D01PlantStateEvent = {
       schema_version: 2,
