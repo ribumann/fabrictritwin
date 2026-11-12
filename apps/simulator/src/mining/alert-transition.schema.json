@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fabrictritwin.local/schemas/d01-alert-transition-v1.json",
+  "title": "D01 alert transition row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plant_id",
+    "run_id",
+    "transition_id",
+    "timestamp",
+    "rule_id",
+    "scope_id",
+    "transition",
+    "severity",
+    "evidence"
+  ],
+  "properties": {
+    "plant_id": { "const": "D01" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "transition_id": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "rule_id": { "type": "string", "minLength": 1 },
+    "scope_id": { "enum": ["A", "B", "C", "shared"] },
+    "transition": { "enum": ["raised", "cleared"] },
+    "severity": { "enum": ["warning", "high"] },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "boolean"]
+      }
+    }
+  },
+  "$comment": "Alert transitions are rows, not Eventstream envelopes. Acknowledgement is intentionally a separate consumer action."
+}
