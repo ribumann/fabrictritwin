@@ -1,0 +1,16 @@
+// Proposed mining-owned objects only. Do not apply without reviewing existing
+// table schemas and policies. Incoming documents are retained intact so that
+// validation can distinguish invalid values from absent or coerced values.
+.create table mining_TelemetryRaw (event:dynamic)
+.create table mining_PlantStateEvents (event:dynamic)
+.create table mining_PlantCatalog (plant_id:string, catalog_version:string, record_kind:string, record_id:string, module_id:string, record_json:dynamic)
+.create table mining_AlertTransitions (plant_id:string, run_id:string, transition_id:string, timestamp:datetime, rule_id:string, scope_id:string, transition:string, severity:string, evidence:dynamic)
+
+.create table mining_TelemetryRaw ingestion json mapping 'mining_telemetry_json_map' '[{"column":"event","Properties":{"path":"$"}}]'
+.create table mining_PlantStateEvents ingestion json mapping 'mining_state_json_map' '[{"column":"event","Properties":{"path":"$"}}]'
+
+.alter table mining_TelemetryRaw policy ingestiontime true
+.alter table mining_PlantStateEvents policy ingestiontime true
+.alter-merge table mining_TelemetryRaw policy retention softdelete = 7d
+.alter-merge table mining_PlantStateEvents policy retention softdelete = 7d
+.alter-merge table mining_AlertTransitions policy retention softdelete = 30d
