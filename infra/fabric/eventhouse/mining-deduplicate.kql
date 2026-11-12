@@ -1,0 +1,24 @@
+// Query-scoped helper, not an installed function or an ingestion policy.
+// Input must already be strictly validated against the pinned catalog and v2
+// wire contract, with IDs extracted from the original JSON as strings.
+// This helper does not validate or quarantine malformed input.
+let mining_deduplicate = (events:(plant_id:string, run_id:string, event_id:string, event:dynamic, ingested_at:datetime)) {
+    events
+    | where plant_id == "D01" and tostring(event.plant_id) == "D01"
+        and tostring(event.entityType) in ("PlantTelemetry", "PlantStateEvent")
+    | extend fingerprint = hash_sha256(tostring(pack_array(
+        event.entityType, event.schema_version, run_id, event_id,
+        event.sequence, event.timestamp, event.plant_id, event.interval_seconds,
+        event.module_id, event.equipment_id, event.tag_id, event.value,
+        event.unit, event.quality, event.scope_id, event.scheduled_running, event.state
+    )))
+    | summarize attempts = count(),
+                variants = make_set(fingerprint, 2),
+                arg_min(ingested_at, event)
+        by plant_id, run_id, event_id
+    | extend status = case(array_length(variants) > 1, "conflict",
+                           attempts > 1, "duplicate", "unique")
+    | project plant_id, run_id, event_id, attempts, status,
+              first_ingested_at = ingested_at,
+              event = iff(status == "conflict", dynamic(null), event)
+};

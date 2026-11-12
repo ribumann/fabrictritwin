@@ -1,0 +1,32 @@
+// Append this fixture to mining-deduplicate.kql and run as a read-only query.
+// A passing result has zero rows. IDs are synthetic; input validation is not tested here.
+let samples = datatable(plant_id:string, run_id:string, event_id:string, event:dynamic, ingested_at:datetime)
+[
+    "D01", "run", "unique", dynamic({"entityType":"PlantStateEvent","plant_id":"D01","sequence":1,"scope_id":"A","scheduled_running":true,"state":"running"}), datetime(2026-01-01T00:00:00Z),
+    "D01", "run", "retry", dynamic({"entityType":"PlantTelemetry","plant_id":"D01","sequence":2,"value":10,"unit":"t/h"}), datetime(2026-01-01T00:01:00Z),
+    "D01", "run", "retry", dynamic({"unit":"t/h","value":10,"sequence":2,"plant_id":"D01","entityType":"PlantTelemetry"}), datetime(2026-01-01T00:00:00Z),
+    "D01", "run", "changed", dynamic({"entityType":"PlantTelemetry","plant_id":"D01","sequence":3,"value":10,"unit":"t/h"}), datetime(2026-01-01T00:00:00Z),
+    "D01", "run", "changed", dynamic({"entityType":"PlantTelemetry","plant_id":"D01","sequence":3,"value":11,"unit":"t/h"}), datetime(2026-01-01T00:01:00Z),
+    "D01", "run", "cross-type", dynamic({"entityType":"PlantTelemetry","plant_id":"D01","sequence":4,"value":10,"unit":"t/h"}), datetime(2026-01-01T00:00:00Z),
+    "D01", "run", "cross-type", dynamic({"entityType":"PlantStateEvent","plant_id":"D01","sequence":4,"scope_id":"A","scheduled_running":true,"state":"running"}), datetime(2026-01-01T00:01:00Z),
+    "D01", "other-run", "retry", dynamic({"entityType":"PlantTelemetry","plant_id":"D01","sequence":1,"value":10,"unit":"t/h"}), datetime(2026-01-01T00:00:00Z),
+    "D01", "run", "athlete", dynamic({"entityType":"SessionMetric","plant_id":"D01"}), datetime(2026-01-01T00:00:00Z),
+    "D02", "run", "foreign", dynamic({"entityType":"PlantTelemetry","plant_id":"D02"}), datetime(2026-01-01T00:00:00Z)
+];
+let expected = datatable(run_id:string, event_id:string, expected_status:string, expected_attempts:long, expected_event:bool)
+[
+    "run", "unique", "unique", 1, true,
+    "run", "retry", "duplicate", 2, true,
+    "run", "changed", "conflict", 2, false,
+    "run", "cross-type", "conflict", 2, false,
+    "other-run", "retry", "unique", 1, true
+];
+let actual = mining_deduplicate(samples)
+    | project actual_run = run_id, actual_id = event_id, status, attempts,
+              has_event = isnotnull(event), first_ingested_at;
+expected
+| join kind=fullouter actual on $left.run_id == $right.actual_run and $left.event_id == $right.actual_id
+| where isempty(run_id) or isempty(actual_run) or expected_status != status
+    or expected_attempts != attempts or expected_event != has_event
+    or (event_id == "retry" and run_id == "run" and first_ingested_at != datetime(2026-01-01T00:00:00Z))
+| project run_id, event_id, actual_run, actual_id, expected_status, status, expected_attempts, attempts, expected_event, has_event, first_ingested_at

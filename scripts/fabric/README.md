@@ -124,6 +124,30 @@ tear down the database. The legacy resume helper deliberately rejects this
 expanded topology until separately extended and tested. G4 actual ingestion
 and G5 queries remain unimplemented and require a hosted verification window.
 
+### Mining deduplication prototype
+
+`infra/fabric/eventhouse/mining-deduplicate.kql` defines a **query-scoped**
+helper only; it installs no function or policy and is not wired to ingestion.
+It accepts records already strictly validated against the v2 wire contract and
+pinned catalog. Callers must supply the original JSON string values for
+`plant_id`, `run_id`, and `event_id`, and the parsed event and ingestion time;
+dynamic parsing alone cannot establish that the original timestamp was in the
+required canonical UTC format. Validation and this trusted input do not yet
+exist in Fabric. The helper does not validate or quarantine events.
+
+Within each plant/run/event ID it reports `unique`, `duplicate`, or `conflict`.
+It hides the event for a conflict, including collisions across event types.
+It filters to D01 and the two mining discriminators. This is not a curated
+telemetry table, a complete deduplication pipeline, or one of the five G5
+queries. All three valid quality values (`good`, `uncertain`, `bad`) remain in
+the payload; quality-sensitive calculations must use only `good` samples.
+
+For a read-only synthetic KQL check, append
+`tests/kql/mining-deduplicate-fixture.kql` to the helper and run the combined
+query; a passing primary result has zero rows. The fixture checks retries,
+conflicts, cross-type collisions, run isolation, and non-mining exclusions. It
+does not validate the input contract or prove actual ingestion.
+
 References: [Eventstream definition](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/eventstream-definition),
 [update definition](https://learn.microsoft.com/en-us/rest/api/fabric/eventstream/items/update-eventstream-definition),
 [JSON mapping](https://learn.microsoft.com/en-us/kusto/management/json-mapping?view=microsoft-fabric),
