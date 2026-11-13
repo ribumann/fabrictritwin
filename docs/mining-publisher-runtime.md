@@ -38,7 +38,10 @@ viewer disconnect activates or adopts it. There is no production curated
 adapter or delegated write boundary in this source.
 
 `createD01IncidentRun` retains the exact legacy schema-1 definition for
-read/recovery; it does not add the new contract to old records. A reconstructed
+read/recovery; it does not add the new contract to old records. The incident
+reader selects the versioned definition only when the persisted run
+contains its supported contract. A schema-1/schema-2 journal binding mismatch
+is rejected, never retried against the other definition. A reconstructed
 digest or prospective source-recorded contract does not establish historical
 authorization or which deployed producer actually ran. An independently trusted
 approved-run/version proof is still required before exposing incident data.
