@@ -115,6 +115,20 @@ describe("bounded mining query transport", () => {
         { client: create },
       )(input),
     ).rejects.toMatchObject({ code: "configuration" });
+    for (const unsafe of [
+      "http://example.region.kusto.windows.net",
+      "https://ingest-example.region.kusto.windows.net",
+      "https://example.ingest-region.kusto.windows.net",
+      "https://user:password@example.region.kusto.windows.net",
+      "https://example.region.kusto.windows.net/path",
+    ]) {
+      await expect(
+        createBoundedMiningQuery(
+          { ...env, EVENTHOUSE_QUERY_URI: unsafe, MINING_EVENTHOUSE_QUERY_URI: unsafe },
+          { client: create },
+        )(input),
+      ).rejects.toMatchObject({ code: "configuration" });
+    }
     for (const invalid of [
       { ...input, runId: "x' | print 1" },
       { ...input, maxRows: 1001 },
