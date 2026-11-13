@@ -37,8 +37,13 @@ The unmounted query transport additionally requires
 match the existing `EVENTHOUSE_QUERY_URI` and `EVENTHOUSE_DATABASE_NAME`, plus
 `MINING_CURATED_SOURCE_VERSION=d01-validated-source-v1` and
 `MINING_CURATED_QUERY_VERSION=d01-g5-query-v1`. These values are configuration,
-not evidence of source readiness. No data route invokes this transport until the
-reviewed functions' readiness control rows and result schemas are connected.
+not evidence of source readiness. The unmounted DTO mappers target the reviewed
+G5 source contract, including the summary conflict fix in source PR #32 at
+`4e5373d744057161f73888ac5d57ee0e6fdc8f07`. That source has not been compiled
+or deployed to the hosted estate. A readiness control row or a successful scalar
+query alone does not prove deployment, timestamp provenance, or writer approval.
+No data route invokes the transport while those prerequisites and a truthful
+current-incident evidence contract remain unverified.
 The source-only transport uses a single abort signal for bounded public-cloud
 metadata discovery, the Container Apps loopback managed-identity broker, and the
 query response. It requires `MINING_MANAGED_IDENTITY_CLIENT_ID` and the platform's
