@@ -408,11 +408,13 @@ export class MiningRunCoordinator {
     runId: string,
     onPersisted?: () => void,
     onUncertain?: (error: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<{ accepted: true; status: MiningRunStatus }> {
-    const current = await this.status(uuid(runId));
+    const current = await this.status(uuid(runId), signal);
     if (!current || current.admission !== "accepted") {
       throw new MiningCoordinationError("conflict", "Stop requires a durably admitted mining run.");
     }
+    signal?.throwIfAborted();
     try {
       await this.store.create(stopPath(runId), {
         runId,
@@ -423,7 +425,7 @@ export class MiningRunCoordinator {
       throw error;
     }
     onPersisted?.();
-    const status = await this.status(runId);
+    const status = await this.status(runId, signal);
     if (!status) throw new MiningCoordinationError("uncertain", "Mining stop status disappeared.");
     return { accepted: true, status };
   }

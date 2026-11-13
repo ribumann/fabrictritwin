@@ -5,6 +5,7 @@ import {
   jwksCache,
   jwtVerify,
   type JWKSCacheInput,
+  type JWTPayload,
 } from "jose";
 import type { Request } from "express";
 
@@ -93,14 +94,24 @@ export async function verifyMcpCallerPrincipalIdWithErrors(
   req: Request,
   signal?: AbortSignal,
 ): Promise<string | undefined> {
+  const payload = await verifyMcpCallerClaimsWithErrors(req, signal);
+  return typeof payload?.oid === "string" ? payload.oid : undefined;
+}
+
+/** Returns only signature/issuer/audience-verified claims; action callers must authorize scope and subject. */
+export async function verifyMcpCallerClaimsWithErrors(
+  req: Request,
+  signal?: AbortSignal,
+  configuration: NodeJS.ProcessEnv = process.env,
+): Promise<JWTPayload | undefined> {
   signal?.throwIfAborted();
   const authorization = req.get("authorization");
   if (!authorization?.startsWith("Bearer ")) {
     return undefined;
   }
 
-  const tenantId = process.env.ASSISTANT_AUTH_TENANT_ID?.trim();
-  const clientId = process.env.ASSISTANT_AUTH_CLIENT_ID?.trim();
+  const tenantId = configuration.ASSISTANT_AUTH_TENANT_ID?.trim();
+  const clientId = configuration.ASSISTANT_AUTH_CLIENT_ID?.trim();
   if (!tenantId || !clientId) {
     return undefined;
   }
@@ -116,7 +127,7 @@ export async function verifyMcpCallerPrincipalIdWithErrors(
       },
     );
     signal?.throwIfAborted();
-    return typeof payload.oid === "string" ? payload.oid : undefined;
+    return payload;
   } catch (error) {
     if (
       error instanceof errors.JWTClaimValidationFailed ||

@@ -1,7 +1,7 @@
 # Mining run coordination (source only)
 
-The backend exposes a gated, read-only status endpoint; the coordinator is not
-wired to HTTP actions, startup, or deployment. The
+The backend exposes gated read routes and a separately gated delegated cancellation
+endpoint. Start remains unwired to HTTP, startup, or deployment. The
 [explicit default-off publisher runtime](mining-publisher-runtime.md) is a
 separately callable integration, including the opt-in bounded final-flush contract.
 It does not prove G3 authoritative hosted delivery or G8 live stop/ingestion. Existing
@@ -31,7 +31,8 @@ being reported as absent. A single request deadline or client disconnect cancels
 JWKS, Blob and curated reads and prevents subsequent reads. With the default host
 composition, queries, incident persistence and the assistant are not connected:
 context reports `readAvailable: false`, while data routes return explicit 503.
-Start, cancel and acknowledgement remain unavailable without delegated authorization.
+Start and acknowledgement remain unavailable. Cancellation has its own default-off
+delegated boundary below; viewer credentials never authorize it.
 Do not enable these settings as a substitute for approving infrastructure or data access.
 
 The unmounted query transport additionally requires
@@ -196,6 +197,49 @@ query response. It requires `MINING_MANAGED_IDENTITY_CLIENT_ID` and the platform
 `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`; it rejects unknown cloud metadata and
 never falls back to another identity or token resource. This cancellation work does
 not prove deployed query readiness or authorize a live query.
+
+## Delegated cancellation boundary
+
+`POST /api/mining/runs/cancel` remains disabled unless the live backend has
+literal `MINING_CANCEL_ENABLED=true`. Synthetic mode always rejects it. A trusted
+operator must separately approve/configure all of:
+
+- The existing API's `ASSISTANT_AUTH_TENANT_ID` and `ASSISTANT_AUTH_CLIENT_ID`.
+- `MINING_CANCEL_OPERATOR_PRINCIPAL_IDS`: comma-separated lowercase Entra **user**
+  object UUIDs. There is no viewer/athlete/Easy Auth header fallback.
+- `MINING_CANCEL_DELEGATED_SCOPE`: one exact delegated scope exposed/consented for
+  this API. `Mining.Run.Cancel` in tests is illustrative, not an installed scope.
+- `MINING_APPROVED_RUN_ID`: the exact approved UUIDv4 run. Cancellation does not
+  depend on curated read/native readiness, which must not prevent a safe stop.
+- The dedicated mining-state store configuration below, including explicit
+  `MINING_MANAGED_IDENTITY_CLIENT_ID` and `MINING_RUN_COORDINATION_ENABLED=true`.
+
+The API self-verifies bearer signature, issuer, audience and expiration and
+requires the matching tenant, approved user object ID and exact `scp` membership.
+App-only roles or `idtyp=app` are insufficient even if that identity is a viewer.
+No Entra scope, consent, role assignment, host setting or private-state resource
+is provisioned by this source. Before activation, confirm an existing suitable
+delegated scope/client consent or arrange that manual Entra configuration through
+an authorized administrator. The public Cockpit BFF still rejects cancellation:
+it cannot exchange anonymous visitor access for operator authority.
+
+The JSON body contains **only** `{ "plantId": "D01", "runId": "<approved UUID>" }`;
+query parameters, extra fields, other plants and unapproved runs are rejected.
+After authorization, the actual coordinator checks durable admission and
+conditionally creates only that run's immutable stop intent. It never acquires,
+renews or breaks a lease and never starts a publisher. HTTP 202 returns
+`stopRequested`, the observed `publisherStatus`, and `ingestionStatus: "unknown"`.
+Acceptance is **not** stopped acknowledgement or Fabric ingestion verification;
+the current owner must observe intent and drain any already-admitted batch.
+
+A single 9.9-second deadline/disconnect aborts authentication and pre-write
+admission reads; an abort checked immediately before create prevents later
+submission. An already-submitted immutable write may still commit. Deadline,
+lost write response or failed post-write read returns an explicit unknown
+outcome when connected, never success, rollback, takeover or automatic retry.
+Inspect the **same run ID's status** before deciding whether another request is
+necessary. This endpoint remains unactivated; deployment alone grants no write
+approval or end-to-end mining acceptance.
 
 ## Prerequisites and configuration
 
