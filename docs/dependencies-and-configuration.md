@@ -28,6 +28,10 @@ For live freshness checks and operator-controlled recovery, see
 
 ## Configuration inventory
 
+The isolated, opt-in mining coordination source has a separate
+[configuration and permission contract](mining-run-coordination.md).
+It is not wired into the runtime or provisioned by existing deployment scripts.
+
 Cockpit's live **Direct MCP Query** panel formats JSON-RPC responses, SSE event
 messages, and JSON text content as labeled summaries and tables. It keeps every
 returned array and nested field, displays reported errors without inferring

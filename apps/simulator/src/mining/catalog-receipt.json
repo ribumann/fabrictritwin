@@ -1,0 +1,92 @@
+{
+  "specification": {
+    "repository": "https://github.com/ribumann/3d-scene-toolchain",
+    "revision": "60e98f44f12a8abc0ddf13eadc1c12b3ae35798e",
+    "documents": [
+      "docs/mining-twin-agent-dod.md",
+      "docs/diamond-plant-demo.md",
+      "docs/diamond-plant.md"
+    ]
+  },
+  "catalog": {
+    "plant_id": "D01",
+    "source_file": "plant/metadata.json",
+    "source_url": "https://red-wave-0c7bb6c0f.4.azurestaticapps.net/plant/metadata.json",
+    "sha256": "0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
+    "schema_version": 1,
+    "asset_manifest_url": "https://red-wave-0c7bb6c0f.4.azurestaticapps.net/plant/files.json",
+    "asset_manifest_sha256": "d392e2137b1af1f4df1a40e03bd7d5acc7f04ff12447f6d57f8f2a45dc903a92"
+  },
+  "license": {
+    "spdx_id": "MIT",
+    "repository": "https://github.com/ribumann/3d-scene-toolchain",
+    "revision": "60e98f44f12a8abc0ddf13eadc1c12b3ae35798e",
+    "file": "LICENSE"
+  },
+  "assets": [
+    {
+      "path": "D01.png",
+      "sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628"
+    },
+    {
+      "path": "layout.svg",
+      "sha256": "a4e01142f1c650c55e0611e35da744c2cea14d7822e83b42cc5f8f0fcb914613"
+    },
+    {
+      "path": "modules/crusher.glb",
+      "sha256": "bd46a82e79657c9b77751487a6d80084fb5880358285c160b9334fa1b9e9ec29"
+    },
+    {
+      "path": "modules/scrubber.glb",
+      "sha256": "b833779e01ec1252f26df2da9d802cacb33842c384a34559ed12ac6f8abedb07"
+    },
+    {
+      "path": "modules/screen.glb",
+      "sha256": "5820a1cd14653760752ea98f02bbb27d78271f30fba1b0d153b80e026f3d43ad"
+    },
+    {
+      "path": "modules/dms.glb",
+      "sha256": "8f86e1c2dd91e65254dbf8eb93bc660f7381faf7b9a3f93588ecb0563dea5d59"
+    },
+    {
+      "path": "modules/medium.glb",
+      "sha256": "7273512cd64e8b09d985761dc65cbc65e110cdd3a5fa89c0a490fb88cac7fd45"
+    },
+    {
+      "path": "modules/sorter.glb",
+      "sha256": "f8c2c56a308f9a2295e74526fc5c3528268e4b2a976e62ff18e72f05013414be"
+    },
+    {
+      "path": "modules/hopper.glb",
+      "sha256": "a2264916a834901c895c91a7e4c5e49e0d0018dd74db81c2ebb99d27fb9187f1"
+    },
+    {
+      "path": "modules/thickener.glb",
+      "sha256": "12780f9dfc17072684fdf0f0138484ed2886b59f11e89ad81426db90e139993c"
+    },
+    {
+      "path": "modules/water.glb",
+      "sha256": "b3a6c5717a5be78038f984f1ddbe7b51337164f8c40ad09441e2f25eb0351d85"
+    },
+    {
+      "path": "modules/lab.glb",
+      "sha256": "623203d2f4227feeef9d3d7fc4bbc3b527a4af4880455ed752fdd2836fb3734d"
+    },
+    {
+      "path": "modules/control.glb",
+      "sha256": "470e25fcf6138e3169551df5e84618abddc380412b7e30cfc4d29d84be7daf84"
+    },
+    {
+      "path": "modules/tailings.glb",
+      "sha256": "52e11000575a95f288805ff743951ad255e4241bf5803de37c9ff79f35f55a6b"
+    },
+    {
+      "path": "plant.glb",
+      "sha256": "01a13ed8caa9565aa1ead9368f3044cd7309374e7575e3737f4bf9e922893b97"
+    },
+    {
+      "path": "metadata.json",
+      "sha256": "0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce"
+    }
+  ]
+}

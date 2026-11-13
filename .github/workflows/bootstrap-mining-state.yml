@@ -1,0 +1,142 @@
+name: Prepare private mining state
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Create only missing container and container RBAC after private plan review
+        required: true
+        default: false
+        type: boolean
+      approved_digest:
+        description: Privately reviewed preview digest (apply only; not a resource identifier)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Also serialize with image deployment; portal/external operators must coordinate separately.
+  group: azure-app-image-deployment
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
+    environment: azure-deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CORE_OUTPUT: none
+      CLIENT_ID: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+      TENANT_ID: ${{ vars.AZURE_DEPLOY_TENANT_ID }}
+      SUBSCRIPTION_ID: ${{ vars.AZURE_DEPLOY_SUBSCRIPTION_ID }}
+      RESOURCE_GROUP: ${{ vars.AZURE_DEPLOY_RESOURCE_GROUP }}
+      CALLER_PRINCIPAL_ID: ${{ vars.MINING_STATE_CALLER_PRINCIPAL_ID }}
+      STORAGE_ACCOUNT: ${{ vars.MINING_STATE_STORAGE_ACCOUNT }}
+      CONTAINER: ${{ vars.MINING_STATE_CONTAINER }}
+      BACKEND_APP: ${{ vars.MINING_STATE_BACKEND_APP }}
+      IDENTITY_NAME: ${{ vars.MINING_STATE_IDENTITY_NAME }}
+      IDENTITY_CLIENT_ID: ${{ vars.MINING_STATE_IDENTITY_CLIENT_ID }}
+      IDENTITY_PRINCIPAL_ID: ${{ vars.MINING_STATE_IDENTITY_PRINCIPAL_ID }}
+      EXPECTED_ACTOR_ID: ${{ vars.MINING_STATE_ACTOR_ID }}
+      BOOTSTRAP_ENABLED: ${{ vars.MINING_STATE_BOOTSTRAP_ENABLED }}
+      ENVIRONMENT_DIGEST: ${{ vars.MINING_STATE_APPROVED_DIGEST }}
+      WRITE_WINDOW_ID: ${{ vars.MINING_STATE_EXCLUSIVE_WRITER_WINDOW_ID }}
+      ACKNOWLEDGE_NON_ATOMIC_UPDATE: ${{ vars.MINING_STATE_ACKNOWLEDGE_NON_ATOMIC_UPDATE }}
+      INPUT_DIGEST: ${{ inputs.approved_digest }}
+      APPLY: ${{ inputs.apply }}
+      SOURCE_REVISION: ${{ github.sha }}
+      ACTOR_ID: ${{ github.actor_id }}
+    steps:
+      - name: Validate protected configuration and caller before login
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('CLIENT_ID', 'TENANT_ID', 'SUBSCRIPTION_ID', 'CALLER_PRINCIPAL_ID',
+              'RESOURCE_GROUP', 'STORAGE_ACCOUNT', 'CONTAINER', 'BACKEND_APP',
+              'IDENTITY_NAME', 'IDENTITY_CLIENT_ID', 'IDENTITY_PRINCIPAL_ID', 'EXPECTED_ACTOR_ID')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ([string]::IsNullOrWhiteSpace($value) -or $value.Contains("`n") -or $value.Contains("`r")) {
+              throw "Missing or invalid protected variable: $name"
+            }
+            Write-Output "::add-mask::$value"
+          }
+          if ($env:WRITE_WINDOW_ID -match '[\x00-\x1f\x7f]' -or $env:WRITE_WINDOW_ID.Length -gt 1024) {
+            throw 'Invalid protected writer-window reference.'
+          }
+          if ($env:WRITE_WINDOW_ID) { Write-Output "::add-mask::$env:WRITE_WINDOW_ID" }
+          if ([string]$env:ACKNOWLEDGE_NON_ATOMIC_UPDATE -cnotin @('', 'false', 'true')) {
+            throw 'Non-atomic acknowledgement must be exact true, false or unset.'
+          }
+          if ($env:ACTOR_ID -cne $env:EXPECTED_ACTOR_ID -or $env:EXPECTED_ACTOR_ID -notmatch '^[0-9]+$' -or
+              $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:SOURCE_REVISION -cnotmatch '^[a-f0-9]{40}$') {
+            throw 'Caller/source mismatch or rerun; use a new reviewed dispatch.'
+          }
+          if ($env:APPLY -cnotin @('true', 'false')) { throw 'Invalid apply input.' }
+          if ($env:APPLY -ceq 'true' -and ($env:BOOTSTRAP_ENABLED -cne 'true' -or
+              $env:INPUT_DIGEST -cnotmatch '^[a-f0-9]{64}$' -or $env:INPUT_DIGEST -cne $env:ENVIRONMENT_DIGEST -or
+              [string]::IsNullOrWhiteSpace($env:WRITE_WINDOW_ID) -or $env:ACKNOWLEDGE_NON_ATOMIC_UPDATE -cne 'true')) {
+            throw 'Apply requires enabled bootstrap, reviewed digest, external writer-window reference and non-atomic acknowledgement.'
+          }
+      - name: Verify actual environment OIDC claims
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $response = Invoke-RestMethod -Uri "$($env:ACTIONS_ID_TOKEN_REQUEST_URL)&audience=api%3A%2F%2FAzureADTokenExchange" `
+              -Headers @{ Authorization = "bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN" } -Verbose:$false -Debug:$false
+            $payload = $response.value.Split('.')[1].Replace('-', '+').Replace('_', '/')
+            $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload.PadRight(
+              $payload.Length + (4 - $payload.Length % 4) % 4, '='))) | ConvertFrom-Json
+            if ($claims.iss -cne 'https://token.actions.githubusercontent.com' -or
+                $claims.aud -cne 'api://AzureADTokenExchange' -or
+                $claims.sub -cne 'repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-deploy' -or
+                $claims.repository_id -cne '1449513330' -or $claims.repository_owner_id -cne '46997953' -or
+                $claims.ref -cne 'refs/heads/main' -or $claims.sha -cne $env:SOURCE_REVISION -or
+                $claims.actor_id -cne $env:EXPECTED_ACTOR_ID -or $claims.event_name -cne 'workflow_dispatch' -or
+                $claims.workflow_ref -cne 'ribumann/fabrictritwin/.github/workflows/bootstrap-mining-state.yml@refs/heads/main') {
+              throw 'Claims mismatch.'
+            }
+          } catch { throw 'Environment OIDC verification failed; raw token/response suppressed.' }
+          Write-Output 'Exact protected OIDC caller and source verified.'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ env.CLIENT_ID }}
+          tenant-id: ${{ env.TENANT_ID }}
+          subscription-id: ${{ env.SUBSCRIPTION_ID }}
+      - name: Preview or apply only the reviewed state bootstrap
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parameters = @{
+            SubscriptionId = $env:SUBSCRIPTION_ID; TenantId = $env:TENANT_ID
+            CallerClientId = $env:CLIENT_ID; CallerPrincipalId = $env:CALLER_PRINCIPAL_ID
+            ResourceGroupName = $env:RESOURCE_GROUP; StorageAccountName = $env:STORAGE_ACCOUNT
+            ContainerName = $env:CONTAINER; BackendAppName = $env:BACKEND_APP
+            IdentityName = $env:IDENTITY_NAME; IdentityClientId = $env:IDENTITY_CLIENT_ID
+            IdentityPrincipalId = $env:IDENTITY_PRINCIPAL_ID; SourceRevision = $env:SOURCE_REVISION
+            Apply = ($env:APPLY -ceq 'true')
+            ExclusiveWriterWindowId = $env:WRITE_WINDOW_ID
+            AcknowledgeNonAtomicUpdate = ($env:ACKNOWLEDGE_NON_ATOMIC_UPDATE -ceq 'true')
+          }
+          if ($parameters.Apply) { $parameters.ApprovedDigest = $env:INPUT_DIGEST }
+          try { $result = ./scripts/deploy/bootstrap-mining-state.ps1 @parameters }
+          catch {
+            # Keep private target metadata and service bodies out of public logs.
+            Write-Output '::error::Mining-state operation stopped. Outcome may be partial; inspect private Azure audit records before a new preview. No retry or rollback.'
+            exit 1
+          }
+          @"
+          Mining state scope: private container and container-scoped UAMI role only.
+          Status: $($result.Status)
+          Reviewed-state digest: $($result.Digest)
+          Runtime overlay deferred; no deployment, ingestion or readiness claim.
+          "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY

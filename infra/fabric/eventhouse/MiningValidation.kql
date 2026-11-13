@@ -1,0 +1,263 @@
+// Read-only validation/classification contract. These functions do not write
+// to curated or quarantine tables. Materialization remains gated until both
+// raw timestamp preservation and exclusive-writer approval are verified.
+.create-or-alter function with (folder = "Mining/Validation") mining_SourceReadiness()
+{
+    let manifest =
+        mining_SourceContract
+        | summarize
+            manifest_rows = count(),
+            source_rows = countif(contract_version == "d01-validated-source-v1" and
+                catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+                profile_version == "d01-publish-profile-v1" and status == "Ready"),
+            raw_timestamp_rows = countif(contract_version == "d01-validated-source-v1" and raw_timestamp_shape_verified),
+            writer_approval_rows = countif(contract_version == "d01-validated-source-v1" and exclusive_writer_approved),
+            incident_ready_rows = countif(contract_version == "d01-validated-source-v1" and
+                incident_source_version == "d01-incident-ledger-v1" and incident_source_ready);
+    let catalog =
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce"
+        | summarize catalog_rows = count(),
+            catalog_ids = make_set(strcat(record_kind, ":", record_id)),
+            tag_rows = countif(record_kind == "tag"),
+            module_rows = countif(record_kind == "module"),
+            equipment_rows = countif(record_kind == "equipment"),
+            stream_rows = countif(record_kind == "stream"),
+            tag_ids = make_set_if(record_id, record_kind == "tag");
+    let tag_profile =
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            record_kind == "tag"
+        | project tag_id = record_id, metric = tostring(record_json.metric)
+        | join kind=leftouter (
+            mining_PublishProfile
+            | where plant_id == "D01" and catalog_version ==
+                "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+                profile_version == "d01-publish-profile-v1"
+            | project profile_tag_id = tag_id, interval_seconds
+        ) on $left.tag_id == $right.profile_tag_id
+        | summarize wrong_intervals = countif(
+            isnull(interval_seconds) or
+            interval_seconds != iff(metric in ("bearing_temperature", "level", "product_mass"), 60, 30));
+    let profile =
+        mining_PublishProfile
+        | where plant_id == "D01" and
+            catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            profile_version == "d01-publish-profile-v1"
+        | summarize profile_rows = count(),
+            profile_ids = make_set(tag_id),
+            invalid_intervals = countif(interval_seconds !in (30, 60));
+    manifest
+    | extend join_key = 1
+    | join kind=inner (catalog | extend join_key = 1) on join_key
+    | join kind=inner (profile | extend join_key = 1) on join_key
+    | join kind=inner (tag_profile | extend join_key = 1) on join_key
+    | extend catalog_ready = catalog_rows == 194 and array_length(catalog_ids) == 194 and
+        module_rows == 24 and equipment_rows == 64 and stream_rows == 50 and
+        tag_rows == 56 and array_length(tag_ids) == 56
+    | extend profile_ready = profile_rows == 56 and array_length(profile_ids) == 56 and
+        array_length(set_difference(tag_ids, profile_ids)) == 0 and
+        array_length(set_difference(profile_ids, tag_ids)) == 0 and
+        invalid_intervals == 0 and wrong_intervals == 0
+    | extend status = case(
+        manifest_rows != 1 or source_rows != 1, "BLOCKED_SOURCE_CONTRACT",
+        raw_timestamp_rows != 1, "BLOCKED_RAW_TIMESTAMP_PROOF",
+        writer_approval_rows != 1, "BLOCKED_WRITER_APPROVAL",
+        not(catalog_ready), "BLOCKED_CATALOG",
+        not(profile_ready), "BLOCKED_PROFILE",
+        "READY")
+    | project status,
+        contract_version = "d01-validated-source-v1",
+        catalog_version = "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
+        profile_version = "d01-publish-profile-v1",
+        catalog_rows,
+        tag_rows,
+        profile_rows,
+        raw_timestamp_shape_verified = raw_timestamp_rows == 1,
+        exclusive_writer_approved = writer_approval_rows == 1,
+        incident_source_ready = status == "READY" and incident_ready_rows == 1;
+}
+
+.create-or-alter function with (folder = "Mining/Validation") mining_ClassifyTelemetry()
+{
+    let readiness = mining_SourceReadiness();
+    mining_TelemetryRaw
+    | extend received_at = ingestion_time()
+    | extend event_type = tostring(event["entityType"]),
+        schema_version = tolong(event["schema_version"]),
+        run_id = tostring(event["run_id"]),
+        event_id = tostring(event["event_id"]),
+        sequence = tolong(event["sequence"]),
+        interval_seconds = toint(event["interval_seconds"]),
+        plant_id = tostring(event["plant_id"]),
+        module_id = tostring(event["module_id"]),
+        equipment_id = tostring(event["equipment_id"]),
+        tag_id = tostring(event["tag_id"]),
+        value = toreal(event["value"]),
+        unit = tostring(event["unit"]),
+        quality = tostring(event["quality"]),
+        event_time = todatetime(timestamp_raw)
+    | extend shape_ok = gettype(event) == "dictionary" and array_length(bag_keys(event)) == 14 and
+        bag_has_key(event, "entityType") and bag_has_key(event, "schema_version") and
+        bag_has_key(event, "run_id") and bag_has_key(event, "event_id") and
+        bag_has_key(event, "sequence") and bag_has_key(event, "interval_seconds") and
+        bag_has_key(event, "timestamp") and bag_has_key(event, "plant_id") and
+        bag_has_key(event, "module_id") and bag_has_key(event, "equipment_id") and
+        bag_has_key(event, "tag_id") and bag_has_key(event, "value") and
+        bag_has_key(event, "unit") and bag_has_key(event, "quality")
+    | extend types_ok = gettype(event["entityType"]) == "string" and
+        gettype(event["schema_version"]) in ("int", "long") and
+        gettype(event["run_id"]) == "string" and gettype(event["event_id"]) == "string" and
+        gettype(event["sequence"]) in ("int", "long") and
+        gettype(event["interval_seconds"]) in ("int", "long") and
+        gettype(event["timestamp"]) == "string" and
+        gettype(event["plant_id"]) == "string" and gettype(event["module_id"]) == "string" and
+        gettype(event["equipment_id"]) == "string" and gettype(event["tag_id"]) == "string" and
+        gettype(event["value"]) in ("int", "long", "real") and
+        gettype(event["unit"]) == "string" and gettype(event["quality"]) == "string"
+    | extend identity_ok = event_type == "PlantTelemetry" and schema_version == 2 and
+        run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        sequence > 0 and toreal(sequence) <= 9007199254740991.0 and
+        toreal(sequence) == floor(toreal(sequence)) and plant_id == "D01" and
+        event_id matches regex @"^[0-9a-f]{64}$" and
+        event_id == hash_sha256(strcat(run_id, ":", tostring(sequence)))
+    | extend timestamp_ok = timestamp_raw matches regex
+        @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$" and
+        isnotnull(event_time) and
+        event_time == todatetime(tostring(event["timestamp"]))
+    | extend quality_ok = quality in ("good", "uncertain", "bad")
+    | extend value_ok = isfinite(value)
+    | extend join_key = 1
+    | join kind=inner (readiness | extend join_key = 1) on join_key
+    | join kind=leftouter (
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and record_kind == "tag"
+        | project tag_id = record_id,
+            catalog_module_id = tostring(record_json.module_id),
+            catalog_equipment_id = tostring(record_json.equipment_id),
+        catalog_unit = tostring(record_json.unit)
+    ) on tag_id
+    | join kind=leftouter (
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and record_kind == "equipment"
+        | project equipment_id = record_id, equipment_module_id = tostring(record_json.module_id)
+    ) on equipment_id
+    | join kind=leftouter (
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and record_kind == "module"
+        | project module_exists_id = record_id
+    ) on $left.module_id == $right.module_exists_id
+    | join kind=leftouter (
+        mining_PublishProfile
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            profile_version == "d01-publish-profile-v1"
+        | project profile_tag_id = tag_id, profile_interval = interval_seconds
+    ) on $left.tag_id == $right.profile_tag_id
+    | extend catalog_ok = isnotempty(catalog_module_id) and isnotempty(module_exists_id) and
+        catalog_equipment_id == equipment_id and
+        catalog_module_id == module_id and equipment_module_id == module_id and catalog_unit == unit and
+        isnotempty(catalog_equipment_id)
+    | extend profile_ok = isnotnull(profile_interval) and interval_seconds == profile_interval and
+        interval_seconds in (30, 60)
+    | extend structurally_valid = shape_ok and types_ok and identity_ok and timestamp_ok and
+        quality_ok and value_ok
+    | extend disposition = case(
+        not(structurally_valid), "QUARANTINED",
+        status != "READY", "BLOCKED",
+        isempty(catalog_module_id), "QUARANTINED",
+        not(catalog_ok), "QUARANTINED",
+        not(profile_ok), "QUARANTINED",
+        "ACCEPTED")
+    | extend reason_codes = set_difference(pack_array(
+        iff(not(shape_ok), "invalid_root_keys", ""),
+        iff(not(types_ok), "invalid_root_types", ""),
+        iff(not(identity_ok), "invalid_event_identity", ""),
+        iff(not(timestamp_ok), "invalid_or_unproven_timestamp", ""),
+        iff(not(quality_ok), "invalid_quality", ""),
+        iff(not(value_ok), "non_finite_value", ""),
+        iff(status != "READY", status, ""),
+        iff(status == "READY" and isempty(catalog_module_id), "unknown_tag", ""),
+        iff(status == "READY" and not(catalog_ok) and isnotempty(catalog_module_id), "catalog_join_or_envelope_mismatch", ""),
+        iff(status == "READY" and not(profile_ok), "publish_profile_mismatch", "")
+    ), dynamic([""]))
+    | extend source_contract_version = "d01-validated-source-v1",
+        profile_version = "d01-publish-profile-v1",
+        payload_fingerprint = hash_sha256(tostring(pack_array(
+            plant_id, run_id, event_id, sequence, event_time, module_id, equipment_id,
+            tag_id, value, unit, quality, interval_seconds)))
+    | project disposition, reason_codes, source_kind = "telemetry",
+        raw_event = event, timestamp_raw, received_at, plant_id, run_id, event_id,
+        sequence, event_time, module_id, equipment_id, tag_id, value, unit, quality,
+        interval_seconds, catalog_version = "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
+        profile_version, source_contract_version, payload_fingerprint;
+}
+
+.create-or-alter function with (folder = "Mining/Validation") mining_ClassifyState()
+{
+    let readiness = mining_SourceReadiness();
+    mining_PlantStateEvents
+    | extend received_at = ingestion_time()
+    | extend event_type = tostring(event["entityType"]),
+        schema_version = tolong(event["schema_version"]),
+        run_id = tostring(event["run_id"]),
+        event_id = tostring(event["event_id"]),
+        sequence = tolong(event["sequence"]),
+        plant_id = tostring(event["plant_id"]),
+        scope_id = tostring(event["scope_id"]),
+        scheduled_running = tobool(event["scheduled_running"]),
+        state = tostring(event["state"]),
+        event_time = todatetime(timestamp_raw)
+    | extend shape_ok = gettype(event) == "dictionary" and array_length(bag_keys(event)) == 10 and
+        bag_has_key(event, "entityType") and bag_has_key(event, "schema_version") and
+        bag_has_key(event, "run_id") and bag_has_key(event, "event_id") and
+        bag_has_key(event, "sequence") and bag_has_key(event, "timestamp") and
+        bag_has_key(event, "plant_id") and bag_has_key(event, "scope_id") and
+        bag_has_key(event, "scheduled_running") and bag_has_key(event, "state")
+    | extend types_ok = gettype(event["entityType"]) == "string" and
+        gettype(event["schema_version"]) in ("int", "long") and
+        gettype(event["run_id"]) == "string" and gettype(event["event_id"]) == "string" and
+        gettype(event["sequence"]) in ("int", "long") and
+        gettype(event["timestamp"]) == "string" and
+        gettype(event["plant_id"]) == "string" and gettype(event["scope_id"]) == "string" and
+        gettype(event["scheduled_running"]) == "bool" and gettype(event["state"]) == "string"
+    | extend identity_ok = event_type == "PlantStateEvent" and schema_version == 2 and
+        run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        sequence > 0 and toreal(sequence) <= 9007199254740991.0 and
+        toreal(sequence) == floor(toreal(sequence)) and plant_id == "D01" and
+        event_id matches regex @"^[0-9a-f]{64}$" and
+        event_id == hash_sha256(strcat(run_id, ":", tostring(sequence)))
+    | extend timestamp_ok = timestamp_raw matches regex
+        @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$" and
+        isnotnull(event_time) and
+        event_time == todatetime(tostring(event["timestamp"]))
+    | extend state_ok = scope_id in ("A", "B", "C", "shared") and
+        state in ("starting", "running", "idle", "stopped", "fault")
+    | extend structurally_valid = shape_ok and types_ok and identity_ok and timestamp_ok and state_ok
+    | extend join_key = 1
+    | join kind=inner (readiness | extend join_key = 1) on join_key
+    | extend disposition = case(
+        not(structurally_valid), "QUARANTINED",
+        status != "READY", "BLOCKED",
+        "ACCEPTED")
+    | extend reason_codes = set_difference(pack_array(
+        iff(not(shape_ok), "invalid_root_keys", ""),
+        iff(not(types_ok), "invalid_root_types", ""),
+        iff(not(identity_ok), "invalid_event_identity", ""),
+        iff(not(timestamp_ok), "invalid_or_unproven_timestamp", ""),
+        iff(not(state_ok), "invalid_state_or_scope", ""),
+        iff(status != "READY", status, "")
+    ), dynamic([""]))
+    | extend source_contract_version = "d01-validated-source-v1",
+        payload_fingerprint = hash_sha256(tostring(pack_array(
+            plant_id, run_id, event_id, sequence, event_time, scope_id, scheduled_running, state)))
+    | project disposition, reason_codes, source_kind = "state",
+        raw_event = event, timestamp_raw, received_at, plant_id, run_id, event_id,
+        sequence, event_time, scope_id, scheduled_running, state,
+        catalog_version = "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
+        source_contract_version, payload_fingerprint;
+}

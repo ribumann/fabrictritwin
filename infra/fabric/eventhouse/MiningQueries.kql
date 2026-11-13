@@ -1,0 +1,760 @@
+// Fixed read-only query contracts for the versioned curated source.
+// Callers must bind parameters, enforce the documented timeout/1 MB transport
+// limit and surface non-OK statuses. No function reads a raw dynamic table.
+.create-or-alter function with (folder = "Mining/Queries") mining_DeduplicatedTelemetry(
+    requested_plant_id:string, requested_run_id:string,
+    requested_start_utc:datetime, requested_end_utc:datetime)
+{
+    mining_ValidatedTelemetry
+    | where source_contract_version == "d01-validated-source-v1" and
+        catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+        profile_version == "d01-publish-profile-v1" and
+        plant_id == requested_plant_id and run_id == requested_run_id and
+        timestamp >= requested_start_utc and timestamp <= requested_end_utc
+    | summarize copies = count(),
+        fingerprints = make_set(payload_fingerprint),
+        timestamp = any(timestamp),
+        received_at = min(received_at),
+        sequence = any(sequence),
+        module_id = any(module_id),
+        equipment_id = any(equipment_id),
+        tag_id = any(tag_id),
+        value = any(value),
+        unit = any(unit),
+        quality = any(quality),
+        interval_seconds = any(interval_seconds)
+        by plant_id, run_id, event_id
+    | extend event_conflict = array_length(fingerprints) != 1
+    | extend value = iff(event_conflict, real(null), value)
+}
+
+.create-or-alter function with (folder = "Mining/Queries") mining_DeduplicatedState(
+    requested_plant_id:string, requested_run_id:string,
+    requested_start_utc:datetime, requested_end_utc:datetime)
+{
+    mining_ValidatedState
+    | where source_contract_version == "d01-validated-source-v1" and
+        catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+        plant_id == requested_plant_id and run_id == requested_run_id and
+        timestamp >= requested_start_utc and timestamp <= requested_end_utc
+    | summarize copies = count(),
+        fingerprints = make_set(payload_fingerprint),
+        timestamp = max(timestamp),
+        received_at = min(received_at),
+        sequence = any(sequence),
+        scope_id = any(scope_id),
+        scheduled_running = any(scheduled_running),
+        state = any(state)
+        by plant_id, run_id, event_id
+    | extend event_conflict = array_length(fingerprints) != 1
+}
+
+.create-or-alter function with (folder = "Mining/Queries") mining_PlantLatest(
+    plant_id:string, run_id:string, as_of_utc:datetime)
+{
+    let source_status = toscalar(mining_SourceReadiness() | project status);
+    let requested_run_id = run_id;
+    let request_ok = plant_id == "D01" and
+        run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        isnotnull(as_of_utc) and as_of_utc <= now();
+    let tags =
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and record_kind == "tag"
+        | extend tag_id = record_id,
+            module_id = tostring(record_json.module_id),
+            equipment_id = tostring(record_json.equipment_id),
+            metric = tostring(record_json.metric),
+            unit = tostring(record_json.unit)
+        | project tag_id, module_id, equipment_id, metric, unit
+        | join kind=leftouter (
+            mining_PublishProfile
+            | where plant_id == "D01" and catalog_version ==
+                "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+                profile_version == "d01-publish-profile-v1"
+            | project profile_tag_id = tag_id, cadence = interval_seconds
+        ) on $left.tag_id == $right.profile_tag_id
+        | project tag_id, module_id, equipment_id, metric, unit, cadence;
+    let latest_telemetry =
+        mining_DeduplicatedTelemetry(plant_id, requested_run_id, as_of_utc - 7d, as_of_utc)
+        | summarize arg_max(timestamp, *) by tag_id;
+    let tag_rows =
+        tags
+        | join kind=leftouter latest_telemetry on tag_id
+        | where request_ok and source_status == "READY"
+        | extend age_seconds = iff(isnull(timestamp), long(null), datetime_diff("second", as_of_utc, timestamp))
+        | extend status = case(
+            source_status != "READY", source_status,
+            not(request_ok), "INVALID_REQUEST",
+            event_conflict, "DUPLICATE_CONFLICT",
+            isnull(timestamp), "UNKNOWN_NO_OBSERVATION",
+            quality == "bad", "BAD_QUALITY",
+            quality == "uncertain", "UNCERTAIN_QUALITY",
+            age_seconds > cadence * 3 + 15, "STALE",
+            "OK")
+        | project status, plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "tag",
+            module_id, equipment_id, scope_id = "", tagId = tag_id, seriesId = tag_id, metric,
+            value = iff(event_conflict, real(null), value), unit,
+            quality = iff(event_conflict, "", quality), event_time = timestamp,
+            received_at, age_seconds, state = "", scheduled_running = bool(null),
+            coverage = real(null);
+    let states =
+        mining_DeduplicatedState(plant_id, requested_run_id, as_of_utc - 7d, as_of_utc)
+        | summarize arg_max(timestamp, *) by scope_id;
+    let scopes = datatable(scope_id:string) ["A", "B", "C", "shared"];
+    let state_rows =
+        scopes
+        | join kind=leftouter states on scope_id
+        | where request_ok and source_status == "READY"
+        | extend age_seconds = iff(isnull(timestamp), long(null), datetime_diff("second", as_of_utc, timestamp))
+        | extend status = case(
+            source_status != "READY", source_status,
+            not(request_ok), "INVALID_REQUEST",
+            event_conflict, "DUPLICATE_CONFLICT",
+            isnull(timestamp), "UNKNOWN_NO_STATE",
+            age_seconds > 195, "STALE_STATE",
+            state == "fault", "FAULT",
+            state != "running" or not(scheduled_running), "NOT_RUNNING",
+            "OK")
+        | project status, plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "state",
+            module_id = "", equipment_id = "", scope_id, tagId = "", seriesId = "", metric = "",
+            value = real(null), unit = "", quality = "", event_time = timestamp,
+            received_at, age_seconds, state = iff(event_conflict, "", state),
+            scheduled_running = iff(event_conflict, bool(null), scheduled_running), coverage = real(null);
+    let blocked =
+        print status = iff(not(request_ok), "INVALID_REQUEST", source_status),
+            plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "contract",
+            module_id = "", equipment_id = "", scope_id = "", tagId = "", seriesId = "", metric = "",
+            value = real(null), unit = "", quality = "", event_time = datetime(null),
+            received_at = datetime(null), age_seconds = long(null), state = "",
+            scheduled_running = bool(null), coverage = real(null)
+        | where status != "READY";
+    union kind=outer tag_rows, state_rows, blocked
+}
+
+.create-or-alter function with (folder = "Mining/Queries") mining_PlantSummary(
+    plant_id:string, run_id:string, window_start_utc:datetime, window_end_utc:datetime)
+{
+    let source_status = toscalar(mining_SourceReadiness() | project status);
+    let duration_seconds = todouble(datetime_diff("millisecond", window_end_utc, window_start_utc)) / 1000.0;
+    let identity_ok = plant_id == "D01" and
+        run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+    let window_ok = isnotnull(window_start_utc) and isnotnull(window_end_utc) and
+        duration_seconds >= 60 and duration_seconds <= 86400 and window_end_utc <= now();
+    let request_ok = identity_ok and window_ok;
+    let telemetry = mining_DeduplicatedTelemetry(plant_id, run_id, window_start_utc, window_end_utc)
+        | where not(event_conflict)
+        | join kind=inner (
+            mining_PlantCatalog
+            | where plant_id == "D01" and catalog_version ==
+                "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and record_kind == "tag"
+            | extend tag_id = record_id,
+                module_id = tostring(record_json.module_id),
+                metric = tostring(record_json.metric)
+            | extend signal = case(
+                tag_id == "D01.A.crusher.ore_flow", "feed_A",
+                tag_id == "D01.B.crusher.ore_flow", "feed_B",
+                tag_id == "D01.C.crusher.ore_flow", "feed_C",
+                tag_id == "D01.shared.water.water_flow", "water",
+                tag_id == "D01.shared.control.power", "power",
+                "")
+            | where isnotempty(signal)
+            | project tag_id, signal
+            | join kind=inner (
+                mining_PublishProfile
+                | where plant_id == "D01" and catalog_version ==
+                    "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+                    profile_version == "d01-publish-profile-v1"
+                | project profile_tag_id = tag_id, cadence_seconds = interval_seconds
+            ) on $left.tag_id == $right.profile_tag_id
+            | project tag_id, signal, cadence_seconds
+        ) on tag_id
+        | where timestamp - interval_seconds * 1s >= window_start_utc and
+            timestamp < window_end_utc;
+    let measures =
+        telemetry
+        | summarize good_count = countif(quality == "good"),
+            non_good_count = countif(quality != "good"),
+            uncertain_count = countif(quality == "uncertain"),
+            bad_count = countif(quality == "bad"),
+            late_count = countif(received_at > timestamp + interval_seconds * 1s),
+            good_mean = avgif(value, quality == "good"),
+            integrated = sumif(value * interval_seconds / 3600.0, quality == "good"),
+            cadence_seconds = max(cadence_seconds),
+            first_event = min(timestamp),
+            last_event = max(timestamp),
+            first_received = min(received_at),
+            last_received = max(received_at)
+            by signal;
+    let common =
+        telemetry
+        | where quality == "good"
+        | summarize signal_value = avg(value), sample_count = count(),
+            integrated = sum(value * interval_seconds / 3600.0),
+            cadence_seconds = max(cadence_seconds),
+            first_event = min(timestamp), last_event = max(timestamp),
+            first_received = min(received_at), last_received = max(received_at)
+            by signal, minute = bin(timestamp - 1ms, 1m)
+        | summarize
+            feed_a = maxif(signal_value, signal == "feed_A"),
+            feed_b = maxif(signal_value, signal == "feed_B"),
+            feed_c = maxif(signal_value, signal == "feed_C"),
+            water = maxif(signal_value, signal == "water"),
+            power = maxif(signal_value, signal == "power"),
+            feed_a_count = maxif(sample_count, signal == "feed_A"),
+            feed_b_count = maxif(sample_count, signal == "feed_B"),
+            feed_c_count = maxif(sample_count, signal == "feed_C"),
+            water_count = maxif(sample_count, signal == "water"),
+            power_count = maxif(sample_count, signal == "power"),
+            feed_a_cadence = maxif(cadence_seconds, signal == "feed_A"),
+            feed_b_cadence = maxif(cadence_seconds, signal == "feed_B"),
+            feed_c_cadence = maxif(cadence_seconds, signal == "feed_C"),
+            water_cadence = maxif(cadence_seconds, signal == "water"),
+            power_cadence = maxif(cadence_seconds, signal == "power"),
+            event_start = min(first_event), event_end = max(last_event),
+            received_start = min(first_received), received_end = max(last_received)
+            by minute
+        | where feed_a_count > 0 and feed_b_count > 0 and feed_c_count > 0 and
+            water_count > 0 and power_count > 0
+        | extend plant_feed = feed_a + feed_b + feed_c;
+    let state_source =
+        mining_DeduplicatedState(plant_id, run_id, window_start_utc - 2m, window_end_utc);
+    let state_by_minute =
+        state_source
+        | extend minute = bin(timestamp - 1ms, 1m);
+    let startup =
+        state_source
+        | where not(event_conflict) and state == "starting"
+        | summarize started_at = min(timestamp) by scope_id;
+    let state_latest_times =
+        state_by_minute
+        | summarize latest_timestamp = max(timestamp)
+            by scope_id, minute;
+    let state_latest_conflicts =
+        state_by_minute
+        | join kind=inner state_latest_times on scope_id, minute
+        | where timestamp == latest_timestamp
+        | summarize latest_conflict_count = countif(event_conflict) by scope_id, minute;
+    let state_bins =
+        state_by_minute
+        | where not(event_conflict)
+        | summarize arg_max(timestamp, state, scheduled_running)
+            by scope_id, minute
+        | join kind=inner state_latest_times on scope_id, minute
+        | where timestamp == latest_timestamp
+        | join kind=inner state_latest_conflicts on scope_id, minute
+        | where latest_conflict_count == 0
+        | join kind=leftouter startup on scope_id
+        | where state == "running" and scheduled_running and
+        (isnull(started_at) or timestamp >= started_at + 2m)
+        | summarize scopes = make_set(scope_id) by minute
+        | where array_length(scopes) == 4;
+    let common_running =
+        common
+        | join kind=inner state_bins on minute
+        | extend overlap_seconds = todouble(datetime_diff("millisecond",
+        min_of(minute + 1m, window_end_utc), max_of(minute, window_start_utc))) / 1000.0
+        | extend minute_coverage = min_of(
+        todouble(feed_a_count * feed_a_cadence) / overlap_seconds,
+        todouble(feed_b_count * feed_b_cadence) / overlap_seconds,
+        todouble(feed_c_count * feed_c_cadence) / overlap_seconds,
+        todouble(water_count * water_cadence) / overlap_seconds,
+        todouble(power_count * power_cadence) / overlap_seconds);
+    let aggregate =
+        measures
+        | summarize line_a = maxif(good_mean, signal == "feed_A"),
+            line_b = maxif(good_mean, signal == "feed_B"),
+            line_c = maxif(good_mean, signal == "feed_C"),
+            feed_a_tonnes = maxif(integrated, signal == "feed_A"),
+            feed_b_tonnes = maxif(integrated, signal == "feed_B"),
+            feed_c_tonnes = maxif(integrated, signal == "feed_C"),
+            water_m3 = maxif(integrated, signal == "water"),
+            energy_kwh = maxif(integrated, signal == "power"),
+            feed_a_good = maxif(good_count, signal == "feed_A"),
+            feed_b_good = maxif(good_count, signal == "feed_B"),
+            feed_c_good = maxif(good_count, signal == "feed_C"),
+            water_good = maxif(good_count, signal == "water"),
+            power_good = maxif(good_count, signal == "power"),
+            feed_a_non_good = maxif(non_good_count, signal == "feed_A"),
+            feed_b_non_good = maxif(non_good_count, signal == "feed_B"),
+            feed_c_non_good = maxif(non_good_count, signal == "feed_C"),
+            water_non_good = maxif(non_good_count, signal == "water"),
+            power_non_good = maxif(non_good_count, signal == "power"),
+            feed_a_uncertain = maxif(uncertain_count, signal == "feed_A"),
+            feed_b_uncertain = maxif(uncertain_count, signal == "feed_B"),
+            feed_c_uncertain = maxif(uncertain_count, signal == "feed_C"),
+            water_uncertain = maxif(uncertain_count, signal == "water"),
+            power_uncertain = maxif(uncertain_count, signal == "power"),
+            feed_a_bad = maxif(bad_count, signal == "feed_A"),
+            feed_b_bad = maxif(bad_count, signal == "feed_B"),
+            feed_c_bad = maxif(bad_count, signal == "feed_C"),
+            water_bad = maxif(bad_count, signal == "water"),
+            power_bad = maxif(bad_count, signal == "power"),
+            feed_a_late = maxif(late_count, signal == "feed_A"),
+            feed_b_late = maxif(late_count, signal == "feed_B"),
+            feed_c_late = maxif(late_count, signal == "feed_C"),
+            water_late = maxif(late_count, signal == "water"),
+            power_late = maxif(late_count, signal == "power"),
+            feed_a_cadence = maxif(cadence_seconds, signal == "feed_A"),
+            feed_b_cadence = maxif(cadence_seconds, signal == "feed_B"),
+            feed_c_cadence = maxif(cadence_seconds, signal == "feed_C"),
+            water_cadence = maxif(cadence_seconds, signal == "water"),
+            power_cadence = maxif(cadence_seconds, signal == "power"),
+            first_event = min(first_event), last_event = max(last_event),
+            first_received = min(first_received), last_received = max(last_received);
+    let selected_tag_ids =
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            record_kind == "tag" and record_id in (
+                "D01.A.crusher.ore_flow", "D01.B.crusher.ore_flow", "D01.C.crusher.ore_flow",
+                "D01.shared.water.water_flow", "D01.shared.control.power")
+        | project tag_id = record_id;
+    let conflicting_events =
+        mining_DeduplicatedTelemetry(plant_id, run_id, window_start_utc, window_end_utc)
+        | join kind=inner selected_tag_ids on tag_id
+        | where event_conflict and timestamp - interval_seconds * 1s >= window_start_utc and
+            timestamp < window_end_utc
+        | summarize conflict_event_count = count();
+    let common_stats = common_running
+        | summarize invalid_common_bins = countif(minute_coverage > 1.0),
+            common_seconds = sumif(overlap_seconds, minute_coverage >= 0.90),
+            common_feed_numerator = sumif(plant_feed * overlap_seconds, minute_coverage >= 0.90),
+            common_tonnes = sumif(plant_feed * overlap_seconds / 3600.0, minute_coverage >= 0.90),
+            common_water_m3 = sumif(water * overlap_seconds / 3600.0, minute_coverage >= 0.90),
+            common_energy_kwh = sumif(power * overlap_seconds / 3600.0, minute_coverage >= 0.90)
+        | extend common_feed = iff(common_seconds > 0,
+            common_feed_numerator / common_seconds, real(null));
+    let running_state_source =
+        mining_DeduplicatedState(plant_id, run_id, window_end_utc - 195s, window_end_utc)
+        | where scope_id in ("A", "B", "C");
+    let running_latest_times =
+        running_state_source
+        | summarize latest_timestamp = max(timestamp) by scope_id;
+    let running_latest_conflicts =
+        running_state_source
+        | join kind=inner running_latest_times on scope_id
+        | where timestamp == latest_timestamp
+        | summarize current_conflict_count = countif(event_conflict) by scope_id;
+    let running_lines =
+        running_state_source
+        | where not(event_conflict)
+        | summarize arg_max(timestamp, state, scheduled_running) by scope_id
+        | join kind=inner running_latest_times on scope_id
+        | where timestamp == latest_timestamp
+        | join kind=inner running_latest_conflicts on scope_id
+        | where current_conflict_count == 0
+        | where scope_id in ("A", "B", "C")
+        | summarize running = countif(state == "running" and scheduled_running),
+            observed = count();
+    let state_conflict_count = toscalar(
+        union
+            (state_source | where event_conflict | project event_id),
+            (running_state_source | where event_conflict | project event_id)
+        | distinct event_id
+        | count);
+    let values =
+        aggregate
+        | extend join_key = 1
+        | join kind=inner (running_lines | extend join_key = 1) on join_key
+        | extend join_key = 1
+        | join kind=inner (common_stats | extend join_key = 1) on join_key
+        | extend join_key = 1
+        | join kind=inner (conflicting_events | extend join_key = 1) on join_key
+        | extend feed_a_coverage = todouble(feed_a_good) / bin(todouble(duration_seconds) / todouble(feed_a_cadence), 1.0),
+            feed_b_coverage = todouble(feed_b_good) / bin(todouble(duration_seconds) / todouble(feed_b_cadence), 1.0),
+            feed_c_coverage = todouble(feed_c_good) / bin(todouble(duration_seconds) / todouble(feed_c_cadence), 1.0),
+            water_coverage = todouble(water_good) / bin(todouble(duration_seconds) / todouble(water_cadence), 1.0),
+            power_coverage = todouble(power_good) / bin(todouble(duration_seconds) / todouble(power_cadence), 1.0)
+        | extend feed_coverage = min_of(feed_a_coverage, feed_b_coverage, feed_c_coverage),
+            common_coverage = common_seconds / duration_seconds
+        | extend coverage_valid = feed_a_coverage <= 1.0 and feed_b_coverage <= 1.0 and
+            feed_c_coverage <= 1.0 and water_coverage <= 1.0 and power_coverage <= 1.0 and
+            invalid_common_bins == 0
+        | extend ratio_ok = coverage_valid and conflict_event_count == 0 and state_conflict_count == 0 and
+                common_coverage >= 0.90 and common_feed >= 10.0
+        | project status = case(
+            source_status != "READY", source_status,
+            not(identity_ok), "INVALID_REQUEST",
+            not(window_ok), "INVALID_WINDOW",
+            conflict_event_count > 0 or state_conflict_count > 0, "DUPLICATE_CONFLICT",
+            isnull(feed_a_good) or isnull(feed_b_good) or isnull(feed_c_good) or
+                isnull(water_good) or isnull(power_good), "NO_DATA",
+            not(coverage_valid), "INVALID_COVERAGE",
+            observed < 3, "STATE_COVERAGE_INCOMPLETE",
+            common_coverage < 0.90, "INSUFFICIENT_COMMON_COVERAGE",
+            common_feed < 10.0, "FEED_BELOW_10_TPH",
+            "OK"),
+            plant_id = "D01", run_id, window_start_utc, window_end_utc,
+            line_a_feed_tph = line_a, line_b_feed_tph = line_b, line_c_feed_tph = line_c,
+            plant_feed_tph = line_a + line_b + line_c,
+            processed_tonnes = feed_a_tonnes + feed_b_tonnes + feed_c_tonnes,
+            running_lines = iff(observed == 3, tolong(running), long(null)),
+            good_sample_count = feed_a_good + feed_b_good + feed_c_good + water_good + power_good,
+            non_good_sample_count = feed_a_non_good + feed_b_non_good + feed_c_non_good +
+                water_non_good + power_non_good,
+            uncertain_sample_count = feed_a_uncertain + feed_b_uncertain + feed_c_uncertain +
+                water_uncertain + power_uncertain,
+            bad_sample_count = feed_a_bad + feed_b_bad + feed_c_bad + water_bad + power_bad,
+            late_sample_count = feed_a_late + feed_b_late + feed_c_late + water_late + power_late,
+            conflicting_event_count = conflict_event_count + state_conflict_count,
+            gross_process_water_m3_per_t = iff(ratio_ok, common_water_m3 / common_tonnes, real(null)),
+            whole_plant_energy_kwh_per_t = iff(ratio_ok, common_energy_kwh / common_tonnes, real(null)),
+            feed_coverage, water_coverage, power_coverage, common_coverage,
+            first_event_time = first_event, last_event_time = last_event,
+            first_received_at = first_received, last_received_at = last_received;
+    let blocked =
+        print status = case(not(identity_ok), "INVALID_REQUEST",
+            not(window_ok), "INVALID_WINDOW", source_status),
+            plant_id = "D01", run_id, window_start_utc, window_end_utc,
+            line_a_feed_tph = real(null), line_b_feed_tph = real(null), line_c_feed_tph = real(null),
+            plant_feed_tph = real(null), processed_tonnes = real(null), running_lines = long(null),
+            gross_process_water_m3_per_t = real(null), whole_plant_energy_kwh_per_t = real(null),
+            feed_coverage = real(null), water_coverage = real(null), power_coverage = real(null),
+            good_sample_count = long(null), non_good_sample_count = long(null),
+            uncertain_sample_count = long(null), bad_sample_count = long(null),
+            late_sample_count = long(null), conflicting_event_count = long(null),
+            common_coverage = real(null), first_event_time = datetime(null), last_event_time = datetime(null),
+            first_received_at = datetime(null), last_received_at = datetime(null)
+        | where source_status != "READY" or not(request_ok);
+    union kind=outer (values | where request_ok and source_status == "READY"), blocked
+}
+
+.create-or-alter function with (folder = "Mining/Queries") mining_AssetTrend(
+    plant_id:string, run_id:string, requested_module_id:string, metric_family:string,
+    window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)
+{
+    let source_status = toscalar(mining_SourceReadiness() | project status);
+    let requested_metric_family = metric_family;
+    let duration_seconds = todouble(datetime_diff("millisecond", window_end_utc, window_start_utc)) / 1000.0;
+    let metric_ok = requested_metric_family in ("feed", "density", "vibration", "water-energy");
+    let identity_ok = plant_id == "D01" and
+        run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        isnotempty(requested_module_id);
+    let window_ok = isnotnull(window_start_utc) and isnotnull(window_end_utc) and
+        duration_seconds > 0 and duration_seconds <= 86400 and window_end_utc <= now();
+    let bin_ok = bin_minutes in (1, 5);
+    let request_ok = identity_ok and window_ok and bin_ok;
+    let safe_bin_minutes = iff(bin_ok, bin_minutes, 1);
+    let safe_window_start = iff(window_ok, window_start_utc, now() - 1m);
+    let safe_window_end = iff(window_ok, window_end_utc, now());
+    let selected_tags =
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            record_kind == "tag"
+        | extend tag_id = record_id, module_id = tostring(record_json.module_id),
+            metric = tostring(record_json.metric), unit = tostring(record_json.unit)
+        | where module_id == requested_module_id and (
+            (requested_metric_family == "feed" and metric == "ore_flow") or
+            (requested_metric_family == "density" and metric == "medium_density") or
+            (requested_metric_family == "vibration" and metric == "vibration_rms") or
+            (requested_metric_family == "water-energy" and metric in ("water_flow", "power")))
+        | join kind=inner (
+            mining_PublishProfile
+            | where plant_id == "D01" and catalog_version ==
+                "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+                profile_version == "d01-publish-profile-v1"
+            | project profile_tag_id = tag_id, cadence_seconds = interval_seconds
+        ) on $left.tag_id == $right.profile_tag_id
+        | project tag_id, module_id, metric, unit, cadence_seconds;
+    let selected_count = toscalar(selected_tags | count);
+    let requested_module_exists = toscalar(
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            record_kind == "module" and record_id == requested_module_id
+        | count) > 0;
+    let bins =
+        range bin_start_utc from bin(safe_window_start, safe_bin_minutes * 1m)
+            to bin(safe_window_end - 1ms, safe_bin_minutes * 1m) step safe_bin_minutes * 1m
+        | extend overlap_start = max_of(bin_start_utc, window_start_utc),
+            overlap_end = min_of(bin_start_utc + bin_minutes * 1m, window_end_utc)
+        | extend overlap_seconds = todouble(datetime_diff("millisecond", overlap_end, overlap_start)) / 1000.0
+        | where overlap_seconds > 0
+        | project bin_start_utc, overlap_seconds;
+    let samples =
+        mining_DeduplicatedTelemetry(plant_id, run_id, window_start_utc, window_end_utc)
+        | join kind=inner (selected_tags | project tag_id) on tag_id
+        | where timestamp - interval_seconds * 1s >= window_start_utc and
+            timestamp < window_end_utc;
+    let conflict_count = toscalar(samples | where event_conflict | count);
+    let event_count = toscalar(samples | where not(event_conflict) | count);
+    let series =
+        samples
+        | where not(event_conflict)
+        | join kind=inner selected_tags on tag_id
+        | summarize value = avgif(value, quality == "good"),
+            source_qualities = make_set(quality),
+            good_count = countif(quality == "good"),
+            non_good_count = countif(quality != "good"),
+            uncertain_count = countif(quality == "uncertain"),
+            bad_count = countif(quality == "bad"),
+            late_count = countif(received_at > timestamp + interval_seconds * 1s),
+            first_event_time = min(timestamp), last_event_time = max(timestamp),
+            first_received_at = min(received_at), last_received_at = max(received_at)
+            by module_id, tag_id, metric, unit, cadence_seconds,
+                bin_start_utc = bin(timestamp - 1ms, safe_bin_minutes * 1m);
+    let grid =
+        selected_tags
+        | extend join_key = 1
+        | join kind=inner (bins | extend join_key = 1) on join_key
+        | project tag_id, module_id, metric, unit, cadence_seconds, bin_start_utc, overlap_seconds;
+    let rows =
+        grid
+        | join kind=leftouter series on tag_id, module_id, metric, unit, cadence_seconds, bin_start_utc
+        | extend good_count = coalesce(good_count, long(0)),
+            non_good_count = coalesce(non_good_count, long(0)),
+            source_qualities = coalesce(source_qualities, dynamic([])),
+            uncertain_count = coalesce(uncertain_count, long(0)),
+            bad_count = coalesce(bad_count, long(0)),
+            late_count = coalesce(late_count, long(0)),
+            expected_samples = ceiling(todouble(overlap_seconds) / todouble(cadence_seconds))
+        | extend coverage = todouble(good_count) / expected_samples
+        | extend status = case(
+            coverage > 1.0, "INVALID_COVERAGE",
+            good_count == 0 and uncertain_count > 0 and bad_count > 0, "MIXED_NON_GOOD_QUALITY",
+            good_count == 0 and bad_count > 0, "BAD_QUALITY",
+            good_count == 0 and uncertain_count > 0, "UNCERTAIN_QUALITY",
+            good_count > 0 and non_good_count > 0, "MIXED_QUALITY",
+            good_count == 0, "GAP",
+            "OK"),
+            tagId = tag_id, seriesId = tag_id, metric_family = requested_metric_family;
+    let row_count = toscalar(grid | count);
+    let control =
+        print status = case(
+            not(identity_ok), "INVALID_REQUEST",
+            not(window_ok), "INVALID_WINDOW",
+            not(bin_ok), "INVALID_BIN",
+            source_status != "READY", source_status,
+            not(metric_ok), "UNSUPPORTED_METRIC",
+            not(requested_module_exists), "UNKNOWN_MODULE",
+            selected_count == 0, "UNKNOWN_TAG",
+            conflict_count > 0, "DUPLICATE_CONFLICT",
+            event_count == 0, "NO_DATA",
+            row_count > 1000, "TOO_MANY_ROWS",
+            "OK"),
+            plant_id = "D01", run_id, module_id = requested_module_id, tagId = "", seriesId = "",
+            metric_family = requested_metric_family, bin_start_utc = datetime(null), value = real(null), unit = "",
+            good_count = long(null), non_good_count = long(null), coverage = real(null),
+            source_qualities = dynamic(null),
+            uncertain_count = long(null), bad_count = long(null),
+            late_count = long(null), expected_samples = real(null),
+            first_event_time = datetime(null), last_event_time = datetime(null),
+            first_received_at = datetime(null), last_received_at = datetime(null)
+        | where status != "OK";
+    let data =
+        rows
+        | where request_ok and source_status == "READY" and metric_ok and
+            selected_count > 0 and conflict_count == 0 and event_count > 0 and row_count <= 1000
+        | project status, plant_id = "D01", run_id, module_id, tagId, seriesId,
+            metric_family = requested_metric_family, bin_start_utc, value, unit, good_count, non_good_count,
+            source_qualities, uncertain_count, bad_count, late_count, expected_samples, coverage,
+            first_event_time, last_event_time,
+            first_received_at, last_received_at;
+    union kind=outer data, control
+}
+
+.create-or-alter function with (folder = "Mining/Queries") mining_ActiveIncidents(
+    plant_id:string, requested_run_id:string, as_of_utc:datetime)
+{
+    let source = toscalar(mining_SourceReadiness() | project status);
+    let incident_ready = toscalar(mining_SourceReadiness() | project incident_source_ready);
+    let request_ok = plant_id == "D01" and
+        requested_run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        isnotnull(as_of_utc) and as_of_utc <= now();
+    let ledger =
+        mining_IncidentLedger
+        | where source_contract_version == "d01-incident-ledger-v1" and
+            plant_id == "D01" and run_id == requested_run_id and occurred_at <= as_of_utc;
+    let event_integrity =
+        ledger
+        | summarize fingerprints = make_set(hash_sha256(tostring(pack_array(
+            incident_id, event_sequence, occurred_at, rule_id, scope_id,
+            event_type, severity, evidence))))
+            by event_id;
+    let global_conflict_count = toscalar(event_integrity | where array_length(fingerprints) != 1 | summarize count());
+    let distinct_events =
+        ledger
+        | join kind=inner event_integrity on event_id
+        | where array_length(fingerprints) == 1
+        | summarize incident_id = any(incident_id),
+            event_sequence = any(event_sequence),
+            occurred_at = any(occurred_at),
+            rule_id = any(rule_id),
+            scope_id = any(scope_id),
+            event_type = any(event_type),
+            severity = any(severity),
+            evidence = any(evidence),
+            received_at = min(received_at)
+            by event_id;
+    let incident_state =
+        distinct_events
+        | summarize raised_sequence = maxif(event_sequence, event_type == "raised"),
+            cleared_sequence = maxif(event_sequence, event_type == "cleared"),
+            acknowledged_sequence = maxif(event_sequence, event_type == "acknowledged"),
+            raised_at = maxif(occurred_at, event_type == "raised"),
+            cleared_at = maxif(occurred_at, event_type == "cleared"),
+            acknowledged_at = maxif(occurred_at, event_type == "acknowledged"),
+            arg_max(event_sequence, event_type, severity, evidence, rule_id, scope_id, occurred_at, received_at)
+            by incident_id
+        | where isnotnull(raised_sequence) and
+            (isnull(cleared_sequence) or cleared_sequence < raised_sequence)
+        | extend active_state = iff(isnull(acknowledged_sequence) or acknowledged_sequence < raised_sequence,
+            "ACTIVE_UNACKNOWLEDGED", "ACTIVE_ACKNOWLEDGED")
+        | project status = "OK", plant_id = "D01", run_id = requested_run_id, incident_id, rule_id,
+            scope_id, severity, active_state, raised_at, last_transition_at = occurred_at,
+            acknowledged_at, evidence, received_at, conflict_count = tolong(0);
+    let count = toscalar(incident_state | count);
+    let data = incident_state | where request_ok and source == "READY" and incident_ready and
+        global_conflict_count == 0 and count <= 20;
+    let control =
+        print status = case(
+            not(request_ok), "INVALID_REQUEST",
+            source != "READY", source,
+            not(incident_ready), "BLOCKED_INCIDENT_SOURCE",
+            global_conflict_count > 0, "DUPLICATE_CONFLICT",
+            count > 20, "TOO_MANY_INCIDENTS",
+            count == 0, "NO_ACTIVE_INCIDENTS",
+            "OK"),
+            plant_id = "D01", run_id = requested_run_id, incident_id = "", rule_id = "", scope_id = "",
+            severity = "", active_state = "", raised_at = datetime(null),
+            last_transition_at = datetime(null), acknowledged_at = datetime(null),
+            evidence = dynamic(null), received_at = datetime(null),
+            conflict_count = tolong(global_conflict_count)
+        | where status != "OK";
+    union kind=outer data, control
+}
+
+.create-or-alter function with (folder = "Mining/Queries") mining_CompareLines(
+    plant_id:string, run_id:string, metric_family:string,
+    window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)
+{
+    let source_status = toscalar(mining_SourceReadiness() | project status);
+    let duration_seconds = todouble(datetime_diff("millisecond", window_end_utc, window_start_utc)) / 1000.0;
+    let metric_ok = metric_family in ("feed", "density", "vibration");
+    let identity_ok = plant_id == "D01" and
+        run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+    let window_ok = isnotnull(window_start_utc) and isnotnull(window_end_utc) and
+        duration_seconds > 0 and duration_seconds <= 86400 and window_end_utc <= now();
+    let bin_ok = bin_minutes in (1, 5);
+    let request_ok = identity_ok and window_ok and bin_ok;
+    let safe_bin_minutes = iff(bin_ok, bin_minutes, 1);
+    let safe_window_start = iff(window_ok, window_start_utc, now() - 1m);
+    let safe_window_end = iff(window_ok, window_end_utc, now());
+    let selected_tags =
+        mining_PlantCatalog
+        | where plant_id == "D01" and catalog_version ==
+            "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            record_kind == "tag"
+        | extend tag_id = record_id, metric = tostring(record_json.metric),
+            module_id = tostring(record_json.module_id), unit = tostring(record_json.unit)
+        | extend matches_family =
+            (metric_family == "feed" and tag_id in (
+                "D01.A.crusher.ore_flow", "D01.B.crusher.ore_flow", "D01.C.crusher.ore_flow")) or
+            (metric_family == "density" and tag_id in (
+                "D01.A.dms.medium_density", "D01.B.dms.medium_density", "D01.C.dms.medium_density")) or
+            (metric_family == "vibration" and tag_id in (
+                "D01.A.crusher.vibration_rms", "D01.B.crusher.vibration_rms", "D01.C.crusher.vibration_rms"))
+        | where matches_family
+        | extend line_id = extract(@"^D01\.([ABC])\.", 1, module_id)
+        | join kind=inner (
+            mining_PublishProfile
+            | where plant_id == "D01" and catalog_version ==
+                "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+                profile_version == "d01-publish-profile-v1"
+            | project profile_tag_id = tag_id, cadence_seconds = interval_seconds
+        ) on $left.tag_id == $right.profile_tag_id
+        | project tag_id, module_id, metric, unit, line_id, cadence_seconds;
+    let selected_count = toscalar(selected_tags | count);
+    let bins =
+        range bin_start_utc from bin(safe_window_start, safe_bin_minutes * 1m)
+            to bin(safe_window_end - 1ms, safe_bin_minutes * 1m) step safe_bin_minutes * 1m
+        | extend overlap_start = max_of(bin_start_utc, window_start_utc),
+            overlap_end = min_of(bin_start_utc + bin_minutes * 1m, window_end_utc)
+        | extend overlap_seconds = todouble(datetime_diff("millisecond", overlap_end, overlap_start)) / 1000.0
+        | where overlap_seconds > 0
+        | project bin_start_utc, overlap_seconds;
+    let samples =
+        mining_DeduplicatedTelemetry(plant_id, run_id, window_start_utc, window_end_utc)
+        | join kind=inner (selected_tags | project tag_id) on tag_id
+        | where timestamp - interval_seconds * 1s >= window_start_utc and
+            timestamp < window_end_utc;
+    let conflict_count = toscalar(samples | where event_conflict | count);
+    let event_count = toscalar(samples | where not(event_conflict) | count);
+    let series =
+        samples
+        | where not(event_conflict)
+        | join kind=inner selected_tags on tag_id
+        | summarize value = avgif(value, quality == "good"),
+            source_qualities = make_set(quality),
+            good_count = countif(quality == "good"),
+            non_good_count = countif(quality != "good"),
+            uncertain_count = countif(quality == "uncertain"),
+            bad_count = countif(quality == "bad"),
+            late_count = countif(received_at > timestamp + interval_seconds * 1s),
+            first_event_time = min(timestamp), last_event_time = max(timestamp),
+            first_received_at = min(received_at), last_received_at = max(received_at)
+            by line_id, tag_id, module_id, metric, unit, cadence_seconds,
+                bin_start_utc = bin(timestamp - 1ms, safe_bin_minutes * 1m);
+    let grid =
+        selected_tags
+        | extend join_key = 1
+        | join kind=inner (bins | extend join_key = 1) on join_key
+        | project tag_id, module_id, metric, unit, line_id, cadence_seconds,
+            bin_start_utc, overlap_seconds;
+    let rows =
+        grid
+        | join kind=leftouter series on tag_id, module_id, metric, unit, line_id,
+            cadence_seconds, bin_start_utc
+        | extend good_count = coalesce(good_count, long(0)),
+            non_good_count = coalesce(non_good_count, long(0)),
+            source_qualities = coalesce(source_qualities, dynamic([])),
+            uncertain_count = coalesce(uncertain_count, long(0)),
+            bad_count = coalesce(bad_count, long(0)),
+            late_count = coalesce(late_count, long(0)),
+            expected_samples = ceiling(todouble(overlap_seconds) / todouble(cadence_seconds))
+        | extend coverage = todouble(good_count) / expected_samples
+        | extend status = case(
+            coverage > 1.0, "INVALID_COVERAGE",
+            good_count == 0 and uncertain_count > 0 and bad_count > 0, "MIXED_NON_GOOD_QUALITY",
+            good_count == 0 and bad_count > 0, "BAD_QUALITY",
+            good_count == 0 and uncertain_count > 0, "UNCERTAIN_QUALITY",
+            good_count > 0 and non_good_count > 0, "MIXED_QUALITY",
+            good_count == 0, "GAP",
+            "OK");
+    let row_count = toscalar(grid | count);
+    let control =
+        print status = case(
+            not(identity_ok), "INVALID_REQUEST",
+            not(window_ok), "INVALID_WINDOW",
+            not(bin_ok), "INVALID_BIN",
+            source_status != "READY", source_status,
+            not(metric_ok), "UNSUPPORTED_METRIC",
+            selected_count != 3, "BLOCKED_CATALOG",
+            conflict_count > 0, "DUPLICATE_CONFLICT",
+            event_count == 0, "NO_DATA",
+            row_count > 1000, "TOO_MANY_ROWS",
+            "OK"),
+            plant_id = "D01", run_id, line_id = "", module_id = "",
+            tag_id = "", metric = "", metric_family,
+            bin_start_utc = datetime(null), value = real(null), unit = "",
+            good_count = long(null), non_good_count = long(null), late_count = long(null),
+            source_qualities = dynamic(null),
+            uncertain_count = long(null), bad_count = long(null),
+            expected_samples = real(null), coverage = real(null), conflict_count = tolong(conflict_count),
+            first_event_time = datetime(null), last_event_time = datetime(null),
+            first_received_at = datetime(null), last_received_at = datetime(null)
+        | where status != "OK";
+    let data =
+        rows
+        | where request_ok and source_status == "READY" and metric_ok and
+            selected_count == 3 and conflict_count == 0 and event_count > 0 and row_count <= 1000
+        | project status, plant_id = "D01", run_id, line_id, module_id,
+            tag_id, metric, unit, metric_family, bin_start_utc, value,
+            good_count, non_good_count, source_qualities, uncertain_count, bad_count, late_count,
+            expected_samples, coverage,
+            conflict_count = long(0), first_event_time, last_event_time,
+            first_received_at, last_received_at;
+    union kind=outer data, control
+}

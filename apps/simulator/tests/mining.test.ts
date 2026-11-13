@@ -1,0 +1,515 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import {
+  D01_CATALOG_VERSION,
+  D01_PLANT_CATALOG,
+  D01_PUBLISH_PROFILE_VERSION,
+  assertD01AlertTransition,
+  assertD01NumericTelemetryEvent,
+  assertD01PlantStateEvent,
+  createD01AlertTransitionId,
+  createD01EventId,
+  createD01Simulation,
+  getD01TagIntervalSeconds,
+  toD01CatalogRecords,
+  toD01PublishProfileRecords,
+  toD01TransportBody,
+  validateD01PlantCatalog,
+} from "../src/mining/index.js";
+import type {
+  D01AlertTransition,
+  D01NumericTelemetryEvent,
+  D01PlantStateEvent,
+  D01Scenario,
+  D01SimulationBatch,
+  D01TransportBody,
+} from "../src/mining/index.js";
+
+const start = new Date("2024-01-01T00:00:00.000Z");
+const runId = "d01-test-run";
+
+interface SimulationOutput {
+  events: D01TransportBody[];
+  alerts: D01AlertTransition[];
+  batches: D01SimulationBatch[];
+  waterAtEnd: number;
+}
+
+function runSimulation(
+  scenario: D01Scenario = "normal",
+  durationSeconds = 1200,
+  seed = 1234,
+): SimulationOutput {
+  const simulator = createD01Simulation({
+    runId,
+    seed,
+    scenario,
+    startedAt: start,
+    durationSeconds,
+  });
+  const events: D01TransportBody[] = [];
+  const alerts: D01AlertTransition[] = [];
+  const batches: D01SimulationBatch[] = [];
+
+  while (simulator.elapsedSecondsSoFar < durationSeconds) {
+    const at = new Date(start.valueOf() + (simulator.elapsedSecondsSoFar + 5) * 1000);
+    const result = simulator.step(at);
+    alerts.push(...result.alert_transitions);
+    if (result.batch) {
+      batches.push(result.batch);
+      events.push(...result.batch.events);
+      expect(simulator.getPendingBatch()).toEqual(result.batch);
+      simulator.acknowledgeBatch(result.batch.batch_id);
+    }
+  }
+
+  expect(simulator.inventory.water_m3).toBeGreaterThanOrEqual(0);
+  expect(simulator.inventory.water_m3).toBeLessThanOrEqual(60);
+  return { events, alerts, batches, waterAtEnd: simulator.inventory.water_m3 };
+}
+
+function readReceipt(): {
+  catalog: { sha256: string };
+  assets: Array<{ path: string; sha256: string }>;
+} {
+  return JSON.parse(
+    readFileSync(new URL("../src/mining/catalog-receipt.json", import.meta.url), "utf8"),
+  ) as {
+    catalog: { sha256: string };
+    assets: Array<{ path: string; sha256: string }>;
+  };
+}
+
+describe("D01 mining contracts and catalog", () => {
+  it("exports the versioned publication cadence for every canonical tag", () => {
+    const sixtySecondTags = new Set([
+      "D01.A.crusher.bearing_temperature",
+      "D01.B.crusher.bearing_temperature",
+      "D01.C.crusher.bearing_temperature",
+      "D01.A.medium.level",
+      "D01.B.medium.level",
+      "D01.C.medium.level",
+      "D01.shared.hopper.level",
+      "D01.shared.thickener.level",
+      "D01.shared.water.level",
+      "D01.shared.lab.product_mass",
+      "D01.shared.tailings.level",
+    ]);
+    const records = toD01PublishProfileRecords();
+    expect(records).toHaveLength(56);
+    expect(new Set(records.map((record) => record.tag_id)).size).toBe(56);
+    expect(records.filter((record) => record.interval_seconds === 30)).toHaveLength(45);
+    expect(records.filter((record) => record.interval_seconds === 60)).toHaveLength(11);
+
+    for (const tag of D01_PLANT_CATALOG.telemetry_tags) {
+      const interval = sixtySecondTags.has(tag.id) ? 60 : 30;
+      const record = records.find((item) => item.tag_id === tag.id);
+      expect(record).toEqual({
+        plant_id: "D01",
+        catalog_version: D01_CATALOG_VERSION,
+        profile_version: D01_PUBLISH_PROFILE_VERSION,
+        tag_id: tag.id,
+        interval_seconds: interval,
+      });
+      expect(tag.suggested_interval_ms).toBe(1000);
+      expect(getD01TagIntervalSeconds(tag)).toBe(interval);
+      const event = {
+        schema_version: 2,
+        run_id: runId,
+        event_id: createD01EventId(runId, 1),
+        sequence: 1,
+        interval_seconds: interval,
+        timestamp: "2024-01-01T00:01:00.000Z",
+        plant_id: "D01",
+        module_id: tag.module_id,
+        equipment_id: tag.equipment_id,
+        tag_id: tag.id,
+        value: (tag.simulation_envelope[0]! + tag.simulation_envelope[1]!) / 2,
+        unit: tag.unit,
+        quality: "good",
+      };
+      expect(() => assertD01NumericTelemetryEvent(event)).not.toThrow();
+      expect(() => assertD01NumericTelemetryEvent({ ...event, interval_seconds: 1 })).toThrow(
+        /interval_seconds/,
+      );
+      expect(() =>
+        assertD01NumericTelemetryEvent({
+          ...event,
+          interval_seconds: interval === 30 ? 60 : 30,
+        }),
+      ).toThrow(/interval disagrees/);
+    }
+
+    records[0]!.interval_seconds = 60;
+    expect(toD01PublishProfileRecords()[0]!.interval_seconds).toBe(
+      getD01TagIntervalSeconds(D01_PLANT_CATALOG.telemetry_tags[0]!),
+    );
+    expect(() =>
+      getD01TagIntervalSeconds({ ...D01_PLANT_CATALOG.telemetry_tags[0]!, id: "unknown" }),
+    ).toThrow(/No D01 publish interval/);
+  });
+
+  it("preserves the published metadata hash, row joins, counts, and v1 contract", () => {
+    const receipt = readReceipt();
+    expect(D01_CATALOG_VERSION).toBe(`sha256:${receipt.catalog.sha256}`);
+    const metadataBytes = readFileSync(
+      new URL("../src/mining/plant-catalog.json", import.meta.url),
+    );
+    expect(createHash("sha256").update(metadataBytes).digest("hex")).toBe(receipt.catalog.sha256);
+    expect(receipt.assets).toHaveLength(16);
+    expect(receipt.assets.every((asset) => /^[a-f0-9]{64}$/.test(asset.sha256))).toBe(true);
+
+    validateD01PlantCatalog(D01_PLANT_CATALOG);
+    const records = toD01CatalogRecords();
+    expect(records).toHaveLength(194);
+    expect(records.filter((row) => row.record_kind === "module")).toHaveLength(24);
+    expect(records.filter((row) => row.record_kind === "equipment")).toHaveLength(64);
+    expect(records.filter((row) => row.record_kind === "stream")).toHaveLength(50);
+    expect(records.filter((row) => row.record_kind === "tag")).toHaveLength(56);
+    expect(records.every((row) => row.catalog_version === D01_CATALOG_VERSION)).toBe(true);
+    expect(
+      records.filter((row) => row.record_kind === "stream").every((row) => row.module_id === null),
+    ).toBe(true);
+
+    const intervals = D01_PLANT_CATALOG.telemetry_tags.map(getD01TagIntervalSeconds);
+    expect(intervals.filter((interval) => interval === 30)).toHaveLength(45);
+    expect(intervals.filter((interval) => interval === 60)).toHaveLength(11);
+    expect(Object.keys(D01_PLANT_CATALOG.telemetry_event_contract.required)).toHaveLength(8);
+    expect(D01_PLANT_CATALOG.telemetry_event_contract.required).not.toContain("schema_version");
+
+    const utcPattern = String.raw`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`;
+    for (const schemaPath of [
+      "../src/mining/alert-transition.schema.json",
+      "../src/mining/numeric-event-v2.schema.json",
+      "../src/mining/state-event-v2.schema.json",
+    ]) {
+      const schema = JSON.parse(readFileSync(new URL(schemaPath, import.meta.url), "utf8")) as {
+        properties: { timestamp: { pattern: string } };
+      };
+      const pattern = new RegExp(schema.properties.timestamp.pattern);
+      expect(schema.properties.timestamp.pattern).toBe(utcPattern);
+      expect(pattern.test("2024-01-01T00:00:30.000Z")).toBe(true);
+      expect(pattern.test("2024-01-01T01:00:30.000+01:00")).toBe(false);
+    }
+  });
+
+  it("rejects broken stream joins and emits flattened v2 bodies", () => {
+    const invalidCatalog = structuredClone(D01_PLANT_CATALOG);
+    invalidCatalog.streams[0]!.source.port_id = "missing-port";
+    expect(() => validateD01PlantCatalog(invalidCatalog)).toThrow(/source port/);
+
+    const tag = D01_PLANT_CATALOG.telemetry_tags[0]!;
+    const timestamp = "2024-01-01T00:00:30.000Z";
+    const numeric: D01NumericTelemetryEvent = {
+      schema_version: 2,
+      run_id: runId,
+      event_id: createD01EventId(runId, 1),
+      sequence: 1,
+      interval_seconds: 30,
+      timestamp,
+      plant_id: "D01",
+      module_id: tag.module_id,
+      equipment_id: tag.equipment_id,
+      tag_id: tag.id,
+      value: 25,
+      unit: tag.unit,
+      quality: "good",
+    };
+    assertD01NumericTelemetryEvent(numeric);
+    const body = toD01TransportBody(numeric);
+    expect(body.entityType).toBe("PlantTelemetry");
+    expect(body).not.toHaveProperty("payload");
+    expect(body).toHaveProperty("schema_version", 2);
+
+    expect(() =>
+      assertD01NumericTelemetryEvent({
+        ...numeric,
+        unit: "wrong-unit",
+      }),
+    ).toThrow(/unit/);
+    expect(() =>
+      assertD01NumericTelemetryEvent({
+        ...numeric,
+        value: Number.NaN,
+      }),
+    ).toThrow(/finite/);
+    for (const quality of ["uncertain", "bad"] as const) {
+      expect(() => assertD01NumericTelemetryEvent({ ...numeric, quality })).not.toThrow();
+    }
+    expect(() =>
+      assertD01NumericTelemetryEvent({
+        ...numeric,
+        quality: "invalid",
+      }),
+    ).toThrow(/quality/);
+    expect(() =>
+      assertD01NumericTelemetryEvent({
+        ...numeric,
+        entityType: "PlantTelemetry",
+      }),
+    ).toThrow(/unexpected fields/);
+
+    const numericSchema = JSON.parse(
+      readFileSync(new URL("../src/mining/numeric-event-v2.schema.json", import.meta.url), "utf8"),
+    ) as { properties: { quality: { enum: string[] } } };
+    expect(numericSchema.properties.quality.enum).toEqual(["good", "uncertain", "bad"]);
+
+    const state: D01PlantStateEvent = {
+      schema_version: 2,
+      run_id: runId,
+      event_id: createD01EventId(runId, 2),
+      sequence: 2,
+      timestamp,
+      plant_id: "D01",
+      scope_id: "C",
+      scheduled_running: true,
+      state: "running",
+    };
+    assertD01PlantStateEvent(state);
+    expect(toD01TransportBody(state).entityType).toBe("PlantStateEvent");
+
+    const alert: D01AlertTransition = {
+      plant_id: "D01",
+      run_id: runId,
+      transition_id: createD01AlertTransitionId(runId, "sample-rule", "C", "raised", timestamp),
+      timestamp,
+      rule_id: "sample-rule",
+      scope_id: "C",
+      transition: "raised",
+      severity: "warning",
+      evidence: { measured_value: 10, source_tag_id: tag.id, unit: tag.unit },
+    };
+    assertD01AlertTransition(alert);
+    expect(() => assertD01AlertTransition({ ...alert, transition_id: "unstable" })).toThrow(
+      /transition_id/,
+    );
+  });
+
+  it("enforces deterministic seed, duration, and real-time timestamp bounds", () => {
+    expect(() =>
+      createD01Simulation({
+        runId,
+        startedAt: start,
+        seed: -1,
+      }),
+    ).toThrow(/unsigned 32-bit/);
+    expect(() =>
+      createD01Simulation({
+        runId,
+        startedAt: start,
+        durationSeconds: 1805,
+      }),
+    ).toThrow(/durationSeconds/);
+    expect(() =>
+      createD01Simulation({
+        runId,
+        startedAt: new Date(Date.now() + 60_000),
+      }),
+    ).toThrow(/future/);
+
+    const live = createD01Simulation({ runId, startedAt: new Date() });
+    expect(() => live.step(new Date(live.startedAt.valueOf() + 5000))).toThrow(/future timestamp/);
+    expect(live.elapsedSecondsSoFar).toBe(0);
+  });
+});
+
+describe("D01 deterministic bounded simulator", () => {
+  it("produces 2,020 numeric events, 80 heartbeats, and stable retry batches in 20 minutes", () => {
+    const first = runSimulation("normal", 1200);
+    const second = runSimulation("normal", 1200);
+    const numeric = first.events.filter((event) => event.entityType === "PlantTelemetry");
+    const state = first.events.filter((event) => event.entityType === "PlantStateEvent");
+
+    expect(numeric).toHaveLength(2020);
+    for (const profile of toD01PublishProfileRecords()) {
+      const samples = numeric.filter((event) => event.tag_id === profile.tag_id);
+      expect(samples).toHaveLength(1200 / profile.interval_seconds);
+      expect(samples.every((event) => event.interval_seconds === profile.interval_seconds)).toBe(
+        true,
+      );
+    }
+    expect(state).toHaveLength(92);
+    expect(first.alerts).toHaveLength(0);
+    expect(first.batches.map((batch) => batch.batch_id)).toEqual(
+      second.batches.map((batch) => batch.batch_id),
+    );
+    expect(numeric.map((event) => [event.event_id, event.value])).toEqual(
+      second.events
+        .filter((event) => event.entityType === "PlantTelemetry")
+        .map((event) => [event.event_id, event.value]),
+    );
+    for (const batch of first.batches) {
+      expect(batch.events.map((event) => event.sequence)).toEqual(
+        [...batch.events.map((event) => event.sequence)].sort((left, right) => left - right),
+      );
+    }
+
+    const heartbeatsAtMinute = state.filter(
+      (event) =>
+        event.state === "running" &&
+        new Date(event.timestamp).valueOf() > start.valueOf() &&
+        (new Date(event.timestamp).valueOf() - start.valueOf()) % 60_000 === 0,
+    );
+    expect(heartbeatsAtMinute).toHaveLength(84);
+    expect(heartbeatsAtMinute.length - 4).toBe(80);
+  });
+
+  it("models bearing, DMS, water, and communication-gap scenarios as correlated events", () => {
+    const bearing = runSimulation("bearing-b", 1200);
+    expect(bearing.alerts.map((alert) => alert.transition)).toEqual(["raised", "cleared"]);
+    expect(bearing.alerts.every((alert) => !("scenario" in alert.evidence))).toBe(true);
+    expect(bearing.alerts[0]?.evidence).toMatchObject({
+      bearing_temperature_c: expect.any(Number),
+      vibration_rms_mm_s: expect.any(Number),
+    });
+    const bearingStates = bearing.events.filter((event) => event.entityType === "PlantStateEvent");
+    expect(bearingStates.some((event) => event.scope_id === "B" && event.state === "fault")).toBe(
+      false,
+    );
+    expect(
+      bearingStates.some(
+        (event) =>
+          event.scope_id === "B" &&
+          event.state === "running" &&
+          event.timestamp === "2024-01-01T00:05:00.000Z" &&
+          event.scheduled_running,
+      ),
+    ).toBe(true);
+    expect(
+      bearing.events.some(
+        (event) =>
+          event.entityType === "PlantTelemetry" &&
+          event.tag_id === "D01.B.crusher.bearing_temperature" &&
+          event.value > 65,
+      ),
+    ).toBe(true);
+
+    const dms = runSimulation("dms-c", 900);
+    const dmsDensity = dms.events.filter(
+      (event) =>
+        event.entityType === "PlantTelemetry" && event.tag_id === "D01.C.dms.medium_density",
+    );
+    const minimumDensity = Math.min(...dmsDensity.map((event) => event.value));
+    expect(minimumDensity).toBeGreaterThan(2600);
+    expect(minimumDensity).toBeLessThan(2800);
+    const densityAt = (timestamp: string) =>
+      dmsDensity.find((event) => event.timestamp === `2024-01-01T00:${timestamp}:00.000Z`)?.value;
+    expect(densityAt("06")).toBeLessThan(2800);
+    expect(densityAt("10")).toBeLessThan(2800);
+    expect(densityAt("12")).toBeGreaterThan(2800);
+    expect(densityAt("13")).toBeGreaterThan(2850);
+    expect(dmsDensity.at(-1)?.value).toBeGreaterThan(2850);
+    expect(dms.alerts.map((alert) => alert.transition)).toEqual(["raised", "cleared"]);
+    expect(dms.alerts.map((alert) => alert.severity)).toEqual(["warning", "warning"]);
+    expect(dms.alerts[0]?.evidence.medium_density_kg_m3).toBeLessThan(2800);
+    expect(dms.alerts[0]?.evidence.medium_density_kg_m3).toBeGreaterThan(2600);
+    expect(dms.alerts[1]?.evidence.medium_density_kg_m3).toBeGreaterThanOrEqual(2850);
+    expect(dms.alerts.every((alert) => !("scenario" in alert.evidence))).toBe(true);
+    const dmsFeed = dms.events.filter(
+      (event) =>
+        event.entityType === "PlantTelemetry" &&
+        event.tag_id === "D01.C.crusher.ore_flow" &&
+        event.timestamp >= "2024-01-01T00:03:00.000Z",
+    );
+    expect(Math.min(...dmsFeed.map((event) => event.value))).toBeGreaterThan(35);
+    const dmsPressure = dms.events.filter(
+      (event) =>
+        event.entityType === "PlantTelemetry" &&
+        event.tag_id === "D01.C.dms.feed_pressure" &&
+        event.timestamp >= "2024-01-01T00:03:00.000Z",
+    );
+    expect(dmsPressure.every((event) => event.value >= 200 && event.value <= 400)).toBe(true);
+    const dmsStates = dms.events.filter((event) => event.entityType === "PlantStateEvent");
+    expect(dmsStates.some((event) => event.scope_id === "C" && event.state === "fault")).toBe(
+      false,
+    );
+    expect(
+      dmsStates.some(
+        (event) =>
+          event.scope_id === "C" &&
+          event.state === "running" &&
+          event.timestamp === "2024-01-01T00:05:00.000Z" &&
+          event.scheduled_running,
+      ),
+    ).toBe(true);
+
+    const water = runSimulation("shared-water-restriction", 1200);
+    expect(water.waterAtEnd).toBeLessThan(35);
+    const firstLowWater = water.events.find(
+      (event) =>
+        event.entityType === "PlantTelemetry" &&
+        event.tag_id === "D01.shared.water.level" &&
+        event.value < 25,
+    );
+    expect(firstLowWater).toBeDefined();
+    expect(Date.parse(firstLowWater?.timestamp ?? "") - start.valueOf()).toBeLessThanOrEqual(
+      12 * 60 * 1000,
+    );
+    expect(water.alerts[0]?.rule_id).toBe("shared-water-low-level");
+    expect(water.alerts.every((alert) => !("scenario" in alert.evidence))).toBe(true);
+    const waterStates = water.events.filter((event) => event.entityType === "PlantStateEvent");
+    expect(
+      waterStates.some((event) => event.scope_id === "shared" && event.state === "fault"),
+    ).toBe(false);
+    expect(
+      waterStates.some(
+        (event) =>
+          event.scope_id === "shared" &&
+          event.state === "running" &&
+          event.timestamp === "2024-01-01T00:15:00.000Z" &&
+          event.scheduled_running,
+      ),
+    ).toBe(true);
+
+    const gap = runSimulation("communication-gap", 360);
+    const dmsTags = D01_PLANT_CATALOG.telemetry_tags.filter((tag) => tag.module_id === "D01.B.dms");
+    expect(dmsTags).toHaveLength(3);
+    const gapTelemetry = gap.events.filter((event) => event.entityType === "PlantTelemetry");
+    const gapWindow = gapTelemetry.filter(
+      (event) =>
+        event.module_id === "D01.B.dms" &&
+        event.timestamp >= "2024-01-01T00:03:00.000Z" &&
+        event.timestamp < "2024-01-01T00:06:00.000Z",
+    );
+    expect(gapWindow).toHaveLength(0);
+    expect(
+      dmsTags.every((tag) => gapTelemetry.filter((event) => event.tag_id === tag.id).length === 6),
+    ).toBe(true);
+    expect(
+      gapTelemetry.some(
+        (event) =>
+          event.tag_id === "D01.B.crusher.motor_current" &&
+          event.timestamp === "2024-01-01T00:03:00.000Z",
+      ),
+    ).toBe(true);
+    expect(gapTelemetry).toHaveLength(588);
+    expect(gap.alerts.map((alert) => alert.transition)).toEqual(["raised", "cleared"]);
+    expect(gap.alerts.every((alert) => !("scenario" in alert.evidence))).toBe(true);
+  });
+
+  it("requires a pending batch to be acknowledged before another step", () => {
+    const simulator = createD01Simulation({
+      runId,
+      startedAt: start,
+      durationSeconds: 35,
+    });
+    for (let elapsed = 5; elapsed < 30; elapsed += 5) {
+      simulator.step(new Date(start.valueOf() + elapsed * 1000));
+    }
+    const result = simulator.step(new Date(start.valueOf() + 30_000));
+    expect(result.batch).not.toBeNull();
+    const batch = result.batch!;
+    expect(simulator.getPendingBatch()).toEqual(batch);
+    expect(() => simulator.step(new Date(start.valueOf() + 35_000))).toThrow(
+      /must be acknowledged/,
+    );
+    expect(() => simulator.acknowledgeBatch("wrong-batch")).toThrow(/not pending/);
+    simulator.acknowledgeBatch(batch.batch_id);
+
+    const final = simulator.step(new Date(start.valueOf() + 35_000));
+    expect(final.completed).toBe(true);
+    expect(final.batch?.events.length).toBeGreaterThan(0);
+    expect(() => simulator.step(new Date(start.valueOf() + 40_000))).toThrow(/completed/);
+  });
+});

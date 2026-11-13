@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fabrictritwin.local/schemas/d01-state-event-v2.json",
+  "title": "D01 version 2 plant state event payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "event_id",
+    "sequence",
+    "timestamp",
+    "plant_id",
+    "scope_id",
+    "scheduled_running",
+    "state"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "event_id": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "plant_id": { "const": "D01" },
+    "scope_id": { "enum": ["A", "B", "C", "shared"] },
+    "scheduled_running": { "type": "boolean" },
+    "state": { "enum": ["starting", "running", "idle", "stopped", "fault"] }
+  },
+  "$comment": "The state event is separate from numeric telemetry. Its transport-only entityType value is PlantStateEvent."
+}

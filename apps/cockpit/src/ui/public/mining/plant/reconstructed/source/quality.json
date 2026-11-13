@@ -1,0 +1,1635 @@
+{
+  "version": 1,
+  "policy": "Four-sigma support above 1/255 opacity, aspect-fit screening and exact-hash visual exclusions; retained assets are not semantic acceptance.",
+  "assets": {
+    "289f2577045bf188471628a8c0adddbcc238dfc65b5b5a6a1558c5aa2875b7c9": {
+      "sha256": "289f2577045bf188471628a8c0adddbcc238dfc65b5b5a6a1558c5aa2875b7c9",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.016554617954807685,
+          -0.502540938816089,
+          -0.17300338374530885
+        ],
+        "max": [
+          0.021727010280333543,
+          0.5511240804224699,
+          0.16636464567218956
+        ]
+      },
+      "support_to_center_ratio": 2.443225,
+      "center_outlier_ratio": 1.562017
+    },
+    "95323090047e677789e1d882b78039a1b6c8e98a40c74f252ee489198cde5bde": {
+      "sha256": "95323090047e677789e1d882b78039a1b6c8e98a40c74f252ee489198cde5bde",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5306364988106917,
+          -0.011488312067937101,
+          -0.07150503582434709
+        ],
+        "max": [
+          0.5264646374989881,
+          0.007475238282311957,
+          0.0824036990626433
+        ]
+      },
+      "support_to_center_ratio": 2.319315,
+      "center_outlier_ratio": 2.229481
+    },
+    "c8f2a942a7e2a4b58e25b7c918f92442e39e3ff86236a3ca7e96d2954db85ad0": {
+      "sha256": "c8f2a942a7e2a4b58e25b7c918f92442e39e3ff86236a3ca7e96d2954db85ad0",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.009612794634605506,
+          -0.21486672086152914,
+          -0.19402872562663925
+        ],
+        "max": [
+          0.010593518815937786,
+          0.25242594107624283,
+          0.18763492381293034
+        ]
+      },
+      "support_to_center_ratio": 1.890054,
+      "center_outlier_ratio": 1.710099
+    },
+    "d4fa4d97dde2a6fe1a7db1e756112b5bdae285170648299a097e866eef59c45a": {
+      "sha256": "d4fa4d97dde2a6fe1a7db1e756112b5bdae285170648299a097e866eef59c45a",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.19668272302524498,
+          -0.13609367558652535,
+          -0.17366091296304242
+        ],
+        "max": [
+          0.22749445432236076,
+          0.14751535517638575,
+          0.15393485317258995
+        ]
+      },
+      "support_to_center_ratio": 1.240491,
+      "center_outlier_ratio": 1.087263
+    },
+    "2624791e22d69b2c961c96ba0abaecf9a1da39fa98b173b22eb8242b6807831b": {
+      "sha256": "2624791e22d69b2c961c96ba0abaecf9a1da39fa98b173b22eb8242b6807831b",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5033838945613405,
+          -0.14234574121130128,
+          -0.11390176500475847
+        ],
+        "max": [
+          0.55800066596721,
+          0.13407515556216432,
+          0.09960783662780576
+        ]
+      },
+      "support_to_center_ratio": 1.643535,
+      "center_outlier_ratio": 1.158517
+    },
+    "693ab310c158923638be190240f2a2b48a97c1d0a30bfcd198a2ac3acf6d11b5": {
+      "sha256": "693ab310c158923638be190240f2a2b48a97c1d0a30bfcd198a2ac3acf6d11b5",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.08355570679380696,
+          -0.08414961866194233,
+          -0.2285338032703716
+        ],
+        "max": [
+          0.15040626498165321,
+          0.07393785245028367,
+          0.21951199008873723
+        ]
+      },
+      "support_to_center_ratio": 1.235213,
+      "center_outlier_ratio": 1.088397
+    },
+    "112119223353826b86aff9d52290795dc2a2eb160dcf6c96b1d60173b21597be": {
+      "sha256": "112119223353826b86aff9d52290795dc2a2eb160dcf6c96b1d60173b21597be",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.07850406987933721,
+          -0.06682866372588456,
+          -0.21616470028532742
+        ],
+        "max": [
+          0.15073562748786692,
+          0.07150914690687712,
+          0.21872861491437637
+        ]
+      },
+      "support_to_center_ratio": 1.46403,
+      "center_outlier_ratio": 1.107904
+    },
+    "8a42b8963f7817bcb87dc0337c4915995b7a1e9a7ae09074e818e0883f5e7837": {
+      "sha256": "8a42b8963f7817bcb87dc0337c4915995b7a1e9a7ae09074e818e0883f5e7837",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.15152283117730334,
+          -0.1431505041297379,
+          -0.18980411931643779
+        ],
+        "max": [
+          0.1522266132282012,
+          0.1525789603600286,
+          0.1923249312673266
+        ]
+      },
+      "support_to_center_ratio": 1.141094,
+      "center_outlier_ratio": 1.139343
+    },
+    "5a29fae1f617f91660cefaf20e518effe7149607b93d14ee935c4aaee45b5c46": {
+      "sha256": "5a29fae1f617f91660cefaf20e518effe7149607b93d14ee935c4aaee45b5c46",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.026887589958120097,
+          -0.24850565649240652,
+          -0.21018972703518674
+        ],
+        "max": [
+          0.021349649444584524,
+          0.2963357736300686,
+          0.20519777626823277
+        ]
+      },
+      "support_to_center_ratio": 1.576282,
+      "center_outlier_ratio": 1.096718
+    },
+    "04032c21357e6d0cce1eadc0f2a9f460bbcda2e6496f9d502f10934a55de676f": {
+      "sha256": "04032c21357e6d0cce1eadc0f2a9f460bbcda2e6496f9d502f10934a55de676f",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.05303997760552466,
+          -0.3303690500778443,
+          -0.5302554618805895
+        ],
+        "max": [
+          0.04963417973291349,
+          0.3590218722030355,
+          0.5133866022168904
+        ]
+      },
+      "support_to_center_ratio": 1.568116,
+      "center_outlier_ratio": 1.244087
+    },
+    "d08ffff447c29646f33c9b620d743e140d02a9e650a1e0928b4543ab79a4b59e": {
+      "sha256": "d08ffff447c29646f33c9b620d743e140d02a9e650a1e0928b4543ab79a4b59e",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.38459787440872056,
+          -0.4704107251166074,
+          -0.5931588643902682
+        ],
+        "max": [
+          0.33001456332778795,
+          0.9645225712613533,
+          0.7340935701245211
+        ]
+      },
+      "support_to_center_ratio": 1.55481,
+      "center_outlier_ratio": 1.138708
+    },
+    "81d0e014b243469f0bfd97eaebab1c1d302bf34a18b11ad62e47ebd461d115c8": {
+      "sha256": "81d0e014b243469f0bfd97eaebab1c1d302bf34a18b11ad62e47ebd461d115c8",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.6057049439096664,
+          -0.7658462169338928,
+          -0.6315279914264011
+        ],
+        "max": [
+          0.5425924917520529,
+          0.9815457621394205,
+          0.6435240222338963
+        ]
+      },
+      "support_to_center_ratio": 1.778401,
+      "center_outlier_ratio": 1.106354
+    },
+    "4c8cc011f555ea20a64d0872db1caee0787abe9065d1c394460252544418735a": {
+      "sha256": "4c8cc011f555ea20a64d0872db1caee0787abe9065d1c394460252544418735a",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.3257425552217377,
+          -0.18753662954657313,
+          -0.18343318969752
+        ],
+        "max": [
+          0.5298065154827515,
+          0.18365397974370642,
+          0.17814848060829794
+        ]
+      },
+      "support_to_center_ratio": 1.231549,
+      "center_outlier_ratio": 1.463955
+    },
+    "e4925cff79634ee2afdedd582f33d8b093d4467e7616ec0b5d75e096c1a499e7": {
+      "sha256": "e4925cff79634ee2afdedd582f33d8b093d4467e7616ec0b5d75e096c1a499e7",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.22097528478681466,
+          -0.1773770951664379,
+          -0.2344757632440007
+        ],
+        "max": [
+          0.21884824150776358,
+          0.1940372772357019,
+          0.24222831241244794
+        ]
+      },
+      "support_to_center_ratio": 1.158489,
+      "center_outlier_ratio": 1.075485
+    },
+    "90c80167cca0a5c31379d9bc2f5bd27dafdec69432721c244b8e3b8253a13af9": {
+      "sha256": "90c80167cca0a5c31379d9bc2f5bd27dafdec69432721c244b8e3b8253a13af9",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5183193983475728,
+          -0.1502097763381386,
+          -0.5368428944974395
+        ],
+        "max": [
+          0.5295898173987251,
+          0.36001026726605406,
+          0.5129111994976532
+        ]
+      },
+      "support_to_center_ratio": 1.056599,
+      "center_outlier_ratio": 1.05375
+    },
+    "9f1436c2c8ab55f5181405f16210bf6687468af0cb4b9b42d49b172d6e0221d7": {
+      "sha256": "9f1436c2c8ab55f5181405f16210bf6687468af0cb4b9b42d49b172d6e0221d7",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.4692391548925834,
+          -0.042919746461120144,
+          -0.4151026678522259
+        ],
+        "max": [
+          0.5003964580881316,
+          0.08736067705542236,
+          0.416427741533848
+        ]
+      },
+      "support_to_center_ratio": 1.22246,
+      "center_outlier_ratio": 1.444346
+    },
+    "b7700bb29ae146f0c81f08046abea78ee5ff55edb080bf4ffab443158b8bf815": {
+      "sha256": "b7700bb29ae146f0c81f08046abea78ee5ff55edb080bf4ffab443158b8bf815",
+      "status": "excluded",
+      "reasons": [
+        "visual_review: G03 pond 2, reviewed individually in the deployed splat viewer: disconnected surface fragments and large holes do not represent a coherent pond appearance."
+      ],
+      "render_bounds": {
+        "min": [
+          -0.3371492988940525,
+          -0.08419473975147744,
+          -0.5115012251576329
+        ],
+        "max": [
+          0.27104956147124404,
+          0.0883512351820979,
+          0.496192969424605
+        ]
+      },
+      "support_to_center_ratio": 1.063634,
+      "center_outlier_ratio": 1.247505
+    },
+    "eb264bb14f7184664847abacc5408a8d349b0011ddee1d7e05c297800065cfaf": {
+      "sha256": "eb264bb14f7184664847abacc5408a8d349b0011ddee1d7e05c297800065cfaf",
+      "status": "excluded",
+      "reasons": [
+        "visual_review: G03 enclosure 3, reviewed individually in the deployed splat viewer: scattered disconnected patches and floating fragments do not represent a coherent enclosure."
+      ],
+      "render_bounds": {
+        "min": [
+          -0.09248870553862558,
+          -0.24827403597134817,
+          -0.507076321396572
+        ],
+        "max": [
+          0.17448097707577687,
+          0.25580473449977387,
+          0.5062690821935489
+        ]
+      },
+      "support_to_center_ratio": 1.039941,
+      "center_outlier_ratio": 1.216974
+    },
+    "152d6266748d12d1a0536baa2bd2979c4f373a3ce5e6f4fc1160dfd8eb635ea6": {
+      "sha256": "152d6266748d12d1a0536baa2bd2979c4f373a3ce5e6f4fc1160dfd8eb635ea6",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.4120442300569443,
+          -0.13939994159034236,
+          -0.3798407617337832
+        ],
+        "max": [
+          0.5038833686629054,
+          0.21453886809638484,
+          0.3994700529452944
+        ]
+      },
+      "support_to_center_ratio": 2.341594,
+      "center_outlier_ratio": 1.136643
+    },
+    "1f41c8e4dc9f678097d7de7b6b5c1b1168690060c2530f9a2712e2a179ddb909": {
+      "sha256": "1f41c8e4dc9f678097d7de7b6b5c1b1168690060c2530f9a2712e2a179ddb909",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.015036254068119063,
+          -0.13974972949900674,
+          -0.19810992755291468
+        ],
+        "max": [
+          0.015263921267870836,
+          0.14999931446666334,
+          0.1955770669919864
+        ]
+      },
+      "support_to_center_ratio": 1.862459,
+      "center_outlier_ratio": 4.883227
+    },
+    "39a02a1c26d9c51f6fed58a2f360c04aeaa8a80764927017c941f352bb9f3571": {
+      "sha256": "39a02a1c26d9c51f6fed58a2f360c04aeaa8a80764927017c941f352bb9f3571",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5033187046209415,
+          -0.10994078032522357,
+          -0.09856486916376753
+        ],
+        "max": [
+          0.5034450706924808,
+          0.16337055378583915,
+          0.12043792976434282
+        ]
+      },
+      "support_to_center_ratio": 1.177241,
+      "center_outlier_ratio": 1.415514
+    },
+    "3e2d53b50b5a61e17d362a7a1060e457afbe1eb90b11f33e2668947b77074d10": {
+      "sha256": "3e2d53b50b5a61e17d362a7a1060e457afbe1eb90b11f33e2668947b77074d10",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.3548530392403431,
+          -0.03650224206733595,
+          -0.23937930761689089
+        ],
+        "max": [
+          0.4994059799228101,
+          0.04168879555681369,
+          0.2429953481222084
+        ]
+      },
+      "support_to_center_ratio": 1.196152,
+      "center_outlier_ratio": 1.12945
+    },
+    "3685a35e7b767c12ffecbe0e61c5130f2390993f27c9739e39148baf592b6b40": {
+      "sha256": "3685a35e7b767c12ffecbe0e61c5130f2390993f27c9739e39148baf592b6b40",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.029014763881032045,
+          -0.10193867079489907,
+          -0.19197535822896258
+        ],
+        "max": [
+          0.02812369635939783,
+          0.11114643300606472,
+          0.19779275260744547
+        ]
+      },
+      "support_to_center_ratio": 1.177132,
+      "center_outlier_ratio": 1.080934
+    },
+    "25fa9f8257b9c5262e4ae76694c967c92f05a325b68d32786043495ece403d24": {
+      "sha256": "25fa9f8257b9c5262e4ae76694c967c92f05a325b68d32786043495ece403d24",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.10702463759885808,
+          -0.0326437535683504,
+          -0.21393241563539156
+        ],
+        "max": [
+          0.1304741439683469,
+          0.008761990778790644,
+          0.21375976824347676
+        ]
+      },
+      "support_to_center_ratio": 1.273496,
+      "center_outlier_ratio": 3.674252
+    },
+    "9ed651664c0758d2088632be3ead36038e8692e9b86315b1d27e4e95184a30e9": {
+      "sha256": "9ed651664c0758d2088632be3ead36038e8692e9b86315b1d27e4e95184a30e9",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.020627000341438516,
+          -0.505564247662746,
+          -0.09063830968471005
+        ],
+        "max": [
+          0.020637281910313228,
+          0.404227778022599,
+          0.09062104919318589
+        ]
+      },
+      "support_to_center_ratio": 1.498037,
+      "center_outlier_ratio": 1.08309
+    },
+    "3b147301df91cae5e00c64335aef3a7e2d404369ad5b0bfcc00b94d9f024e4ac": {
+      "sha256": "3b147301df91cae5e00c64335aef3a7e2d404369ad5b0bfcc00b94d9f024e4ac",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.00816718531579934,
+          -0.5062014798743497,
+          -0.08564463194920209
+        ],
+        "max": [
+          0.017911414386400756,
+          0.5149674236601129,
+          0.08634171386422254
+        ]
+      },
+      "support_to_center_ratio": 2.917212,
+      "center_outlier_ratio": 2.269638
+    },
+    "9abf47f79335f58946d82ebf7a0a5996207ea928b739f9c863d245841fa47086": {
+      "sha256": "9abf47f79335f58946d82ebf7a0a5996207ea928b739f9c863d245841fa47086",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.014703831073085335,
+          -0.1313069687976933,
+          -0.10114959389839522
+        ],
+        "max": [
+          0.018626826103870328,
+          0.1556916539035864,
+          0.10807879197929478
+        ]
+      },
+      "support_to_center_ratio": 1.644359,
+      "center_outlier_ratio": 1.121048
+    },
+    "830217c7559d77c6836d5e20c421943ab19d023c1eabaf5dd8925965bec04667": {
+      "sha256": "830217c7559d77c6836d5e20c421943ab19d023c1eabaf5dd8925965bec04667",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.007979739368587953,
+          -0.5010951138887917,
+          -0.1199404731482472
+        ],
+        "max": [
+          0.011395975381446535,
+          0.3904765619540666,
+          0.11906499035454382
+        ]
+      },
+      "support_to_center_ratio": 2.51073,
+      "center_outlier_ratio": 1.702236
+    },
+    "baf2c1d94da8769f11d40d6ed55088b8b076aaccdd2076e3620ab34229f31ef1": {
+      "sha256": "baf2c1d94da8769f11d40d6ed55088b8b076aaccdd2076e3620ab34229f31ef1",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.008725316276679907,
+          -0.5140960566287294,
+          -0.09951528675193413
+        ],
+        "max": [
+          0.012812088141945963,
+          0.5136872702213336,
+          0.10083672710842914
+        ]
+      },
+      "support_to_center_ratio": 1.652755,
+      "center_outlier_ratio": 2.193768
+    },
+    "8101dcf94088955704a85aa9a5538b9690af708b82e51b505e1a787973740411": {
+      "sha256": "8101dcf94088955704a85aa9a5538b9690af708b82e51b505e1a787973740411",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.01232044074478166,
+          -0.5030741765072458,
+          -0.16665933849365272
+        ],
+        "max": [
+          0.01085534169086814,
+          0.5038956766908322,
+          0.14075240751811435
+        ]
+      },
+      "support_to_center_ratio": 3.199983,
+      "center_outlier_ratio": 2.700188
+    },
+    "665a758f1d244779f9e17f5db45fdf1eb42f98334fc0ec265e163c957980d960": {
+      "sha256": "665a758f1d244779f9e17f5db45fdf1eb42f98334fc0ec265e163c957980d960",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.013541750405471625,
+          -0.10386167456783649,
+          -0.20054897017137868
+        ],
+        "max": [
+          0.013362083072195996,
+          0.11348897772767166,
+          0.20045082434861877
+        ]
+      },
+      "support_to_center_ratio": 1.937171,
+      "center_outlier_ratio": 1.173445
+    },
+    "636ce314642f547779e0b903c87f4fe354c67ea74d5066ed81acdb3e8f67c3a9": {
+      "sha256": "636ce314642f547779e0b903c87f4fe354c67ea74d5066ed81acdb3e8f67c3a9",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.609750415971432,
+          -0.34160974603492894,
+          -0.5158426906683587
+        ],
+        "max": [
+          0.42113987979552475,
+          0.6115347391643484,
+          0.7027327282625098
+        ]
+      },
+      "support_to_center_ratio": 1.343246,
+      "center_outlier_ratio": 1.117125
+    },
+    "61247d3f7388187184128f4f28f6a7d2058da182465fbd422d6d4fe3b1aab7ca": {
+      "sha256": "61247d3f7388187184128f4f28f6a7d2058da182465fbd422d6d4fe3b1aab7ca",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.22440968556176127,
+          -0.2521315130561341,
+          -0.5104288703113722
+        ],
+        "max": [
+          0.37225936455498637,
+          0.3167872331569661,
+          0.5500395155360048
+        ]
+      },
+      "support_to_center_ratio": 1.596668,
+      "center_outlier_ratio": 1.140003
+    },
+    "7bdb969f8a7edc386c825cb02e99e075bccfe97f43ef64ebf96410e9521f63be": {
+      "sha256": "7bdb969f8a7edc386c825cb02e99e075bccfe97f43ef64ebf96410e9521f63be",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.049435137009542184,
+          -0.3357062039812732,
+          -0.1977558949215281
+        ],
+        "max": [
+          0.06026099854630368,
+          0.37369912302132274,
+          0.19628944641771656
+        ]
+      },
+      "support_to_center_ratio": 1.590593,
+      "center_outlier_ratio": 1.08056
+    },
+    "aea74e98e3b47009d284ce52ede55be8913bed9a286605b45c95681257cabdc7": {
+      "sha256": "aea74e98e3b47009d284ce52ede55be8913bed9a286605b45c95681257cabdc7",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.26628032467243556,
+          -0.556109289296601,
+          -0.3713349407523714
+        ],
+        "max": [
+          0.3638764189464026,
+          0.5479235730526579,
+          0.2925621961228835
+        ]
+      },
+      "support_to_center_ratio": 1.348323,
+      "center_outlier_ratio": 1.082819
+    },
+    "7e3682d4097c566dc45663b5a82c11472ab5035bf1f138090898430c24eebe06": {
+      "sha256": "7e3682d4097c566dc45663b5a82c11472ab5035bf1f138090898430c24eebe06",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.27302768297173086,
+          -0.5815317784912952,
+          -0.17981181881551686
+        ],
+        "max": [
+          0.34847322630463684,
+          0.5319617280424576,
+          0.23551875976113917
+        ]
+      },
+      "support_to_center_ratio": 1.15717,
+      "center_outlier_ratio": 1.057589
+    },
+    "ae6a00f3066ea86a9287b40425df546d793b35eb8e93ec2d7a6d0cb2bd25a090": {
+      "sha256": "ae6a00f3066ea86a9287b40425df546d793b35eb8e93ec2d7a6d0cb2bd25a090",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.3747024118814561,
+          -0.5016068860462022,
+          -0.3453847676420581
+        ],
+        "max": [
+          0.4465577474201086,
+          0.5748179554469957,
+          0.35906204169284056
+        ]
+      },
+      "support_to_center_ratio": 1.080627,
+      "center_outlier_ratio": 1.113262
+    },
+    "761a5500423bd6167ead10251a492ca893e0a806c8cc6a54209d6f73f51a301b": {
+      "sha256": "761a5500423bd6167ead10251a492ca893e0a806c8cc6a54209d6f73f51a301b",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.30079252495569014,
+          -0.6376276393553484,
+          -0.3207024720388773
+        ],
+        "max": [
+          0.4222401579469278,
+          0.6041409154555071,
+          0.3611109310086265
+        ]
+      },
+      "support_to_center_ratio": 1.478587,
+      "center_outlier_ratio": 1.138217
+    },
+    "c59f0e7bc8a80754588b7d72f69978a795ac2ae9cc2da5751649b760b4e5dc7f": {
+      "sha256": "c59f0e7bc8a80754588b7d72f69978a795ac2ae9cc2da5751649b760b4e5dc7f",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5317163560443017,
+          -0.39578944691627227,
+          -0.4777414729561519
+        ],
+        "max": [
+          0.5273976383405112,
+          0.4192718244986788,
+          0.47141912353153503
+        ]
+      },
+      "support_to_center_ratio": 1.126932,
+      "center_outlier_ratio": 1.090315
+    },
+    "760970ece22d28240ca8f852499012229f1b4cc5cfd5ad36d8eb9fb1d3b1fce5": {
+      "sha256": "760970ece22d28240ca8f852499012229f1b4cc5cfd5ad36d8eb9fb1d3b1fce5",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.35584757150738955,
+          -0.5870646069207208,
+          -0.2750915940510107
+        ],
+        "max": [
+          0.4249436696826575,
+          0.7141673345438339,
+          0.32343899219496974
+        ]
+      },
+      "support_to_center_ratio": 1.566704,
+      "center_outlier_ratio": 1.085617
+    },
+    "fde1c9c5448c7b46114ccd4ccc1260549b18cdcc75df2b6249e43931cd7f0660": {
+      "sha256": "fde1c9c5448c7b46114ccd4ccc1260549b18cdcc75df2b6249e43931cd7f0660",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.3578298021289909,
+          -0.7578951292910308,
+          -0.3255959701148198
+        ],
+        "max": [
+          0.5689736858166534,
+          0.5191174127586368,
+          0.2296375295246497
+        ]
+      },
+      "support_to_center_ratio": 1.338482,
+      "center_outlier_ratio": 1.105287
+    },
+    "fbfc74d34abee9ec4c27836f637db5ccd35f95e865058bdddc1d94f87ca439dd": {
+      "sha256": "fbfc74d34abee9ec4c27836f637db5ccd35f95e865058bdddc1d94f87ca439dd",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.9869822005186663,
+          -0.5071762462930125,
+          -0.6539098586533592
+        ],
+        "max": [
+          0.668963108435689,
+          1.0012344768619412,
+          1.069724616000466
+        ]
+      },
+      "support_to_center_ratio": 1.785205,
+      "center_outlier_ratio": 1.088716
+    },
+    "21e07e28d931b96994200748df62f30cf1f6c98fe25a9573f43102f1de5c6069": {
+      "sha256": "21e07e28d931b96994200748df62f30cf1f6c98fe25a9573f43102f1de5c6069",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5478959248895674,
+          -0.708385343079405,
+          -0.7879760578618413
+        ],
+        "max": [
+          0.5581801830061545,
+          0.726192230706053,
+          0.7958846405492193
+        ]
+      },
+      "support_to_center_ratio": 3.010222,
+      "center_outlier_ratio": 1.150388
+    },
+    "86b2b5b965a75d95ca40c913c706aa077c504609c43eb17b98dfaa694fa50160": {
+      "sha256": "86b2b5b965a75d95ca40c913c706aa077c504609c43eb17b98dfaa694fa50160",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5179086932390815,
+          -0.24412431597581502,
+          -0.2826943793264033
+        ],
+        "max": [
+          0.5033274802829341,
+          0.2914144829556591,
+          0.3019255676864956
+        ]
+      },
+      "support_to_center_ratio": 1.16008,
+      "center_outlier_ratio": 1.066987
+    },
+    "5257dbe9779aa02ccba20791fc283b5bc3c057486add5abacb593642c2a5fccc": {
+      "sha256": "5257dbe9779aa02ccba20791fc283b5bc3c057486add5abacb593642c2a5fccc",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.37313642209631465,
+          -0.30750458110036333,
+          -0.5245606290231764
+        ],
+        "max": [
+          0.457349783388689,
+          0.31195395891008565,
+          0.5213759091073945
+        ]
+      },
+      "support_to_center_ratio": 1.041342,
+      "center_outlier_ratio": 1.151674
+    },
+    "e66924d6bdbf7d6ba6b0c5fc188b6cf868857f8bdca71252525e17ded2e2deda": {
+      "sha256": "e66924d6bdbf7d6ba6b0c5fc188b6cf868857f8bdca71252525e17ded2e2deda",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.7639029263778692,
+          -0.5293177966017579,
+          -0.8947390660852129
+        ],
+        "max": [
+          0.9316301583572393,
+          1.2524319485370732,
+          0.9628328427880938
+        ]
+      },
+      "support_to_center_ratio": 2.649899,
+      "center_outlier_ratio": 1.200014
+    },
+    "6a57e018944b7d77555d4c4ddb6aaa71a88aed7109f7f905c0753e1af9f08f1e": {
+      "sha256": "6a57e018944b7d77555d4c4ddb6aaa71a88aed7109f7f905c0753e1af9f08f1e",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.4086800977334978,
+          -0.23771681787224874,
+          -0.53713523201319
+        ],
+        "max": [
+          0.3786127679791886,
+          0.2354368458432945,
+          0.5281129439304395
+        ]
+      },
+      "support_to_center_ratio": 1.245999,
+      "center_outlier_ratio": 1.045077
+    },
+    "e16f99e270acc6bdbceedb83e3b05b81625a233985654c12bab720203998b3a9": {
+      "sha256": "e16f99e270acc6bdbceedb83e3b05b81625a233985654c12bab720203998b3a9",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.3658477525677556,
+          -0.2932307938805145,
+          -0.502221160466928
+        ],
+        "max": [
+          0.5032071336230757,
+          0.5852449921817099,
+          0.3983824772130361
+        ]
+      },
+      "support_to_center_ratio": 1.478699,
+      "center_outlier_ratio": 1.19638
+    },
+    "d4abbb1234147dfc7958ab1cfba63fdeca55e9dd84740222d05d9d16d4ab17b9": {
+      "sha256": "d4abbb1234147dfc7958ab1cfba63fdeca55e9dd84740222d05d9d16d4ab17b9",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.4035924763733247,
+          -0.5656937387974011,
+          -0.5440733744396271
+        ],
+        "max": [
+          0.4079320851682717,
+          0.596416062088503,
+          0.5255641479683729
+        ]
+      },
+      "support_to_center_ratio": 1.177701,
+      "center_outlier_ratio": 1.159917
+    },
+    "6b8a3c9b0db87483326448a56554618b37a5842e9d36043f037d4ee7fb53d513": {
+      "sha256": "6b8a3c9b0db87483326448a56554618b37a5842e9d36043f037d4ee7fb53d513",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.3132381519286445,
+          -0.5062661790353715,
+          -0.11012774447591428
+        ],
+        "max": [
+          0.3133418031068114,
+          0.5086887407612306,
+          0.11586202646205981
+        ]
+      },
+      "support_to_center_ratio": 1.074171,
+      "center_outlier_ratio": 1.084205
+    },
+    "4d3096b8248d40bb1c96152ee695fdc654999ce8c8bea13f450102d2d832de8d": {
+      "sha256": "4d3096b8248d40bb1c96152ee695fdc654999ce8c8bea13f450102d2d832de8d",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.7277268590202854,
+          -0.500148546162505,
+          -0.824464477081093
+        ],
+        "max": [
+          0.9432588816922098,
+          0.8728801672584217,
+          0.7670937654522398
+        ]
+      },
+      "support_to_center_ratio": 2.620985,
+      "center_outlier_ratio": 1.60483
+    },
+    "31ad839697b015a5a1e2341088021be8a7d3975832ce91801fec0c6e5acc62ec": {
+      "sha256": "31ad839697b015a5a1e2341088021be8a7d3975832ce91801fec0c6e5acc62ec",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.037551187084554745,
+          -0.4888991334986209,
+          -0.3292296321906172
+        ],
+        "max": [
+          0.04060676133064324,
+          0.5308491794981219,
+          0.3716576379887641
+        ]
+      },
+      "support_to_center_ratio": 1.208124,
+      "center_outlier_ratio": 2.725184
+    },
+    "77c708c91a6c0c6b3dba9dd133361fb86652aa6127e92accf61f816de9c783f3": {
+      "sha256": "77c708c91a6c0c6b3dba9dd133361fb86652aa6127e92accf61f816de9c783f3",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.887771341921595,
+          -0.5520518279455144,
+          -0.4339649491849296
+        ],
+        "max": [
+          1.015933725954798,
+          0.9498842882616383,
+          0.3761864715161674
+        ]
+      },
+      "support_to_center_ratio": 1.950547,
+      "center_outlier_ratio": 1.095431
+    },
+    "15b0e9842f2aa168114ba87176f39861c8ac74b5e61268d08d250f9c8c3efac0": {
+      "sha256": "15b0e9842f2aa168114ba87176f39861c8ac74b5e61268d08d250f9c8c3efac0",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -2.0792037479565932,
+          -1.2985931771186021,
+          -0.32549277021730216
+        ],
+        "max": [
+          1.600590192525227,
+          1.3946154025733903,
+          0.4338667117934787
+        ]
+      },
+      "support_to_center_ratio": 3.975348,
+      "center_outlier_ratio": 1.366351
+    },
+    "302fd21023454898d652138f2c1ec5a86142466d33ead23f33b075c47492e459": {
+      "sha256": "302fd21023454898d652138f2c1ec5a86142466d33ead23f33b075c47492e459",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.4105788441466772,
+          -0.5265830329816351,
+          -0.5457252769520002
+        ],
+        "max": [
+          0.5602071808734572,
+          0.5179108470917451,
+          0.5645722727002112
+        ]
+      },
+      "support_to_center_ratio": 1.507564,
+      "center_outlier_ratio": 1.083738
+    },
+    "c5e397f2833f6303506b0d729017028bdc49faab62eea3a4056770f6fbbc0758": {
+      "sha256": "c5e397f2833f6303506b0d729017028bdc49faab62eea3a4056770f6fbbc0758",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.4895411742982126,
+          -0.6217051740162206,
+          -0.8441864620231226
+        ],
+        "max": [
+          0.35140918266236754,
+          0.9195187683574987,
+          1.0010633294622928
+        ]
+      },
+      "support_to_center_ratio": 2.775436,
+      "center_outlier_ratio": 1.108893
+    },
+    "f6e80725c851c6a004f5862f85a70a6697ae99a3dfab68878ba2466af4bc1363": {
+      "sha256": "f6e80725c851c6a004f5862f85a70a6697ae99a3dfab68878ba2466af4bc1363",
+      "status": "excluded",
+      "reasons": [
+        "gaussian_support_over_four_times_center_extent"
+      ],
+      "render_bounds": {
+        "min": [
+          -1.5120048476601664,
+          -1.842533205638064,
+          -2.2919003999855545
+        ],
+        "max": [
+          1.061124200954539,
+          1.9809812273588587,
+          2.330238584342244
+        ]
+      },
+      "support_to_center_ratio": 6.726323,
+      "center_outlier_ratio": 1.110166
+    },
+    "a2229d1bee74e2a81b8e33640f708f4dfdd898786e98c77cc2bc1e5a7f05320b": {
+      "sha256": "a2229d1bee74e2a81b8e33640f708f4dfdd898786e98c77cc2bc1e5a7f05320b",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.1180395625327397,
+          -0.5266779727622657,
+          -0.6100108498660435
+        ],
+        "max": [
+          0.24222282850688204,
+          0.6120105467494191,
+          0.5403438222464408
+        ]
+      },
+      "support_to_center_ratio": 1.653541,
+      "center_outlier_ratio": 1.05594
+    },
+    "acc08000da7e3aa2c6d333b6af1f6080f0cd78b7d871b8462b128191e2233f86": {
+      "sha256": "acc08000da7e3aa2c6d333b6af1f6080f0cd78b7d871b8462b128191e2233f86",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.7726695670064823,
+          -0.8073586295830465,
+          -0.44112126680896435
+        ],
+        "max": [
+          0.8942192955268342,
+          0.694921002460306,
+          0.4135296578457511
+        ]
+      },
+      "support_to_center_ratio": 2.161423,
+      "center_outlier_ratio": 1.250681
+    },
+    "46482e4ee40dcd16545034381131e721a7fdfdd2a6686abae742166e2de8d7d6": {
+      "sha256": "46482e4ee40dcd16545034381131e721a7fdfdd2a6686abae742166e2de8d7d6",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.4123076341016683,
+          -0.302946028993522,
+          -0.7082202398777565
+        ],
+        "max": [
+          0.5161363026960286,
+          0.44274157035388517,
+          0.608866801360157
+        ]
+      },
+      "support_to_center_ratio": 1.391041,
+      "center_outlier_ratio": 1.116742
+    },
+    "1cbe8475523d2800959f1edb2aac83f303dab9f472b9701b0f940933311a4a21": {
+      "sha256": "1cbe8475523d2800959f1edb2aac83f303dab9f472b9701b0f940933311a4a21",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5230391382157697,
+          -0.5313607629571553,
+          -0.3884401403558031
+        ],
+        "max": [
+          0.553177737014729,
+          0.6496574256155941,
+          0.32996592363597704
+        ]
+      },
+      "support_to_center_ratio": 1.189048,
+      "center_outlier_ratio": 1.09136
+    },
+    "304a246433e2db21201164234a000f69dc3d2b85787c4d7bc6d86c9cf27bea11": {
+      "sha256": "304a246433e2db21201164234a000f69dc3d2b85787c4d7bc6d86c9cf27bea11",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5050882426966395,
+          -0.4896081216901844,
+          -0.5610475043967595
+        ],
+        "max": [
+          0.5238973800963965,
+          0.5814138884533913,
+          0.5566688127037913
+        ]
+      },
+      "support_to_center_ratio": 1.199881,
+      "center_outlier_ratio": 1.133507
+    },
+    "49c17596819fdea48834d9de411fa96b5201f633a0ab92d6d4878019aa32e9a6": {
+      "sha256": "49c17596819fdea48834d9de411fa96b5201f633a0ab92d6d4878019aa32e9a6",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5751970773471449,
+          -0.5367931370300021,
+          -0.7401945636465292
+        ],
+        "max": [
+          0.6154967550820808,
+          0.9488213844764721,
+          0.6075052068426352
+        ]
+      },
+      "support_to_center_ratio": 1.476465,
+      "center_outlier_ratio": 1.075522
+    },
+    "2ffebd0853a7bdb4f1ef697d6eb7727373d450c38b23881e2cedea8409b629fb": {
+      "sha256": "2ffebd0853a7bdb4f1ef697d6eb7727373d450c38b23881e2cedea8409b629fb",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.2576916036368595,
+          -0.5026100678889721,
+          -0.381135810395795
+        ],
+        "max": [
+          0.2676501243052386,
+          0.5029202147446804,
+          0.3686411753808529
+        ]
+      },
+      "support_to_center_ratio": 1.023385,
+      "center_outlier_ratio": 1.087696
+    },
+    "469e77dc73003948a728d52cdcb92cbf3fdf7697ab10c3c1d419a65aeee9983f": {
+      "sha256": "469e77dc73003948a728d52cdcb92cbf3fdf7697ab10c3c1d419a65aeee9983f",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.3494391206836416,
+          -0.6851353172197774,
+          -0.5522702523718606
+        ],
+        "max": [
+          0.2753562831436768,
+          0.8798633936777547,
+          0.3031015812208467
+        ]
+      },
+      "support_to_center_ratio": 1.621177,
+      "center_outlier_ratio": 1.202576
+    },
+    "cad97fe8041a541d83c51cb78a79bc2d83cb11ac0b24a42a0cb6d547f74c4ec2": {
+      "sha256": "cad97fe8041a541d83c51cb78a79bc2d83cb11ac0b24a42a0cb6d547f74c4ec2",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.18163668863802,
+          -0.573821371602411,
+          -0.5621197222532779
+        ],
+        "max": [
+          0.2434064587492091,
+          0.6988639713093847,
+          0.6722240042450928
+        ]
+      },
+      "support_to_center_ratio": 1.817869,
+      "center_outlier_ratio": 1.170282
+    },
+    "6faa1b3ce8b0b05302d35c21e332476d44a4ae65238aff5180a5cc002d2d0d81": {
+      "sha256": "6faa1b3ce8b0b05302d35c21e332476d44a4ae65238aff5180a5cc002d2d0d81",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.1926822251862465,
+          -0.5020140217816743,
+          -0.49646804619447005
+        ],
+        "max": [
+          0.21090762861008228,
+          0.5017642789734299,
+          0.5225536015058662
+        ]
+      },
+      "support_to_center_ratio": 1.171535,
+      "center_outlier_ratio": 1.071028
+    },
+    "54bff0da65b3a830a9d9c8a5f38c079b6db1f99f41cf3f9c96b386a6c7bd8dfa": {
+      "sha256": "54bff0da65b3a830a9d9c8a5f38c079b6db1f99f41cf3f9c96b386a6c7bd8dfa",
+      "status": "excluded",
+      "reasons": [
+        "visual_review: Illustrative tree, inspected in the actual isolated splat viewer: a foliage mass and short stump do not reconstruct the complete tree trunk and silhouette requested by the scene."
+      ],
+      "render_bounds": {
+        "min": [
+          -0.4927971041488529,
+          -0.5030231093449656,
+          -0.5100515787634321
+        ],
+        "max": [
+          0.4935018779145941,
+          0.5316071301177232,
+          0.5021312298383256
+        ]
+      },
+      "support_to_center_ratio": 1.043549,
+      "center_outlier_ratio": 1.35581
+    },
+    "7739d1f214a8bca191094c781ab16004c6cf1e6e803a74135aba28eb48cd2121": {
+      "sha256": "7739d1f214a8bca191094c781ab16004c6cf1e6e803a74135aba28eb48cd2121",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.4568515349580751,
+          -0.5258090867728974,
+          -0.5033776788533602
+        ],
+        "max": [
+          0.42272532182044714,
+          0.5339924572463833,
+          0.5552473810468496
+        ]
+      },
+      "support_to_center_ratio": 1.123746,
+      "center_outlier_ratio": 1.16509
+    },
+    "52b02aa0947175f6ff0866a7216132abced3f255d671fb2bc1b3d49bb6172367": {
+      "sha256": "52b02aa0947175f6ff0866a7216132abced3f255d671fb2bc1b3d49bb6172367",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5692358007836558,
+          -0.4527855133717695,
+          -0.46872563780046894
+        ],
+        "max": [
+          0.6081143553634923,
+          0.3906509439282567,
+          0.5247675274686963
+        ]
+      },
+      "support_to_center_ratio": 1.409726,
+      "center_outlier_ratio": 1.149645
+    },
+    "cfeffed4a40582bea56086349aa22153bf7920844b80d851b8e684d80da78bb1": {
+      "sha256": "cfeffed4a40582bea56086349aa22153bf7920844b80d851b8e684d80da78bb1",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.38650588290141324,
+          -0.5309384070130808,
+          -0.37910651726618494
+        ],
+        "max": [
+          0.49090105329885253,
+          0.5634666404044344,
+          0.3903876411778387
+        ]
+      },
+      "support_to_center_ratio": 1.19665,
+      "center_outlier_ratio": 1.172372
+    },
+    "8dc98531d735054767e50d5c853e85e4c0dfbe7b3cf92f0ebd2f3cd1f1fff63c": {
+      "sha256": "8dc98531d735054767e50d5c853e85e4c0dfbe7b3cf92f0ebd2f3cd1f1fff63c",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.49369416732614424,
+          -0.42282090519908677,
+          -0.43924951997981965
+        ],
+        "max": [
+          0.4658843319317115,
+          0.574265656060354,
+          0.4948684007653259
+        ]
+      },
+      "support_to_center_ratio": 1.202868,
+      "center_outlier_ratio": 1.094331
+    },
+    "5cfacca8e7143af5d594d40112235e7cd4668a51e715a7426ed32002cbc30d7d": {
+      "sha256": "5cfacca8e7143af5d594d40112235e7cd4668a51e715a7426ed32002cbc30d7d",
+      "status": "excluded",
+      "reasons": [
+        "visual_review: Illustrative belt conveyor, inspected in the actual isolated splat viewer: disconnected belt and roller sections with substantial missing supports do not form one coherent conveyor."
+      ],
+      "render_bounds": {
+        "min": [
+          -0.39259625706711926,
+          -0.33061633485098446,
+          -0.5401429731350684
+        ],
+        "max": [
+          0.39488708532830746,
+          0.36447174542342947,
+          0.501309516646869
+        ]
+      },
+      "support_to_center_ratio": 1.093309,
+      "center_outlier_ratio": 1.144118
+    },
+    "488a5a43c53e18f995fa11a087139850bf7f9ac66b5fa3c4b59692e32c68585c": {
+      "sha256": "488a5a43c53e18f995fa11a087139850bf7f9ac66b5fa3c4b59692e32c68585c",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.2760735989745486,
+          -0.14849493363385802,
+          -0.21826440752384557
+        ],
+        "max": [
+          0.2471177400792464,
+          0.169967339492672,
+          0.2259276410193899
+        ]
+      },
+      "support_to_center_ratio": 1.154553,
+      "center_outlier_ratio": 1.152144
+    },
+    "1258bd8d75f6185f6b1e845efe322d94b6ad7f2da98abcfa37c60d26ec041101": {
+      "sha256": "1258bd8d75f6185f6b1e845efe322d94b6ad7f2da98abcfa37c60d26ec041101",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.07858739775764585,
+          -0.09813850260226376,
+          -0.20626222115193732
+        ],
+        "max": [
+          0.13833564337826912,
+          0.12159233070407652,
+          0.19491049892914394
+        ]
+      },
+      "support_to_center_ratio": 1.161622,
+      "center_outlier_ratio": 1.199663
+    },
+    "858169e89f6e3f338f0dfab7887b90a93bb6f68062fdcf7a23ac2e591a753fd7": {
+      "sha256": "858169e89f6e3f338f0dfab7887b90a93bb6f68062fdcf7a23ac2e591a753fd7",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.18768261128285807,
+          -0.10346999306999734,
+          -0.1903175085574706
+        ],
+        "max": [
+          0.19932361051197,
+          0.12489347904255273,
+          0.16571509007586005
+        ]
+      },
+      "support_to_center_ratio": 1.26748,
+      "center_outlier_ratio": 1.180311
+    },
+    "4bbe4c40cbd24d9cb0f4d9271a2ae42458ccaa48d5d6f38f08325efdd37aa8c3": {
+      "sha256": "4bbe4c40cbd24d9cb0f4d9271a2ae42458ccaa48d5d6f38f08325efdd37aa8c3",
+      "status": "excluded",
+      "reasons": [
+        "visual_review: D01 DMS, inspected individually and against the original photograph: the cyclone tower is flattened into a low facade behind the tanks, losing its defining upright structure. Hidden in all three authored placements."
+      ],
+      "render_bounds": {
+        "min": [
+          -0.46189570955883397,
+          -0.13059748028059437,
+          -0.3185075592544221
+        ],
+        "max": [
+          0.5012858899342856,
+          0.163721578141888,
+          0.3664066219485936
+        ]
+      },
+      "support_to_center_ratio": 1.134538,
+      "center_outlier_ratio": 1.278021
+    },
+    "198d1319f3e4ca046079c64031e8fb5a36567b42568c57662df1e1a508733463": {
+      "sha256": "198d1319f3e4ca046079c64031e8fb5a36567b42568c57662df1e1a508733463",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.296745032527765,
+          -0.1269005578191198,
+          -0.23042294590399828
+        ],
+        "max": [
+          0.23752895288942177,
+          0.12543893362155933,
+          0.2567638267242375
+        ]
+      },
+      "support_to_center_ratio": 1.098928,
+      "center_outlier_ratio": 1.142884
+    },
+    "b910ef24a5b757c191e9e40f8fe3630a19ea7c8a505263e652c535ac876d5d10": {
+      "sha256": "b910ef24a5b757c191e9e40f8fe3630a19ea7c8a505263e652c535ac876d5d10",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5636673498686666,
+          -0.11187096779301357,
+          -0.1494692993978364
+        ],
+        "max": [
+          0.5326689129826641,
+          0.14008895405720845,
+          0.13200586354274788
+        ]
+      },
+      "support_to_center_ratio": 1.773647,
+      "center_outlier_ratio": 1.099486
+    },
+    "0fcbd35f7fb398aded84520a0a50384aacdf7a0b788c714c398d7fec70987bae": {
+      "sha256": "0fcbd35f7fb398aded84520a0a50384aacdf7a0b788c714c398d7fec70987bae",
+      "status": "excluded",
+      "reasons": [
+        "visual_review: D01 raw-feed hopper, inspected individually and against the original photograph: the tall receiving bin is reconstructed as a shallow tray with flattened surrounding surface; its defining volume and supporting structure are missing."
+      ],
+      "render_bounds": {
+        "min": [
+          -0.548827727350721,
+          -0.16328670142407337,
+          -0.18054102763641672
+        ],
+        "max": [
+          0.5220970476177622,
+          0.1842031931879373,
+          0.1858572850607872
+        ]
+      },
+      "support_to_center_ratio": 1.179538,
+      "center_outlier_ratio": 1.136976
+    },
+    "86851fda505ef1ef38a9b57e8030eeeafecabe096430d0696d728de80f8efcdf": {
+      "sha256": "86851fda505ef1ef38a9b57e8030eeeafecabe096430d0696d728de80f8efcdf",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.4773098649422016,
+          -0.07905376933530171,
+          -0.27633317112363165
+        ],
+        "max": [
+          0.4172499593641121,
+          0.10782706785649125,
+          0.33990433410835824
+        ]
+      },
+      "support_to_center_ratio": 1.305275,
+      "center_outlier_ratio": 1.247546
+    },
+    "e579f7c18f21cd121780c8b4a1764f07a80916f533e462033173866d133ddce2": {
+      "sha256": "e579f7c18f21cd121780c8b4a1764f07a80916f533e462033173866d133ddce2",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.04790121607579069,
+          -0.11865611897485079,
+          -0.09507442493723894
+        ],
+        "max": [
+          0.13594749417802804,
+          0.13330921064344725,
+          0.09604692455666909
+        ]
+      },
+      "support_to_center_ratio": 1.298753,
+      "center_outlier_ratio": 1.135064
+    },
+    "32072973982f18db4b049e4dd1614fa96dcefd4114a9d40246a1f18facb7d142": {
+      "sha256": "32072973982f18db4b049e4dd1614fa96dcefd4114a9d40246a1f18facb7d142",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.35089344045844856,
+          -0.11265043808564192,
+          -0.30777964286080245
+        ],
+        "max": [
+          0.42610987010645585,
+          0.13365024572520123,
+          0.2924448830121218
+        ]
+      },
+      "support_to_center_ratio": 1.800836,
+      "center_outlier_ratio": 1.182103
+    },
+    "a59d628bca6e5d7839366b0a917d4a2162e42171916bd2dd8d21801d20736749": {
+      "sha256": "a59d628bca6e5d7839366b0a917d4a2162e42171916bd2dd8d21801d20736749",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.0920169609024851,
+          -0.08693793650035253,
+          -0.1336032453745129
+        ],
+        "max": [
+          0.14895950182923876,
+          0.09736132223349922,
+          0.12637273068992916
+        ]
+      },
+      "support_to_center_ratio": 1.231702,
+      "center_outlier_ratio": 1.094146
+    },
+    "6a082110f1b66ca15cb86b73c232fa48a212b5f9418512ecdbe74bddc6cca6d5": {
+      "sha256": "6a082110f1b66ca15cb86b73c232fa48a212b5f9418512ecdbe74bddc6cca6d5",
+      "status": "accepted",
+      "reasons": [],
+      "render_bounds": {
+        "min": [
+          -0.5078479045293266,
+          -0.04118261064738568,
+          -0.23623296433548782
+        ],
+        "max": [
+          0.4972315231343085,
+          0.0660066349749489,
+          0.24539039909492544
+        ]
+      },
+      "support_to_center_ratio": 1.530864,
+      "center_outlier_ratio": 1.074392
+    }
+  }
+}

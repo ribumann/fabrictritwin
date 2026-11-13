@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>D01 Mining Twin -- Cockpit</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/mining/mining.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three/build/three.module.js",
+          "three/addons/": "/vendor/three/examples/jsm/",
+          "@sparkjsdev/spark": "/vendor/spark/spark.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body class="mining">
+    <header class="page-header">
+      <div>
+        <h1>D01 Mining Twin</h1>
+        <p class="subtitle">Operations Cockpit · authored demonstration plant</p>
+        <a href="/">Triathlon Cockpit</a>
+      </div>
+      <div class="mining-controls">
+        <label
+          >Time mode
+          <select id="mode">
+            <option value="live">LIVE</option>
+            <option value="replay">REPLAY</option>
+          </select></label
+        >
+        <label id="replay-label" hidden
+          >Replay time (UTC)<input id="replay-time" type="datetime-local"
+        /></label>
+        <label
+          >Chart window<select id="window">
+            <option value="30">30 minutes</option>
+            <option value="120">2 hours</option>
+            <option value="1440">24 hours</option>
+          </select></label
+        >
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+    </header>
+    <main class="mining-main">
+      <section class="mining-state" aria-label="Run and freshness">
+        <strong id="mode-label">LIVE</strong><span>Plant D01</span
+        ><span id="run">Approved run: unavailable</span>
+        <span id="catalog-scope">APPROVED EXPECTED catalog scope: unavailable</span>
+        <span id="freshness">Last refresh: unknown</span><span id="quality">Quality: unknown</span>
+      </section>
+      <p id="connection" class="callout" role="status">
+        Connecting to the authorized mining backend. No telemetry is assumed.
+      </p>
+      <section class="mining-kpis" aria-label="Plant headline indicators">
+        <article>
+          <h2>Throughput</h2>
+          <strong id="kpi-throughput">Unknown</strong>
+          <p id="meta-throughput">t/h · window / coverage unknown</p>
+        </article>
+        <article>
+          <h2>Running lines</h2>
+          <strong id="kpi-runningLines">Unknown</strong>
+          <p id="meta-runningLines">lines · window / coverage unknown</p>
+        </article>
+        <article>
+          <h2>Gross process-water intensity</h2>
+          <strong id="kpi-grossProcessWaterIntensity">Unknown</strong>
+          <p id="meta-grossProcessWaterIntensity">m³/t · window / coverage unknown</p>
+        </article>
+        <article>
+          <h2>Energy intensity</h2>
+          <strong id="kpi-energyIntensity">Unknown</strong>
+          <p id="meta-energyIntensity">kWh/t · window / coverage unknown</p>
+        </article>
+      </section>
+      <div class="mining-workspace">
+        <section class="card mining-plant" aria-labelledby="plant-heading">
+          <div class="card-header">
+            <h2 id="plant-heading">Plant</h2>
+            <label
+              >View<select id="view">
+                <option value="3d">3D</option>
+                <option value="top">Top view</option>
+                <option value="list">Object list</option>
+              </select></label
+            >
+          </div>
+          <fieldset class="mining-appearance">
+            <legend>Visual appearance</legend>
+            <label
+              >Appearance<select id="appearance-mode" disabled>
+                <option value="clean" selected>Clean</option>
+                <option value="reconstructed">Reconstructed</option>
+              </select></label
+            >
+            <label
+              ><input id="include-screened" type="checkbox" disabled />Show screened assets
+              (review only)</label
+            >
+          </fieldset>
+          <fieldset class="mining-toggles">
+            <legend>Visible topology</legend>
+            <label><input type="checkbox" name="line" value="A" checked />Line A</label>
+            <label><input type="checkbox" name="line" value="B" checked />Line B</label>
+            <label><input type="checkbox" name="line" value="C" checked />Line C</label>
+            <label><input type="checkbox" name="line" value="shared" checked />Shared</label>
+            <label><input id="utilities" type="checkbox" />Utility streams</label>
+          </fieldset>
+          <p id="geometry-status" role="status">Loading pinned plant catalog…</p>
+          <div
+            id="plant-3d"
+            aria-label="Authored plant geometry. Use the object list to select equipment with a keyboard."
+          ></div>
+          <svg
+            id="plant-top"
+            viewBox="-54 -40 108 80"
+            role="img"
+            aria-label="North-up authored site plan in metres"
+            hidden
+          ></svg>
+          <ul id="object-list" class="mining-objects" aria-label="Plant object selection"></ul>
+          <p class="muted">
+            Authored parametric meshes; dimensions are demo assumptions, not engineering truth.
+            Arrows are authored flow direction, not measured motion. Drag to orbit; scroll to zoom.
+            Keyboard selection is available in the object list.
+          </p>
+        </section>
+        <aside class="card" aria-labelledby="incident-heading">
+          <h2 id="incident-heading">Priority incidents</h2>
+          <p id="incident-status">Unknown — incident source not connected.</p>
+          <ol id="incidents" class="stack"></ol>
+        </aside>
+      </div>
+      <section class="card mining-drawer" aria-labelledby="asset-heading">
+        <h2 id="asset-heading">Equipment detail</h2>
+        <p id="asset-id">Select a module in the plant or object list.</p>
+        <p id="asset-status">Status: unknown</p>
+        <p id="incident-evidence"></p>
+        <div id="readings" class="mining-readings"></div>
+        <div class="mining-links">
+          <div>
+            <h3>Upstream</h3>
+            <div id="upstream"></div>
+          </div>
+          <div>
+            <h3>Downstream</h3>
+            <div id="downstream"></div>
+          </div>
+        </div>
+        <p class="muted">
+          Connectivity is context, not proof of cause. Logical equipment children have no
+          independent geometry.
+        </p>
+      </section>
+      <section class="mining-charts" aria-label="Two focused comparisons">
+        <article class="card">
+          <h2>A / B / C feed</h2>
+          <div id="feed-chart"></div>
+        </article>
+        <article class="card">
+          <label
+            >Selected diagnostic<select id="diagnostic">
+              <option value="density">DMS density</option>
+              <option value="vibration">Crusher vibration</option>
+              <option value="water-energy">Water / energy</option>
+            </select></label
+          >
+          <p id="diagnostic-scope">Select a module for its diagnostic trend.</p>
+          <div id="diagnostic-chart"></div>
+        </article>
+      </section>
+      <section class="card" aria-labelledby="ask-heading">
+        <h2 id="ask-heading">Ask / inspect evidence</h2>
+        <p id="assistant-state">
+          Mining assistant unavailable until an approved grounded Fabric connection is configured.
+          No question is sent by this shell.
+        </p>
+        <ul>
+          <li>Why is Line B processing less ore than A and C in the last 15 minutes?</li>
+          <li>Which DMS line has been outside its density band, for how long?</li>
+          <li>Did a shared water issue affect all three lines?</li>
+          <li>Show evidence for the bearing warning and compare it with normal load.</li>
+        </ul>
+        <a id="fabric-agent" hidden target="_blank" rel="noopener noreferrer"
+          >Open data agent in Fabric</a
+        >
+        <details>
+          <summary>Inspect saved queries</summary>
+          <div id="queries">No approved saved queries are configured.</div>
+        </details>
+      </section>
+      <section class="card">
+        <h2>Run control</h2>
+        <p>
+          Start and cancel are gated until verified human delegated authorization is connected.
+          Reopening this view never starts a run. Publisher completion is not Fabric ingestion
+          completion; stop requested is not stopped.
+        </p>
+        <button disabled>Start run (authorization required)</button>
+        <button disabled>Cancel run (authorization required)</button>
+      </section>
+    </main>
+    <script type="module" src="/mining/app.js"></script>
+  </body>
+</html>

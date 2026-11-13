@@ -1,0 +1,3 @@
+apps/simulator/src/mining/plant-catalog.json text eol=lf
+/scripts/fabric/fixtures/mining-engine-self-test.kql text eol=lf
+/scripts/fabric/fixtures/mining-engine-self-test.manifest.json text eol=lf
