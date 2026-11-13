@@ -148,7 +148,36 @@ query; a passing primary result has zero rows. The fixture checks retries,
 conflicts, cross-type collisions, run isolation, and non-mining exclusions. It
 does not validate the input contract or prove actual ingestion.
 
+### Ingestion route findings
+
+- The default-stream-to-landing alternative is rejected: it sends unrelated
+  source events through the mining landing before Kusto policy filtering.
+  Zero-retention transactional update policies prevent durable/queryable source
+  rows, but do not prove this shared path meets the no-athlete-copy boundary.
+- A bounded candidate is an exact mining `entityType` filter to a derived
+  stream, then Eventhouse DirectIngestion with a mining-owned JSON mapping:
+  root `$` to `event:dynamic` and `$.timestamp` to `timestamp_raw:string`.
+  The extra scalar could retain the original timestamp spelling while dynamic
+  holds unknown fields, but end-to-end lexical preservation is unproven. Do
+  not treat this as a deployable route.
+- Eventhouse DirectIngestion does not process events; filtered derived streams
+  are supported. Schema-aware Eventstreams are preview-only and cannot be
+  enabled on the existing stream. Catalog-join update policies also require
+  streaming ingestion disabled on their upstream table in Fabric; compatibility
+  with the existing DirectIngestion writer is unverified.
+- Next proof requires one explicitly approved synthetic canary through only the
+  two mining-derived streams, reading back canonical, offset-form, and invalid
+  timestamps plus wrong types, extra keys, unknown tags and cross-plant joins.
+  Verify the existing triathlon nodes and policies are unchanged. Retain private
+  definition/policy preimages; rollback only the reviewed mining-owned probe.
+  No such write is authorized. The exact target's latest read-only query attempt
+  failed DNS resolution; do not substitute another endpoint.
+
 References: [Eventstream definition](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/eventstream-definition),
 [update definition](https://learn.microsoft.com/en-us/rest/api/fabric/eventstream/items/update-eventstream-definition),
 [JSON mapping](https://learn.microsoft.com/en-us/kusto/management/json-mapping?view=microsoft-fabric),
 and [retention policy](https://learn.microsoft.com/en-us/kusto/management/retention-policy?view=microsoft-fabric).
+
+Route references: [Eventhouse Eventstream destinations](https://learn.microsoft.com/fabric/real-time-intelligence/event-streams/add-destination-kql-database),
+[schema-aware Eventstreams](https://learn.microsoft.com/fabric/real-time-intelligence/event-streams/schema-aware-eventstreams-overview),
+and [Kusto update policies](https://learn.microsoft.com/kusto/management/update-policy?view=microsoft-fabric).
