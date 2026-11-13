@@ -165,6 +165,46 @@ describe("approved mining read boundary", () => {
     expect(status).not.toHaveBeenCalled();
   });
 
+  it("reports identity-provider failures without reading durable state", async () => {
+    const tenant = "44444444-4444-4444-8444-444444444444";
+    const client = "55555555-5555-4555-8555-555555555555";
+    const { privateKey } = await generateKeyPair("RS256");
+    const token = await new SignJWT({ oid: viewer })
+      .setProtectedHeader({ alg: "RS256", kid: "mining-test" })
+      .setIssuer(`https://login.microsoftonline.com/${tenant}/v2.0`)
+      .setAudience(client)
+      .setExpirationTime("1h")
+      .sign(privateKey);
+    vi.stubEnv("ASSISTANT_AUTH_TENANT_ID", tenant);
+    vi.stubEnv("ASSISTANT_AUTH_CLIENT_ID", client);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("identity provider unavailable")));
+    resetMcpCallerJwksCacheForTests();
+    const status = vi.fn();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const app = express();
+    app.use(
+      "/api/mining",
+      createMiningReadRouter({
+        synthetic: false,
+        env: { ...env, ASSISTANT_AUTH_TENANT_ID: tenant, ASSISTANT_AUTH_CLIENT_ID: client },
+        status,
+      }),
+    );
+    try {
+      const response = await request(app)
+        .get("/api/mining/runs/status")
+        .set("authorization", `Bearer ${token}`);
+      expect(response.status).toBe(503);
+      expect(response.body.error.code).toBe("mining_authentication_unavailable");
+      expect(status).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      resetMcpCallerJwksCacheForTests();
+    }
+  });
+
   it("rejects unapproved and malformed run IDs before any state reads", async () => {
     const { app, read } = setup();
     expect(

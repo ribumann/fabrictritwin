@@ -1,5 +1,5 @@
 import { Router, type Request } from "express";
-import { verifyMcpCallerPrincipalId } from "../auth/mcp-caller.js";
+import { verifyMcpCallerPrincipalIdWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningRunCoordinator, type MiningRunStatus } from "../mining/run-coordinator.js";
 import { MiningCoordinationError } from "../mining/store.js";
@@ -137,7 +137,7 @@ async function boundedStatus(
 export function createMiningReadRouter(options: ReadOptions): Router {
   const router = Router();
   const env = options.env ?? process.env;
-  const verify = options.verifyPrincipal ?? verifyMcpCallerPrincipalId;
+  const verify = options.verifyPrincipal ?? verifyMcpCallerPrincipalIdWithErrors;
   router.use((_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     const timer = setTimeout(() => {
@@ -185,7 +185,21 @@ export function createMiningReadRouter(options: ReadOptions): Router {
         );
         return;
       }
-      const principal = await verify(req);
+      let principal: string | undefined;
+      try {
+        principal = await verify(req);
+      } catch (cause) {
+        console.error("[mining-read] Bearer verification failed", cause);
+        if (!res.headersSent) {
+          error(
+            res,
+            503,
+            "mining_authentication_unavailable",
+            "Bearer verification is unavailable.",
+          );
+        }
+        return;
+      }
       if (res.headersSent) return;
       if (!principal) {
         error(res, 401, "mining_authentication_required", "A verified bearer token is required.");

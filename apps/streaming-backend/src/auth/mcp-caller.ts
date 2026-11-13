@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, errors, jwtVerify } from "jose";
 import type { Request } from "express";
 
 let cachedJwks: ReturnType<typeof createRemoteJWKSet> | undefined;
@@ -29,6 +29,17 @@ export function resetMcpCallerJwksCacheForTests(): void {
  * configuration -- so callers fail closed to "not authorized" rather than throwing.
  */
 export async function verifyMcpCallerPrincipalId(req: Request): Promise<string | undefined> {
+  try {
+    return await verifyMcpCallerPrincipalIdWithErrors(req);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Reject invalid tokens while preserving identity-provider and transport failures. */
+export async function verifyMcpCallerPrincipalIdWithErrors(
+  req: Request,
+): Promise<string | undefined> {
   const authorization = req.get("authorization");
   if (!authorization?.startsWith("Bearer ")) {
     return undefined;
@@ -47,7 +58,19 @@ export async function verifyMcpCallerPrincipalId(req: Request): Promise<string |
       audience: [clientId, `api://${clientId}`],
     });
     return typeof payload.oid === "string" ? payload.oid : undefined;
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (
+      error instanceof errors.JWTClaimValidationFailed ||
+      error instanceof errors.JWTExpired ||
+      error instanceof errors.JWTInvalid ||
+      error instanceof errors.JWSInvalid ||
+      error instanceof errors.JWSSignatureVerificationFailed ||
+      error instanceof errors.JWKSNoMatchingKey ||
+      error instanceof errors.JOSEAlgNotAllowed ||
+      error instanceof errors.JOSENotSupported
+    ) {
+      return undefined;
+    }
+    throw error;
   }
 }
