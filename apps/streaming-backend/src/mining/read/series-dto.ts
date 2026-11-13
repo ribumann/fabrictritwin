@@ -1,7 +1,7 @@
 import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulator/mining";
 import { MiningQueryError } from "./bounded-query.js";
 
-type Family = "feed" | "density" | "vibration";
+type Family = "feed" | "density" | "vibration" | "water-energy";
 type Quality = "good" | "bad" | "uncertain" | "missing";
 interface Request {
   runId: string;
@@ -32,7 +32,15 @@ const unavailable = new Set([
   "DUPLICATE_CONFLICT",
   "NO_DATA",
   "TOO_MANY_ROWS",
+  "UNKNOWN_MODULE",
+  "UNKNOWN_TAG",
 ]);
+const tagMetrics: Record<Family, readonly string[]> = {
+  feed: ["ore_flow"],
+  density: ["medium_density"],
+  vibration: ["vibration_rms"],
+  "water-energy": ["water_flow", "power"],
+};
 
 function instant(value: unknown): number {
   if (typeof value !== "string" || !utc.test(value)) {
@@ -75,13 +83,13 @@ function qualities(value: unknown): Set<string> {
   return new Set(parsed);
 }
 
-/** Source-only mapping; callers must separately enforce run authorization and source readiness. */
-export function mapComparisonRows(input: Request, rows: Record<string, unknown>[]) {
+function mapSeriesRows(input: Request, rows: Record<string, unknown>[], moduleId: string | null) {
   const start = instant(input.start);
   const end = instant(input.end);
   if (
     !uuid.test(input.runId) ||
-    !Object.hasOwn(families, input.metric) ||
+    !Object.hasOwn(tagMetrics, input.metric) ||
+    (moduleId === null && input.metric === "water-energy") ||
     ![1, 5].includes(input.binMinutes) ||
     !Number.isInteger(input.maxRows) ||
     input.maxRows < 1 ||
@@ -94,10 +102,42 @@ export function mapComparisonRows(input: Request, rows: Record<string, unknown>[
   if (rows.length === 0) throw new MiningQueryError("malformed", "Missing mining comparison rows.");
   if (rows.length > input.maxRows)
     throw new MiningQueryError("overflow", "Mining comparison exceeded the row limit.");
-  const family = families[input.metric];
+  const control = rows[0];
+  if (
+    rows.length === 1 &&
+    (moduleId === null ? control.tag_id : control.tagId) === "" &&
+    typeof control.status === "string" &&
+    unavailable.has(control.status)
+  ) {
+    if (
+      control.plant_id !== "D01" ||
+      control.run_id !== input.runId ||
+      control.metric_family !== input.metric ||
+      (moduleId !== null && control.module_id !== moduleId)
+    ) {
+      throw new MiningQueryError("malformed", "Mining series control scope does not match.");
+    }
+    throw new MiningQueryError("upstream", `Mining series unavailable: ${control.status}.`);
+  }
+  const comparisonFamily = input.metric === "water-energy" ? undefined : families[input.metric];
+  const selectedTags = D01_PLANT_CATALOG.telemetry_tags.filter((tag) =>
+    moduleId === null
+      ? ["A", "B", "C"].some(
+          (line) =>
+            tag.id === `D01.${line}.${comparisonFamily?.module}.${comparisonFamily?.metric}`,
+        )
+      : tag.module_id === moduleId && tagMetrics[input.metric].includes(tag.metric),
+  );
+  if (moduleId !== null && !D01_PLANT_CATALOG.modules.some((module) => module.id === moduleId)) {
+    throw new MiningQueryError("invalid", "Unknown mining trend module.");
+  }
+  if (selectedTags.length === 0 || (moduleId === null && selectedTags.length !== 3)) {
+    throw new MiningQueryError("upstream", "The requested mining series has no catalog tags.");
+  }
+  const selected = new Map(selectedTags.map((tag) => [tag.id, tag]));
   const binMs = input.binMinutes * 60_000;
   const firstBin = Math.floor(start / binMs) * binMs;
-  const expectedRows = Math.ceil((end - firstBin) / binMs) * 3;
+  const expectedRows = Math.ceil((end - firstBin) / binMs) * selected.size;
   const keys = new Set<string>();
   let samples = 0;
   const mapped: Array<{
@@ -119,24 +159,20 @@ export function mapComparisonRows(input: Request, rows: Record<string, unknown>[
         "Mining comparison scope does not match the request.",
       );
     }
-    if (typeof row.tag_id !== "string" || !row.tag_id) {
-      if (rows.length === 1 && typeof row.status === "string" && unavailable.has(row.status)) {
-        throw new MiningQueryError("upstream", `Mining comparison unavailable: ${row.status}.`);
-      }
+    const tagId = moduleId === null ? row.tag_id : row.tagId;
+    if (typeof tagId !== "string" || !tagId) {
       throw new MiningQueryError("malformed", "Invalid mining comparison control row.");
     }
-    if (row.line_id !== "A" && row.line_id !== "B" && row.line_id !== "C") {
-      throw new MiningQueryError("malformed", "Invalid mining comparison line.");
-    }
-    const tagId = `D01.${row.line_id}.${family.module}.${family.metric}`;
-    const catalogTag = D01_PLANT_CATALOG.telemetry_tags.find((tag) => tag.id === tagId);
+    const catalogTag = selected.get(tagId);
     if (
       !catalogTag ||
-      row.tag_id !== tagId ||
       row.module_id !== catalogTag.module_id ||
-      row.metric !== family.metric ||
-      row.unit !== family.unit ||
-      catalogTag.unit !== family.unit
+      row.unit !== catalogTag.unit ||
+      (moduleId === null &&
+        (row.line_id !== catalogTag.module_id.split(".")[1] ||
+          row.metric !== catalogTag.metric ||
+          row.unit !== comparisonFamily?.unit)) ||
+      (moduleId !== null && row.seriesId !== tagId)
     ) {
       throw new MiningQueryError(
         "malformed",
@@ -156,7 +192,7 @@ export function mapComparisonRows(input: Request, rows: Record<string, unknown>[
     const bad = count(row.bad_count);
     const late = count(row.late_count);
     const expected = count(row.expected_samples);
-    const conflicts = count(row.conflict_count);
+    const conflicts = moduleId === null ? count(row.conflict_count) : 0;
     samples += good + nonGood;
     const source = qualities(row.source_qualities);
     if (
@@ -230,7 +266,7 @@ export function mapComparisonRows(input: Request, rows: Record<string, unknown>[
       timestamp: new Date(time).toISOString(),
       seriesId: tagId,
       value: quality === "good" && typeof row.value === "number" ? row.value : null,
-      unit: family.unit,
+      unit: catalogTag.unit,
       quality,
       coverage: row.coverage,
     });
@@ -245,11 +281,24 @@ export function mapComparisonRows(input: Request, rows: Record<string, unknown>[
     plantId: "D01" as const,
     runId: input.runId,
     catalogVersion: D01_CATALOG_VERSION,
-    moduleId: null,
+    moduleId,
     metric: input.metric,
     windowStart: input.start,
     windowEnd: input.end,
     binMinutes: input.binMinutes,
     rows: mapped,
   };
+}
+
+/** Source-only mapping; callers must separately enforce run authorization and source readiness. */
+export function mapComparisonRows(input: Request, rows: Record<string, unknown>[]) {
+  return mapSeriesRows(input, rows, null);
+}
+
+/** Each selected catalog tag remains a separate series, including water and power. */
+export function mapTrendRows(
+  input: Request & { moduleId: string },
+  rows: Record<string, unknown>[],
+) {
+  return mapSeriesRows(input, rows, input.moduleId);
 }

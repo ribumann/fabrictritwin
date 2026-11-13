@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapComparisonRows } from "../src/mining/read/compare-dto.js";
+import { mapComparisonRows, mapTrendRows } from "../src/mining/read/series-dto.js";
 
 const request = {
   runId: "11111111-1111-4111-8111-111111111111",
@@ -116,6 +116,51 @@ describe("mining comparison DTO", () => {
     expect(() => mapComparisonRows({ ...request, maxRows: 2 }, good())).toThrowError(
       expect.objectContaining({ code: "overflow" }),
     );
+  });
+
+  it("maps trend families to separate canonical module tags and retains units", () => {
+    const trend = { ...request, moduleId: "D01.shared.water", metric: "water-energy" as const };
+    const trendRow = {
+      ...row("A"),
+      module_id: trend.moduleId,
+      tagId: "D01.shared.water.water_flow",
+      seriesId: "D01.shared.water.water_flow",
+      metric_family: "water-energy",
+      unit: "m3/h",
+    };
+    expect(mapTrendRows(trend, [trendRow])).toMatchObject({
+      moduleId: trend.moduleId,
+      metric: "water-energy",
+      rows: [{ seriesId: "D01.shared.water.water_flow", unit: "m3/h", quality: "good" }],
+    });
+    expect(() => mapTrendRows(trend, [{ ...trendRow, seriesId: "fabricated" }])).toThrowError(
+      expect.objectContaining({ code: "malformed" }),
+    );
+    expect(() =>
+      mapTrendRows(trend, [
+        {
+          status: "BLOCKED_RAW_TIMESTAMP_PROOF",
+          plant_id: "D01",
+          run_id: request.runId,
+          module_id: trend.moduleId,
+          metric_family: trend.metric,
+          tagId: "",
+        },
+      ]),
+    ).toThrow("BLOCKED_RAW_TIMESTAMP_PROOF");
+    const missing = { ...trend, moduleId: "D01.A.crusher", metric: "density" as const };
+    expect(() =>
+      mapTrendRows(missing, [
+        {
+          status: "UNKNOWN_TAG",
+          plant_id: "D01",
+          run_id: request.runId,
+          module_id: missing.moduleId,
+          metric_family: missing.metric,
+          tagId: "",
+        },
+      ]),
+    ).toThrow("UNKNOWN_TAG");
   });
 
   it("rejects incomplete or inconsistent identities, coverage, provenance and quality", () => {
