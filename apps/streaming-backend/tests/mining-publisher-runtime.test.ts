@@ -376,4 +376,30 @@ describe("D01 real-clock publisher", () => {
     expect(owner.signal.aborted).toBe(true);
     expect(await coordinator.status(requestId)).toMatchObject({ phase: "failed" });
   });
+
+  it("reserves final admission before refresh so concurrent attempts reject invalid without a second send", async () => {
+    const admission = await coordinator.start({ ...input, durationSeconds: 5 });
+    if (admission.kind !== "started") throw new Error("Missing fresh owner");
+    const { owner, run } = admission;
+    await vi.advanceTimersByTimeAsync(5_000);
+    let release!: () => void;
+    const refresh = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const renew = store.renew.bind(store);
+    vi.spyOn(store, "renew").mockImplementationOnce(async (path, lease) => {
+      await refresh;
+      await renew(path, lease);
+    });
+    const send = vi.fn(async () => {});
+    const final = { runId: run.runId, timestamp: run.stopAt };
+    const first = owner.runFinalBatch(final, send);
+    const second = owner.runFinalBatch(final, send);
+    release();
+    const results = await Promise.allSettled([first, second]);
+    expect(results[0]).toMatchObject({ status: "fulfilled" });
+    expect(results[1]).toMatchObject({ status: "rejected", reason: { code: "invalid" } });
+    expect(send).toHaveBeenCalledOnce();
+    await owner.finish();
+  });
 });

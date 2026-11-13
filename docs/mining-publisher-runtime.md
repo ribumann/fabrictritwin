@@ -66,7 +66,10 @@ on the coordinator (default 0). A fresh admission with remaining lifetime
 persists optional `finalFlushUntil` separately from unchanged model `stopAt`.
 Only `owner.runFinalBatch({runId,timestamp:stopAt}, callback)` may admit one
 terminal batch during that window. Normal `runBatch` retains its existing
-pre-stop admission semantics. The runner uses this capability only after the
+pre-stop admission semantics. Final admission is reserved inside the owner's
+exclusive critical section before asynchronous refresh; concurrent reuse is
+invalid, including while the first attempt is still checking authority.
+The runner uses this capability only after the
 simulator has reached its terminal step and actually has a pending batch.
 There are no later model steps or future timestamps.
 

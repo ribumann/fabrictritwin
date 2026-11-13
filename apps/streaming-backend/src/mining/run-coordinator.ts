@@ -536,6 +536,16 @@ export class MiningRunOwner {
     final: boolean,
   ): Promise<T> {
     return this.exclusive(async () => {
+      if (final) {
+        if (this.finalBatchAdmitted) {
+          throw new MiningCoordinationError(
+            "invalid",
+            "No final mining batch capability is available.",
+          );
+        }
+        // Reserve before refresh yields; a failed attempt never makes this capability reusable.
+        this.finalBatchAdmitted = true;
+      }
       await this.refresh();
       if (this.signal.aborted || (!final && this.durationElapsed())) {
         await this.complete("publisher_complete");
@@ -568,7 +578,6 @@ export class MiningRunOwner {
           "Mining duration elapsed before batch admission.",
         );
       }
-      if (final) this.finalBatchAdmitted = true;
       this.inFlight = true;
       try {
         return await publish(this.signal);
