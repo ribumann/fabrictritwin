@@ -26,6 +26,8 @@ function assessment(ruleId: "crusher-bearing" | "dms-condition" | "shared-water"
     holdWindow: null,
     evidenceWindow: { start: "2026-01-01T00:02:00.000Z", end: asOf },
     evidence: [],
+    stateEvidence: [],
+    freshness: null,
   };
 }
 

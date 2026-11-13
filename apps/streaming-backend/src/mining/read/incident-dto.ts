@@ -1,22 +1,12 @@
+import { createHash } from "node:crypto";
 import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulator/mining";
-import type { MiningIncident, MiningIncidentTransition } from "../../mining-incidents/evaluator.js";
+import { createD01IncidentRun } from "../../mining-incidents/catalog.js";
+import type { MiningIncident, MiningIncidentAssessment } from "../../mining-incidents/evaluator.js";
+import type { readMiningIncidentJournal } from "../../mining-incidents/runtime.js";
+import type { MiningRunRecord } from "../run-coordinator.js";
 import { MiningQueryError } from "./bounded-query.js";
 
 type Metric = "feed" | "density" | "vibration" | "water-energy";
-type Evidence = MiningIncidentTransition["evidence"][number] & { ingestionTime: string | null };
-
-// This structural subset matches the frozen current-assessment interface; it conveys no proof.
-interface CurrentAssessment {
-  runId: string;
-  plantId: "D01";
-  catalogHash: string;
-  assessedAt: string;
-  incident: MiningIncident;
-  holdKind: "breach" | "recovery" | null;
-  holdWindow: { start: string; end: string } | null;
-  evidenceWindow: { start: string; end: string };
-  evidence: Evidence[];
-}
 
 function invalid(): never {
   throw new MiningQueryError("malformed", "Invalid current incident assessment.");
@@ -105,7 +95,7 @@ export function mapCurrentIncidentAssessments(input: {
   runId: string;
   catalogHash: string;
   asOf: string;
-  assessments: readonly CurrentAssessment[];
+  assessments: readonly MiningIncidentAssessment[];
 }) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.runId) ||
       !/^[0-9a-f]{64}$/.test(input.catalogHash)) return invalid();
@@ -200,4 +190,27 @@ export function mapCurrentIncidentAssessments(input: {
     throw new MiningQueryError("overflow", "Mining incident response exceeds byte limit.");
   }
   return result;
+}
+
+/**
+ * Validates the journal's reconstructed run and ordered catalog binding, not publisher provenance.
+ * This remains unmounted until independently authorized source and deployment proof is available.
+ */
+export function mapCurrentIncidentJournal(input: {
+  run: Pick<MiningRunRecord, "runId" | "startedAt" | "stopAt">;
+  journal: NonNullable<Awaited<ReturnType<typeof readMiningIncidentJournal>>>;
+}) {
+  const run = createD01IncidentRun(input.run);
+  const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  if (
+    input.journal.runId !== run.runId ||
+    input.journal.binding !== digest(run) ||
+    input.journal.asOf === null
+  ) return invalid();
+  return mapCurrentIncidentAssessments({
+    runId: run.runId,
+    catalogHash: digest(run.tags),
+    asOf: input.journal.asOf,
+    assessments: input.journal.assessments,
+  });
 }
