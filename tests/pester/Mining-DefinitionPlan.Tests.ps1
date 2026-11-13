@@ -223,6 +223,29 @@ Describe 'Offline mining source and query contracts (static checks only)' {
         $assetTrend | Should -Match 'metric_family = requested_metric_family'
     }
 
+    It 'fails closed when the latest PlantSummary state event conflicts' {
+        $deduplicatedState = [regex]::Match(
+            $script:QueriesText,
+            '(?s)mining_DeduplicatedState\(.*?\.create-or-alter function with \(folder = "Mining/Queries"\) mining_PlantLatest'
+        ).Value
+        $plantSummary = [regex]::Match(
+            $script:QueriesText,
+            '(?s)mining_PlantSummary\(.*?\.create-or-alter function with \(folder = "Mining/Queries"\) mining_AssetTrend'
+        ).Value
+        $deduplicatedState | Should -Match 'timestamp = max\(timestamp\)'
+        $plantSummary | Should -Match '(?s)let state_source =\s*mining_DeduplicatedState\([^;]+\);'
+        $plantSummary | Should -Not -Match '(?s)let state_source =\s*mining_DeduplicatedState\([^;]+\)\s*\|\s*where not\(event_conflict\)'
+        $plantSummary | Should -Match '(?s)let state_by_minute =\s*state_source\s*\|\s*extend minute = bin\(timestamp - 1ms, 1m\)'
+        $plantSummary | Should -Match '(?s)let state_latest_times =\s*state_by_minute.*?by scope_id, minute;'
+        $plantSummary | Should -Match 'latest_conflict_count = countif\(event_conflict\)'
+        $plantSummary | Should -Match '(?s)let state_bins =.*?where timestamp == latest_timestamp.*?where latest_conflict_count == 0'
+        $plantSummary | Should -Match 'current_conflict_count = countif\(event_conflict\)'
+        $plantSummary | Should -Match '(?s)let running_lines =.*?where timestamp == latest_timestamp.*?where current_conflict_count == 0'
+        $plantSummary | Should -Match 'state_conflict_count == 0'
+        $plantSummary | Should -Match 'conflicting_event_count = conflict_event_count \+ state_conflict_count'
+        $plantSummary | Should -Match 'conflict_event_count > 0 or state_conflict_count > 0, "DUPLICATE_CONFLICT"'
+    }
+
     It 'reads curated sources rather than raw dynamic tables' {
         $script:QueriesText | Should -Match 'mining_ValidatedTelemetry'
         $script:QueriesText | Should -Match 'mining_ValidatedState'
@@ -252,7 +275,7 @@ Describe 'Offline mining source and query contracts (static checks only)' {
         $script:QueriesText | Should -Match 'minute_coverage >= 0\.90'
         $script:QueriesText | Should -Match 'common_coverage = common_seconds / duration_seconds'
         $script:QueriesText | Should -Match 'common_coverage >= 0\.90 and common_feed >= 10\.0'
-        $script:QueriesText | Should -Match '(?s)conflict_event_count > 0, "DUPLICATE_CONFLICT",\s*isnull\(feed_a_good\).*"NO_DATA"'
+        $script:QueriesText | Should -Match '(?s)conflict_event_count > 0 or state_conflict_count > 0, "DUPLICATE_CONFLICT",\s*isnull\(feed_a_good\).*"NO_DATA"'
     }
 
     It 'keeps these static checks separate from hosted KQL validation' {

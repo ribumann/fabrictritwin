@@ -39,7 +39,7 @@
         timestamp >= requested_start_utc and timestamp <= requested_end_utc
     | summarize copies = count(),
         fingerprints = make_set(payload_fingerprint),
-        timestamp = any(timestamp),
+        timestamp = max(timestamp),
         received_at = min(received_at),
         sequence = any(sequence),
         scope_id = any(scope_id),
@@ -218,16 +218,32 @@
             water_count > 0 and power_count > 0
         | extend plant_feed = feed_a + feed_b + feed_c;
     let state_source =
-        mining_DeduplicatedState(plant_id, run_id, window_start_utc - 2m, window_end_utc)
-        | where not(event_conflict);
+        mining_DeduplicatedState(plant_id, run_id, window_start_utc - 2m, window_end_utc);
+    let state_by_minute =
+        state_source
+        | extend minute = bin(timestamp - 1ms, 1m);
     let startup =
         state_source
-        | where state == "starting"
+        | where not(event_conflict) and state == "starting"
         | summarize started_at = min(timestamp) by scope_id;
+    let state_latest_times =
+        state_by_minute
+        | summarize latest_timestamp = max(timestamp)
+            by scope_id, minute;
+    let state_latest_conflicts =
+        state_by_minute
+        | join kind=inner state_latest_times on scope_id, minute
+        | where timestamp == latest_timestamp
+        | summarize latest_conflict_count = countif(event_conflict) by scope_id, minute;
     let state_bins =
-        state_source
+        state_by_minute
+        | where not(event_conflict)
         | summarize arg_max(timestamp, state, scheduled_running)
-            by scope_id, minute = bin(timestamp - 1ms, 1m)
+            by scope_id, minute
+        | join kind=inner state_latest_times on scope_id, minute
+        | where timestamp == latest_timestamp
+        | join kind=inner state_latest_conflicts on scope_id, minute
+        | where latest_conflict_count == 0
         | join kind=leftouter startup on scope_id
         | where state == "running" and scheduled_running and
         (isnull(started_at) or timestamp >= started_at + 2m)
@@ -309,13 +325,34 @@
             common_energy_kwh = sumif(power * overlap_seconds / 3600.0, minute_coverage >= 0.90)
         | extend common_feed = iff(common_seconds > 0,
             common_feed_numerator / common_seconds, real(null));
-    let running_lines =
+    let running_state_source =
         mining_DeduplicatedState(plant_id, run_id, window_end_utc - 195s, window_end_utc)
+        | where scope_id in ("A", "B", "C");
+    let running_latest_times =
+        running_state_source
+        | summarize latest_timestamp = max(timestamp) by scope_id;
+    let running_latest_conflicts =
+        running_state_source
+        | join kind=inner running_latest_times on scope_id
+        | where timestamp == latest_timestamp
+        | summarize current_conflict_count = countif(event_conflict) by scope_id;
+    let running_lines =
+        running_state_source
         | where not(event_conflict)
         | summarize arg_max(timestamp, state, scheduled_running) by scope_id
+        | join kind=inner running_latest_times on scope_id
+        | where timestamp == latest_timestamp
+        | join kind=inner running_latest_conflicts on scope_id
+        | where current_conflict_count == 0
         | where scope_id in ("A", "B", "C")
         | summarize running = countif(state == "running" and scheduled_running),
             observed = count();
+    let state_conflict_count = toscalar(
+        union
+            (state_source | where event_conflict | project event_id),
+            (running_state_source | where event_conflict | project event_id)
+        | distinct event_id
+        | count);
     let values =
         aggregate
         | extend join_key = 1
@@ -334,13 +371,13 @@
         | extend coverage_valid = feed_a_coverage <= 1.0 and feed_b_coverage <= 1.0 and
             feed_c_coverage <= 1.0 and water_coverage <= 1.0 and power_coverage <= 1.0 and
             invalid_common_bins == 0,
-            ratio_ok = coverage_valid and conflict_event_count == 0 and
+            ratio_ok = coverage_valid and conflict_event_count == 0 and state_conflict_count == 0 and
                 common_coverage >= 0.90 and common_feed >= 10.0
         | project status = case(
             source_status != "READY", source_status,
             not(identity_ok), "INVALID_REQUEST",
             not(window_ok), "INVALID_WINDOW",
-            conflict_event_count > 0, "DUPLICATE_CONFLICT",
+            conflict_event_count > 0 or state_conflict_count > 0, "DUPLICATE_CONFLICT",
             isnull(feed_a_good) or isnull(feed_b_good) or isnull(feed_c_good) or
                 isnull(water_good) or isnull(power_good), "NO_DATA",
             not(coverage_valid), "INVALID_COVERAGE",
@@ -360,7 +397,7 @@
                 water_uncertain + power_uncertain,
             bad_sample_count = feed_a_bad + feed_b_bad + feed_c_bad + water_bad + power_bad,
             late_sample_count = feed_a_late + feed_b_late + feed_c_late + water_late + power_late,
-            conflicting_event_count = conflict_event_count,
+            conflicting_event_count = conflict_event_count + state_conflict_count,
             gross_process_water_m3_per_t = iff(ratio_ok, common_water_m3 / common_tonnes, real(null)),
             whole_plant_energy_kwh_per_t = iff(ratio_ok, common_energy_kwh / common_tonnes, real(null)),
             feed_coverage, water_coverage, power_coverage, common_coverage,

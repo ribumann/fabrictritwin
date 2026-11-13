@@ -176,6 +176,15 @@ common coverage and time-weighted common feed of at least 10 t/h. Invalid
 over-coverage, conflicting events, startup grace, or incomplete state coverage
 prevents a ratio from being reported.
 
+PlantSummary state conflicts are not filtered before latest-state selection.
+The latest timestamp for each scope/minute is determined with conflict rows
+included; if a latest row conflicts, that minute is excluded from common state
+coverage. Current `running_lines` likewise uses the latest state from the full
+195-second context and is null when any line's latest state conflicts, rather
+than falling back to an older good state. `conflicting_event_count` includes
+both telemetry and state conflicts from the summary's relevant state context;
+any conflict yields `DUPLICATE_CONFLICT` and prevents intensity ratios.
+
 For `CompareLines`, source rows include `line_id`, `module_id`, canonical
 `tag_id`, catalog `metric` and `unit`, `metric_family`, `bin_start_utc`,
 `value`, separate `good_count`/`uncertain_count`/`bad_count`, coverage,
@@ -245,6 +254,75 @@ use; never tear down the database. The legacy resume helper deliberately
 rejects this expanded topology until separately extended and tested. Actual
 ingestion, proof-gate population, hosted function compilation and runtime
 validation remain pending an approved verification window.
+
+### Disposable raw-source canary approval scope
+
+This is a proposed, unexecuted canary, not authorization or an apply procedure.
+Its write scope is limited to two mining raw tables (`mining_TelemetryRaw`,
+`mining_PlantStateEvents`), their two root-document JSON mappings, their
+7-day table-scoped retention policies, and these six Eventstream nodes:
+`mining_telemetry_filter`, `mining_telemetry_stream`,
+`mining_telemetry_direct_ingestion`, `mining_state_filter`,
+`mining_state_stream`, and `mining_state_direct_ingestion`. The filters read
+the existing `triathlon_main_stream` and route only exact
+`entityType == "PlantTelemetry"` or `entityType == "PlantStateEvent"` values
+to their corresponding raw table using `DirectIngestion`. Mapping names and
+paths are exactly `mining_telemetry_json_map` and
+`mining_state_json_map`, each mapping `event` from `$` and `timestamp_raw`
+from `$.timestamp`. The other eight mining tables and all query functions are
+not needed for this raw-ingestion canary; no classifier, quarantine,
+materialization, update policy, incident data, or `SourceContract` readiness
+write is included.
+
+Use two synthetic messages only. The fixed sample below is for offline review;
+an approved run must use a fresh run ID and current canonical UTC millisecond
+timestamp strings, recomputing each event ID from `run_id:sequence` and
+retaining those exact strings for the proof query.
+
+```jsonl
+{"entityType":"PlantTelemetry","schema_version":2,"run_id":"00000000-0000-4000-8000-000000000001","event_id":"a49cfbfc2222aac3040a8adecfe8bb3775bc5501d3782830ebeac39035d5511a","sequence":1,"interval_seconds":30,"timestamp":"2026-01-15T12:00:00.123Z","plant_id":"D01","module_id":"D01.A.crusher","equipment_id":"D01.A.crusher.feeder","tag_id":"D01.A.crusher.ore_flow","value":42.0,"unit":"t/h","quality":"good"}
+{"entityType":"PlantStateEvent","schema_version":2,"run_id":"00000000-0000-4000-8000-000000000001","event_id":"322a2802a280929e5b715409a04651bc00172cceb0eb2d3fa1fe66813f106009","sequence":2,"timestamp":"2026-01-15T12:00:00.124Z","plant_id":"D01","scope_id":"A","scheduled_running":true,"state":"running"}
+```
+
+Acceptance is at least one matching raw row per event ID, exactly one distinct
+event ID in each intended table, and every delivered copy preserves the sent
+timestamp string in `timestamp_raw` and `event["timestamp"]` (whose type must
+remain `string`). The opposite mining raw table must have no copy of that
+event ID. A bounded telemetry proof query is:
+
+```kusto
+let expected_event_id = "a49cfbfc2222aac3040a8adecfe8bb3775bc5501d3782830ebeac39035d5511a";
+let expected_timestamp = "2026-01-15T12:00:00.123Z";
+mining_TelemetryRaw
+| where tostring(event["event_id"]) == expected_event_id
+| summarize copies = count(),
+    exact_lexeme_copies = countif(timestamp_raw == expected_timestamp and
+        gettype(event["timestamp"]) == "string" and
+        tostring(event["timestamp"]) == expected_timestamp)
+```
+
+Run the same check against `mining_PlantStateEvents` using its fixture ID and
+timestamp, and require zero matches for each ID in the opposite raw table.
+Accept only when each intended table has `copies >= 1` and
+`exact_lexeme_copies == copies`. Use aggregate-only checks; do not return or log
+raw payloads. This proves only raw mapping and
+`DirectIngestion` compatibility. It does not prove classifier readiness or
+authorize setting `raw_timestamp_shape_verified`; exclusive-writer approval
+remains a separate gate.
+
+Before any later update, an authorized operator must compare a freshly read
+Eventstream definition with the private approved preimage and the complete
+reviewed candidate. Removing exactly the six mining nodes from the candidate
+must leave the exact non-mining structure checked by the offline planner equal
+to the approved preimage; the two triathlon destinations and their JSON
+mappings remain unchanged. A private, read-only before/after inventory must
+also confirm all existing triathlon table policies are unchanged. No policy
+command may target a triathlon table or database-wide scope. Because definition
+update is a full replacement without a documented atomic compare-and-swap, an
+external owner must provide a serialized writer-free maintenance window and the
+target must be re-read immediately before the write. Current Apply remains
+blocked; no capacity resume, permission change, live send, or cloud write is part
+of this packet.
 
 References: [Eventstream definition](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/eventstream-definition),
 [update definition](https://learn.microsoft.com/en-us/rest/api/fabric/eventstream/items/update-eventstream-definition),
