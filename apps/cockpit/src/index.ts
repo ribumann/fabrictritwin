@@ -14,6 +14,7 @@ import { createSimulateRouter } from "./api/simulate.js";
 import { resolveBackendConnection } from "./api/backend-connection.js";
 import { proxyStreamingBackendGet, proxyStreamingBackendPost } from "./api/proxy.js";
 import { attachCockpitStreamRelay } from "./api/stream-relay.js";
+import { createMiningRouter } from "./mining/router.js";
 
 const app = express();
 const port = process.env.PORT ?? 3300;
@@ -32,7 +33,16 @@ const proxyOptions = {
 };
 
 app.use(express.json());
+app.get(["/mining", "/mining/"], (_req, res) => {
+  res.sendFile(path.join(publicDir, "mining", "index.html"));
+});
+const generatedPublicDir = path.resolve(publicDir, "../../../dist/ui/public");
+app.get(["/mining/catalog.json", "/mining/catalog-receipt.json"], (req, res) => {
+  res.sendFile(path.join(generatedPublicDir, req.path));
+});
+app.use("/vendor/three", express.static(path.join(generatedPublicDir, "vendor/three")));
 app.use(express.static(publicDir));
+app.use("/api/mining", createMiningRouter(proxyOptions, synthetic));
 
 app.get("/healthz", (_req, res) => {
   res.status(200).json({ status: "ok", service: "cockpit" });
