@@ -185,6 +185,27 @@ describe("mining durable run coordination", () => {
     });
   });
 
+  it("rejects status records that disagree with the durable admission", async () => {
+    const active = await owner(replicaA);
+    const plant = storage.documents.get(plantPath)!;
+    const value = structuredClone(plant.value) as {
+      version: number;
+      run: { seed: number };
+    };
+    value.run.seed = 2;
+    storage.documents.set(plantPath, { ...plant, value });
+    await expect(replicaB.status(first)).rejects.toMatchObject({ code: "invalid" });
+    storage.documents.set(plantPath, plant);
+    await active.finish();
+    const historyPath = `history/${first}.json`;
+    const history = storage.documents.get(historyPath)!;
+    storage.documents.set(historyPath, {
+      ...history,
+      value: { ...(history.value as object), runId: second },
+    });
+    await expect(replicaB.status(first)).rejects.toMatchObject({ code: "invalid" });
+  });
+
   it("persists cross-replica stop acceptance separately from acknowledgement", async () => {
     const active = await owner(replicaA);
     const stop = await replicaB.requestStop(first);

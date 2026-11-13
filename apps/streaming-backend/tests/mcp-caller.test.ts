@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   resetMcpCallerJwksCacheForTests,
   verifyMcpCallerPrincipalId,
+  verifyMcpCallerPrincipalIdWithErrors,
 } from "../src/auth/mcp-caller.js";
 
 const TENANT_ID = "44444444-4444-4444-4444-444444444444";
@@ -138,5 +139,41 @@ describe("verifyMcpCallerPrincipalId", () => {
     vi.stubEnv("ASSISTANT_AUTH_TENANT_ID", "");
     const token = await signToken();
     expect(await verifyMcpCallerPrincipalId(fakeRequest(`Bearer ${token}`))).toBeUndefined();
+  });
+
+  it("isolates concurrent JWKS cancellation and caches a successful response", async () => {
+    const token = await signToken();
+    const controller = new AbortController();
+    let started: (() => void) | undefined;
+    const fetching = new Promise<void>((resolve) => { started = resolve; });
+    const fetchMock = vi.fn()
+      .mockImplementationOnce((_url: string, options: { signal: AbortSignal }) =>
+        new Promise<Response>((_resolve, reject) => {
+          options.signal.addEventListener("abort", () => reject(options.signal.reason));
+          started?.();
+        }))
+      .mockImplementation(async () => new Response(JSON.stringify(jwks)));
+    vi.stubGlobal("fetch", fetchMock);
+    const cancelled = verifyMcpCallerPrincipalIdWithErrors(fakeRequest(`Bearer ${token}`), controller.signal);
+    await fetching;
+    const other = verifyMcpCallerPrincipalIdWithErrors(fakeRequest(`Bearer ${token}`), new AbortController().signal);
+    controller.abort();
+    await expect(cancelled).rejects.toThrow();
+    await expect(other).resolves.toBe(OID);
+    await expect(
+      verifyMcpCallerPrincipalIdWithErrors(fakeRequest(`Bearer ${token}`), new AbortController().signal),
+    ).resolves.toBe(OID);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces provider errors and rejects oversized key responses", async () => {
+    const token = await signToken();
+    const verify = () => verifyMcpCallerPrincipalIdWithErrors(
+      fakeRequest(`Bearer ${token}`), new AbortController().signal,
+    );
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("unavailable", { status: 503 })));
+    await expect(verify()).rejects.toThrow("Identity provider key response is unavailable");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("x".repeat(1_048_577))));
+    await expect(verify()).rejects.toThrow("Identity provider key response is too large");
   });
 });

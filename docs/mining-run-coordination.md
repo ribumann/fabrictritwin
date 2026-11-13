@@ -1,11 +1,60 @@
 # Mining run coordination (source only)
 
-This isolated backend module is **not wired to HTTP, startup, or deployment**.
-The [explicit default-off publisher runtime](mining-publisher-runtime.md) is a
+The backend exposes a gated, read-only status endpoint; the coordinator is not
+wired to HTTP actions, startup, or deployment. The
+[explicit default-off publisher runtime](mining-publisher-runtime.md) is a
 separately callable integration, including the opt-in bounded final-flush contract.
 It does not prove G3 authoritative hosted delivery or G8 live stop/ingestion. Existing
 triathlon locks, routes, simulator jobs and `DEMO_PROFILE` behavior are unchanged.
 No storage operation is performed merely by importing the module.
+
+## Read-only HTTP boundary
+
+The backend's `/api/mining` routes are disabled unless `MINING_READ_ENABLED=true`
+in the live profile. They require the existing signed bearer-token verification
+configuration (`ASSISTANT_AUTH_TENANT_ID` and `ASSISTANT_AUTH_CLIENT_ID`), a
+comma-separated `MINING_VIEWER_PRINCIPAL_IDS` allowlist of lowercase Entra object
+UUIDs, and one independently approved lowercase UUID in `MINING_APPROVED_RUN_ID`.
+The approval must explicitly bind `MINING_APPROVED_CATALOG_VERSION` to
+`sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce`
+and `MINING_APPROVED_PROFILE_VERSION` to `d01-publish-profile-v1`. These settings
+record operator approval; they do not prove that the publisher used those versions.
+`catalogVersion` in status and context is this approved expected contract scope,
+not verified provenance of the publisher or run.
+The approved run must also have a matching durable admission in the configured
+mining-state store below. No Easy Auth header or athlete mapping grants access.
+Invalid bearer tokens are rejected with 401; identity-provider verification
+failures are logged and returned as 503 instead of being reported as invalid tokens.
+Status and context perform read-only durable reads; publisher completion does not
+prove ingestion. Rejected durable admissions return a distinct 409 rather than
+being reported as absent. A single request deadline or client disconnect cancels ongoing
+JWKS and Blob status reads and prevents subsequent reads. Queries, incident persistence and
+the assistant are not connected: context reports `readAvailable: false`, while data
+routes return explicit 503.
+Start, cancel and acknowledgement remain unavailable without delegated authorization.
+Do not enable these settings as a substitute for approving infrastructure or data access.
+
+The unmounted query transport additionally requires
+`MINING_EVENTHOUSE_QUERY_URI` and `MINING_EVENTHOUSE_DATABASE_NAME` to exactly
+match the existing `EVENTHOUSE_QUERY_URI` and `EVENTHOUSE_DATABASE_NAME`, plus
+`MINING_CURATED_SOURCE_VERSION=d01-validated-source-v1` and
+`MINING_CURATED_QUERY_VERSION=d01-g5-query-v1`. These values are configuration,
+not evidence of source readiness. The unmounted DTO mappers target the reviewed
+G5 source contract, including the summary conflict fix in source PR #32 at
+`4e5373d744057161f73888ac5d57ee0e6fdc8f07`. That source has not been compiled
+or deployed to the hosted estate. A readiness control row or a successful scalar
+query alone does not prove deployment, timestamp provenance, or writer approval.
+No data route invokes the transport while those prerequisites and a truthful
+current-incident evidence contract remain unverified.
+The unmounted current-incident mapper uses `moduleId` for direct measurement or
+rule context only. It leaves `affectedModuleIds` empty because the evaluator
+does not model propagated impact or causation.
+The source-only transport uses a single abort signal for bounded public-cloud
+metadata discovery, the Container Apps loopback managed-identity broker, and the
+query response. It requires `MINING_MANAGED_IDENTITY_CLIENT_ID` and the platform's
+`IDENTITY_ENDPOINT` and `IDENTITY_HEADER`; it rejects unknown cloud metadata and
+never falls back to another identity or token resource. This cancellation work does
+not prove deployed query readiness or authorize a live query.
 
 ## Prerequisites and configuration
 
@@ -121,6 +170,6 @@ Local checks use shared fake storage across independent coordinator instances an
 mock SDK calls; no cloud writes, container reads or credentials are needed.
 See [runtime operations](live-runtime-operations.md) for existing release
 boundaries and [configuration](dependencies-and-configuration.md) for backend
-configuration context. Actual runtime/auth activation, approved container/RBAC,
-hosted concurrency/failure tests and Fabric ingestion proof
+configuration context. Authorized write wiring, runtime/auth activation, approved
+container/RBAC, hosted concurrency/failure tests and Fabric ingestion proof
 remain separate release gates.

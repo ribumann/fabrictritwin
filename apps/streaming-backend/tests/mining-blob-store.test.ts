@@ -1,8 +1,9 @@
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import { CredentialUnavailableError } from "@azure/identity";
 import { BlobServiceClient, type BlobDownloadResponseParsed } from "@azure/storage-blob";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BlobMiningStore, configuredMiningStore } from "../src/mining/blob-store.js";
+import { MiningRunCoordinator } from "../src/mining/run-coordinator.js";
 
 // Transport metadata is unused by the adapter; keep SDK method mocks typed.
 const transport = { _response: {} as BlobDownloadResponseParsed["_response"] };
@@ -52,6 +53,7 @@ describe("mining Blob adapter", () => {
       leaseState: "leased",
       readableStreamBody: Readable.from(['{"version":1}']),
     });
+
     expect(await store.read("test.json")).toEqual({
       value: { version: 1 },
       etag: '"one"',
@@ -63,6 +65,77 @@ describe("mining Blob adapter", () => {
     await expect(store.read("test.json")).rejects.toMatchObject({ code: "prerequisite" });
     download.mockRejectedValueOnce({ statusCode: 404 });
     await expect(store.read("test.json")).rejects.toMatchObject({ code: "storage" });
+  });
+
+  it("returns exact bounded bytes and the ETag from the same download", async () => {
+    const { store, blob } = fixture();
+    const bytes = Buffer.from('{"version":1}\n');
+    const download = vi.spyOn(blob, "download").mockResolvedValue({
+      ...transport,
+      etag: '"proof"',
+      readableStreamBody: Readable.from([bytes.subarray(0, 3), bytes.subarray(3)]),
+    });
+    expect(await store.readBytes("private/fabric/mining/d01-proof-receipt-v1.json")).toEqual({
+      bytes,
+      etag: '"proof"',
+      leased: false,
+    });
+    expect(download).toHaveBeenCalledOnce();
+    download.mockResolvedValueOnce({
+      ...transport,
+      etag: '"large"',
+      readableStreamBody: Readable.from([Buffer.alloc(16_385)]),
+    });
+    await expect(store.readBytes("proof")).rejects.toMatchObject({ code: "storage" });
+  });
+
+  it("aborts an in-progress status body and never starts subsequent reads", async () => {
+    const { store, blob } = fixture();
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const body = new PassThrough();
+    let started: (() => void) | undefined;
+    const downloading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const download = vi
+      .spyOn(blob, "download")
+      .mockResolvedValueOnce({
+        ...transport,
+        etag: '"receipt"',
+        readableStreamBody: Readable.from([
+          JSON.stringify({
+            spec: { plantId: "D01", runId, durationSeconds: 1200, scenario: "normal", seed: 1 },
+            admission: "accepted",
+          }),
+        ]),
+      })
+      .mockImplementationOnce(async () => {
+        started?.();
+        return { ...transport, etag: '"history"', readableStreamBody: body };
+      });
+    const controller = new AbortController();
+    const result = new MiningRunCoordinator(store).status(runId, controller.signal);
+    await downloading;
+    body.write('{"phase":');
+    await new Promise((resolve) => setImmediate(resolve));
+    controller.abort();
+    await expect(result).rejects.toMatchObject({ code: "cancelled" });
+    expect(body.destroyed).toBe(true);
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(download.mock.calls[0][2]?.abortSignal).toBe(controller.signal);
+    expect(download.mock.calls[1][2]?.abortSignal).toBe(controller.signal);
+  });
+
+  it("does not interpret an aborted missing blob as an absent document", async () => {
+    const { store, blob } = fixture();
+    const controller = new AbortController();
+    vi.spyOn(blob, "download").mockImplementation(async () => {
+      controller.abort();
+      throw { code: "BlobNotFound" };
+    });
+    await expect(store.read("test.json", controller.signal)).rejects.toMatchObject({
+      code: "cancelled",
+    });
   });
 
   it("distinguishes expected admission conflicts from conditional fencing failures", async () => {

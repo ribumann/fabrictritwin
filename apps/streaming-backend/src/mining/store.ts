@@ -24,9 +24,20 @@ export interface StoredDocument {
   leased: boolean;
 }
 
+export interface StoredBytes {
+  bytes: Buffer;
+  etag: string;
+  leased: boolean;
+}
+
+/** Separate read-only interface for proof consumers that must hash the downloaded bytes. */
+export interface MiningByteStore {
+  readBytes(path: string, signal?: AbortSignal): Promise<StoredBytes | undefined>;
+}
+
 /** All paths are relative to the dedicated, already-provisioned mining container. */
 export interface MiningStore {
-  read(path: string): Promise<StoredDocument | undefined>;
+  read(path: string, signal?: AbortSignal): Promise<StoredDocument | undefined>;
   create(path: string, value: unknown): Promise<boolean>;
   write(path: string, value: unknown, etag: string, leaseId?: string): Promise<string>;
   acquire(path: string, leaseId: string): Promise<boolean>;
