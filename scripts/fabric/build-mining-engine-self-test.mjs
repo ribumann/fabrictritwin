@@ -25,6 +25,10 @@ const sourceFiles = [
     path: 'apps/simulator/src/mining/catalog.ts',
     sha256: 'ae699fe26beaad2f245a317ecb96e9dbfdecdf0414a34e1eb26a31f5f1930a66',
   },
+  {
+    path: 'infra/fabric/eventhouse/MiningSchema.kql',
+    sha256: 'd8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1',
+  },
 ];
 const catalogVersion = `sha256:${sourceFiles[2].sha256}`;
 const runId = 'd0100000-0000-4000-8000-000000000001';
@@ -412,6 +416,7 @@ function buildFixture(catalog) {
     'let _selftest_WindowStart = _selftest_WindowEnd - 1m;',
     'let _selftest_AsOf = _selftest_WindowEnd + 1s;',
     `let _selftest_RunId = ${kqlString(runId)};`,
+    `let _selftest_IncidentId = ${kqlString(incidentId)};`,
     datatable(
       '_selftest_SourceContract',
       'contract_version:string, catalog_version:string, profile_version:string, status:string, raw_timestamp_shape_verified:bool, exclusive_writer_approved:bool, incident_source_version:string, incident_source_ready:bool',
@@ -503,10 +508,17 @@ function buildFixture(catalog) {
     `let _selftest_CompareRows = _selftest_Compare | where status == "OK";`,
     `let _selftest_RetryCopies = toscalar(_selftest_ValidatedTelemetry | where event_id == ${kqlString(retryEventId)} | count);`,
     `let _selftest_RetryReceivedAtMatches = toscalar(_selftest_LatestTags | where tagId == "D01.A.crusher.ore_flow" | project received_at == event_time + 1s);`,
+    `let _selftest_LatestMatch = toscalar(_selftest_LatestTags | where tagId == "D01.A.crusher.ore_flow" and status == "OK" and value == 12.0 and unit == "t/h" and received_at == event_time + 1s | count) == 1;`,
+    `let _selftest_SummaryMatch = toscalar(_selftest_Summary | where status == "OK" and abs(plant_feed_tph - 42.0) < 0.000001 and abs(processed_tonnes - 0.7) < 0.000001 and running_lines == 3 and abs(common_coverage - 1.0) < 0.000001 and abs(gross_process_water_m3_per_t - (1.0 / 21.0)) < 0.000001 and abs(whole_plant_energy_kwh_per_t - (50.0 / 21.0)) < 0.000001 and good_sample_count == 10 and conflicting_event_count == 0 | count) == 1;`,
+    `let _selftest_TrendMatch = toscalar(_selftest_Trend | where status == "OK" and module_id == "D01.A.crusher" and tagId == "D01.A.crusher.ore_flow" and seriesId == "D01.A.crusher.ore_flow" and metric_family == "feed" and value == 12.0 and unit == "t/h" and good_count == 2 and expected_samples == 2.0 and coverage == 1.0 | count) == 1;`,
+    `let _selftest_IncidentMatch = toscalar(_selftest_Incidents | where status == "OK" and incident_id == _selftest_IncidentId and rule_id == "self-test-rule" and scope_id == "A" and severity == "warning" and active_state == "ACTIVE_UNACKNOWLEDGED" | count) == 1;`,
+    `let _selftest_CompareMatch = toscalar(_selftest_CompareRows | summarize matching_lines = countif((line_id == "A" and tag_id == "D01.A.crusher.ore_flow" and value == 12.0 and unit == "t/h" and good_count == 2 and coverage == 1.0) or (line_id == "B" and tag_id == "D01.B.crusher.ore_flow" and value == 14.0 and unit == "t/h" and good_count == 2 and coverage == 1.0) or (line_id == "C" and tag_id == "D01.C.crusher.ore_flow" and value == 16.0 and unit == "t/h" and good_count == 2 and coverage == 1.0)) | project matching_lines) == 3;`,
     `print
     self_test_passed = _selftest_SummaryRow == "OK" and _selftest_TrendRow == "OK" and
         _selftest_IncidentRow == "OK" and _selftest_RetryCopies == 2 and
         _selftest_RetryReceivedAtMatches and
+        _selftest_LatestMatch and _selftest_SummaryMatch and _selftest_TrendMatch and
+        _selftest_IncidentMatch and _selftest_CompareMatch and
         toscalar(_selftest_LatestTags | count) == 56 and
         toscalar(_selftest_LatestTags | where status == "OK" | count) == 11 and
         toscalar(_selftest_LatestStates | where status == "OK" | count) == 4 and
@@ -535,8 +547,123 @@ function buildFixture(catalog) {
     trend_rows = toscalar(_selftest_Trend | where status == "OK" | count),
     compare_rows = toscalar(_selftest_CompareRows | count),
     compare_good_samples = toscalar(_selftest_CompareRows | summarize sum(good_count)),
+    latest_contract_match = _selftest_LatestMatch,
+    summary_contract_match = _selftest_SummaryMatch,
+    asset_trend_contract_match = _selftest_TrendMatch,
+    active_incidents_contract_match = _selftest_IncidentMatch,
+    compare_lines_contract_match = _selftest_CompareMatch,
     active_incidents = toscalar(_selftest_Incidents | where active_state == "ACTIVE_UNACKNOWLEDGED" | count);`,
   );
+
+  const semanticCases = [
+    {
+      function: 'mining_PlantLatest',
+      arguments: {
+        plant_id: 'D01',
+        run_id: runId,
+        as_of_utc: 'window_end_utc + 1s',
+      },
+      expected: {
+        rowCount: 60,
+        tagRows: 56,
+        observedTagRows: 11,
+        unknownTagRows: 45,
+        stateRows: 4,
+        latestFeed: {
+          tagId: 'D01.A.crusher.ore_flow',
+          seriesId: 'D01.A.crusher.ore_flow',
+          value: 12,
+          unit: 't/h',
+          receivedAt: 'event_time + 1s (minimum retry receipt)',
+        },
+      },
+    },
+    {
+      function: 'mining_PlantSummary',
+      arguments: {
+        plant_id: 'D01',
+        run_id: runId,
+        window_start_utc: 'window_end_utc - 1m',
+        window_end_utc: 'bin(now() - 2m, 1m)',
+      },
+      expected: {
+        rowCount: 1,
+        status: 'OK',
+        lineFeedTph: { A: 12, B: 14, C: 16 },
+        plantFeedTph: 42,
+        processedTonnes: 0.7,
+        runningLines: 3,
+        goodSampleCount: 10,
+        commonCoverage: 1,
+        grossProcessWaterM3PerT: 1 / 21,
+        wholePlantEnergyKwhPerT: 50 / 21,
+        conflictingEventCount: 0,
+      },
+    },
+    {
+      function: 'mining_AssetTrend',
+      arguments: {
+        plant_id: 'D01',
+        run_id: runId,
+        requested_module_id: 'D01.A.crusher',
+        metric_family: 'feed',
+        window_start_utc: 'window_end_utc - 1m',
+        window_end_utc: 'bin(now() - 2m, 1m)',
+        bin_minutes: 1,
+      },
+      expected: {
+        rowCount: 1,
+        status: 'OK',
+        moduleId: 'D01.A.crusher',
+        tagId: 'D01.A.crusher.ore_flow',
+        seriesId: 'D01.A.crusher.ore_flow',
+        metricFamily: 'feed',
+        value: 12,
+        unit: 't/h',
+        goodCount: 2,
+        expectedSamples: 2,
+        coverage: 1,
+      },
+    },
+    {
+      function: 'mining_ActiveIncidents',
+      arguments: {
+        plant_id: 'D01',
+        requested_run_id: runId,
+        as_of_utc: 'window_end_utc + 1s',
+      },
+      expected: {
+        rowCount: 1,
+        status: 'OK',
+        incidentId,
+        ruleId: 'self-test-rule',
+        scopeId: 'A',
+        severity: 'warning',
+        activeState: 'ACTIVE_UNACKNOWLEDGED',
+      },
+    },
+    {
+      function: 'mining_CompareLines',
+      arguments: {
+        plant_id: 'D01',
+        run_id: runId,
+        metric_family: 'feed',
+        window_start_utc: 'window_end_utc - 1m',
+        window_end_utc: 'bin(now() - 2m, 1m)',
+        bin_minutes: 1,
+      },
+      expected: {
+        rowCount: 3,
+        status: 'OK',
+        lines: {
+          A: { tagId: 'D01.A.crusher.ore_flow', value: 12, unit: 't/h', goodCount: 2, coverage: 1 },
+          B: { tagId: 'D01.B.crusher.ore_flow', value: 14, unit: 't/h', goodCount: 2, coverage: 1 },
+          C: { tagId: 'D01.C.crusher.ore_flow', value: 16, unit: 't/h', goodCount: 2, coverage: 1 },
+        },
+        totalGoodSamples: 6,
+      },
+    },
+  ];
 
   return {
     query: `${statements.join('\n')}\n`,
@@ -547,6 +674,14 @@ function buildFixture(catalog) {
       telemetryLogicalEvents: new Set(runTelemetry.map((row) => row.eventId)).size,
       stateRows: stateRows.length,
       incidentRows: incidentRows.length,
+      runId,
+      incidentId,
+      timeWindow: {
+        windowEndUtc: 'bin(now() - 2m, 1m)',
+        windowStartUtc: 'window_end_utc - 1m',
+        asOfUtc: 'window_end_utc + 1s',
+      },
+      semanticCases,
       expected: {
         sourceStatus: 'READY (synthetic only)',
         latestTagRows: 56,
@@ -592,6 +727,59 @@ function main() {
     fixtureSha256: sha256(Buffer.from(JSON.stringify(fixture), 'utf8')),
     sourceFiles,
     fixture,
+    proofRequirements: {
+      status: 'requirements-only-not-issued',
+      knownIdentity: {
+        plantId: 'D01',
+        catalogVersion,
+        profileVersion: 'd01-publish-profile-v1',
+        sourceContractVersion: 'd01-validated-source-v1',
+        incidentSourceVersion: 'd01-incident-ledger-v1',
+        sourceCommit: '324d73496913b4a2944713eb8861f2b7fdba4c02',
+        selfTestRunId: runId,
+        selfTestFixtureSha256: sha256(Buffer.from(JSON.stringify(fixture), 'utf8')),
+      },
+      independentlyProtectedValuesRequired: [
+        'target.environment (opaque exact-match value)',
+        'target tenant, subscription, workspace, Eventstream and Eventhouse database identity',
+        'authorized business run UUID and separately approved synthetic canary run UUID',
+        'canary fixture identity, expected copy/row counts and fixture SHA-256',
+        'native definition identity for MiningSchema.kql, MiningValidation.kql and MiningQueries.kql',
+      ],
+      canaryPerTable: ['mining_TelemetryRaw', 'mining_PlantStateEvents'].map((table) => ({
+        table,
+        expectedDistinctEventIds: 1,
+        observedDistinctEventIds: 1,
+        minimumCopies: 1,
+        lexemeMatchCopies: 'equal copies',
+        wrongDestinationCopies: 0,
+        rawIngestionNonNullCopies: 'equal copies',
+      })),
+      classifierObservation: {
+        sourceReadinessStatusIsAuthority: false,
+        expectedRows: 'must be independently frozen by the approved canary fixture',
+        observedRows: 'must equal expectedRows',
+        nonNullReceivedAtRows: 'must equal expectedRows',
+        ingestionTimePropagationMatchRows: 'must equal expectedRows',
+        comparison: 'Duplicate-preserving multiset comparison by event_id and raw ingestion time versus event_id and received_at.',
+        deduplicatedRowsPerExpectedEvent: 1,
+        deduplicatedEventConflictRows: 0,
+        deduplicatedReceivedAt: 'minimum raw ingestion time for identical copies',
+        doNotInferExpectedRowsFromObservedCopies: true,
+      },
+      temporalOrder: 'deployment <= canary <= classifier <= semantic <= issuedAtUtc',
+      nativeReadback: {
+        status: 'unavailable-unverified',
+        requiredOnEveryUse: true,
+        requirements: [
+          'Caller/run authorization must precede receipt and native-definition reads.',
+          'Read the exact target and current native definitions through a bounded, cancellable, independently authorized readback.',
+          'Compare current target and definition identities to protected expected values; a receipt or manifest alone is insufficient.',
+          'Missing or unverified readback keeps readiness unavailable (503).',
+        ],
+      },
+      selfTestContribution: 'informational-only; never grants deployment or source readiness',
+    },
     limitations: [
       'Query-local datatable fixtures only; no deployed table, function, endpoint, or business-row reads.',
       'Synthetic source readiness flags exercise query branches and are not evidence of deployment or source readiness.',

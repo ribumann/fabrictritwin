@@ -12,6 +12,7 @@ BeforeAll {
         'infra/fabric/eventhouse/MiningQueries.kql' = 'aa2e41fa8d370f77e217da5304cd0ad7c5c4c1cce2b22b8ca541fa9b38f19c05'
         'apps/simulator/src/mining/plant-catalog.json' = '0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce'
         'apps/simulator/src/mining/catalog.ts' = 'ae699fe26beaad2f245a317ecb96e9dbfdecdf0414a34e1eb26a31f5f1930a66'
+        'infra/fabric/eventhouse/MiningSchema.kql' = 'd8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1'
     }
 }
 
@@ -20,9 +21,9 @@ Describe 'Synthetic mining KQL engine self-test' {
         $script:Manifest.schemaVersion | Should -Be 1
         $script:Manifest.status | Should -Be 'synthetic-engine-self-test-only'
         $script:Manifest.sourceCommit | Should -Be '324d73496913b4a2944713eb8861f2b7fdba4c02'
-        $script:Manifest.querySha256 | Should -Be '8726333c69ca5de38c8d784ec555e035a7b9b10662564609d79826e752d4f9e4'
-        $script:Manifest.queryBytes | Should -Be 106707
-        $script:Manifest.fixtureSha256 | Should -Be '4e08566ab5d6ed9995a31588f70ac745067ad124196ef01d7c79929d33d8c7c5'
+        $script:Manifest.querySha256 | Should -Be 'e72b19e490f03270085b064597192ded64a451673ae6adb58ad33dc2632d99b5'
+        $script:Manifest.queryBytes | Should -Be 108968
+        $script:Manifest.fixtureSha256 | Should -Be '5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1'
         (Get-FileHash -LiteralPath $script:QueryPath -Algorithm SHA256).Hash.ToLowerInvariant() |
             Should -Be $script:Manifest.querySha256
 
@@ -75,5 +76,44 @@ Describe 'Synthetic mining KQL engine self-test' {
         $expected.activeIncidents | Should -Be 1
         $expected.retryCopies | Should -Be 2
         $script:Query | Should -Match 'Local READY flags exercise query branches only'
+    }
+
+    It 'freezes independent arguments and expected results for every G5 function' {
+        $cases = @($script:Manifest.fixture.semanticCases)
+        $cases.Count | Should -Be 5
+        ($cases.function -join ',') | Should -Be 'mining_PlantLatest,mining_PlantSummary,mining_AssetTrend,mining_ActiveIncidents,mining_CompareLines'
+        $cases[0].arguments.run_id | Should -Be $script:Manifest.fixture.runId
+        $cases[0].expected.rowCount | Should -Be 60
+        $cases[0].expected.latestFeed.value | Should -Be 12
+        $cases[1].expected.plantFeedTph | Should -Be 42
+        $cases[1].expected.processedTonnes | Should -Be 0.7
+        $cases[1].expected.grossProcessWaterM3PerT | Should -Be (1 / 21)
+        $cases[1].expected.wholePlantEnergyKwhPerT | Should -Be (50 / 21)
+        $cases[2].expected.tagId | Should -Be 'D01.A.crusher.ore_flow'
+        $cases[2].expected.coverage | Should -Be 1
+        $cases[3].expected.activeState | Should -Be 'ACTIVE_UNACKNOWLEDGED'
+        $cases[4].expected.totalGoodSamples | Should -Be 6
+        $cases[4].expected.lines.C.value | Should -Be 16
+        $script:Query | Should -Match '_selftest_CompareMatch'
+        $script:Query | Should -Match '_selftest_IncidentMatch'
+    }
+
+    It 'keeps live evidence criteria duplicate-aware and fail-closed' {
+        $proof = $script:Manifest.proofRequirements
+        $proof.status | Should -Be 'requirements-only-not-issued'
+        @($proof.canaryPerTable).Count | Should -Be 2
+        foreach ($table in $proof.canaryPerTable) {
+            $table.expectedDistinctEventIds | Should -Be 1
+            $table.observedDistinctEventIds | Should -Be 1
+            $table.minimumCopies | Should -Be 1
+            $table.lexemeMatchCopies | Should -Be 'equal copies'
+            $table.wrongDestinationCopies | Should -Be 0
+            $table.rawIngestionNonNullCopies | Should -Be 'equal copies'
+        }
+        $proof.classifierObservation.doNotInferExpectedRowsFromObservedCopies | Should -BeTrue
+        $proof.classifierObservation.deduplicatedRowsPerExpectedEvent | Should -Be 1
+        $proof.nativeReadback.status | Should -Be 'unavailable-unverified'
+        $proof.nativeReadback.requiredOnEveryUse | Should -BeTrue
+        $proof.selfTestContribution | Should -Be 'informational-only; never grants deployment or source readiness'
     }
 }

@@ -4,6 +4,7 @@ let _selftest_WindowEnd = bin(now() - 2m, 1m);
 let _selftest_WindowStart = _selftest_WindowEnd - 1m;
 let _selftest_AsOf = _selftest_WindowEnd + 1s;
 let _selftest_RunId = "d0100000-0000-4000-8000-000000000001";
+let _selftest_IncidentId = "d0100000-0000-4000-8000-000000000002";
 let _selftest_SourceContract = datatable(contract_version:string, catalog_version:string, profile_version:string, status:string, raw_timestamp_shape_verified:bool, exclusive_writer_approved:bool, incident_source_version:string, incident_source_ready:bool)[
     "d01-validated-source-v1", "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce", "d01-publish-profile-v1", "Ready", true, true, "d01-incident-ledger-v1", true
 ]
@@ -1139,10 +1140,17 @@ let _selftest_IncidentRow = toscalar(_selftest_Incidents | project status);
 let _selftest_CompareRows = _selftest_Compare | where status == "OK";
 let _selftest_RetryCopies = toscalar(_selftest_ValidatedTelemetry | where event_id == "9b0b35ee575877cf05917be08e0080a0c59638689fa225deb63113b1cc94dd9b" | count);
 let _selftest_RetryReceivedAtMatches = toscalar(_selftest_LatestTags | where tagId == "D01.A.crusher.ore_flow" | project received_at == event_time + 1s);
+let _selftest_LatestMatch = toscalar(_selftest_LatestTags | where tagId == "D01.A.crusher.ore_flow" and status == "OK" and value == 12.0 and unit == "t/h" and received_at == event_time + 1s | count) == 1;
+let _selftest_SummaryMatch = toscalar(_selftest_Summary | where status == "OK" and abs(plant_feed_tph - 42.0) < 0.000001 and abs(processed_tonnes - 0.7) < 0.000001 and running_lines == 3 and abs(common_coverage - 1.0) < 0.000001 and abs(gross_process_water_m3_per_t - (1.0 / 21.0)) < 0.000001 and abs(whole_plant_energy_kwh_per_t - (50.0 / 21.0)) < 0.000001 and good_sample_count == 10 and conflicting_event_count == 0 | count) == 1;
+let _selftest_TrendMatch = toscalar(_selftest_Trend | where status == "OK" and module_id == "D01.A.crusher" and tagId == "D01.A.crusher.ore_flow" and seriesId == "D01.A.crusher.ore_flow" and metric_family == "feed" and value == 12.0 and unit == "t/h" and good_count == 2 and expected_samples == 2.0 and coverage == 1.0 | count) == 1;
+let _selftest_IncidentMatch = toscalar(_selftest_Incidents | where status == "OK" and incident_id == _selftest_IncidentId and rule_id == "self-test-rule" and scope_id == "A" and severity == "warning" and active_state == "ACTIVE_UNACKNOWLEDGED" | count) == 1;
+let _selftest_CompareMatch = toscalar(_selftest_CompareRows | summarize matching_lines = countif((line_id == "A" and tag_id == "D01.A.crusher.ore_flow" and value == 12.0 and unit == "t/h" and good_count == 2 and coverage == 1.0) or (line_id == "B" and tag_id == "D01.B.crusher.ore_flow" and value == 14.0 and unit == "t/h" and good_count == 2 and coverage == 1.0) or (line_id == "C" and tag_id == "D01.C.crusher.ore_flow" and value == 16.0 and unit == "t/h" and good_count == 2 and coverage == 1.0)) | project matching_lines) == 3;
 print
     self_test_passed = _selftest_SummaryRow == "OK" and _selftest_TrendRow == "OK" and
         _selftest_IncidentRow == "OK" and _selftest_RetryCopies == 2 and
         _selftest_RetryReceivedAtMatches and
+        _selftest_LatestMatch and _selftest_SummaryMatch and _selftest_TrendMatch and
+        _selftest_IncidentMatch and _selftest_CompareMatch and
         toscalar(_selftest_LatestTags | count) == 56 and
         toscalar(_selftest_LatestTags | where status == "OK" | count) == 11 and
         toscalar(_selftest_LatestStates | where status == "OK" | count) == 4 and
@@ -1171,4 +1179,9 @@ print
     trend_rows = toscalar(_selftest_Trend | where status == "OK" | count),
     compare_rows = toscalar(_selftest_CompareRows | count),
     compare_good_samples = toscalar(_selftest_CompareRows | summarize sum(good_count)),
+    latest_contract_match = _selftest_LatestMatch,
+    summary_contract_match = _selftest_SummaryMatch,
+    asset_trend_contract_match = _selftest_TrendMatch,
+    active_incidents_contract_match = _selftest_IncidentMatch,
+    compare_lines_contract_match = _selftest_CompareMatch,
     active_incidents = toscalar(_selftest_Incidents | where active_state == "ACTIVE_UNACKNOWLEDGED" | count);
