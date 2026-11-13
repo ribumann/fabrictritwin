@@ -1,5 +1,5 @@
 /** Mining reads are independently authorized by the backend, never by athlete mappings. */
-export type MiningQuality = "good" | "bad" | "stale" | "missing";
+export type MiningQuality = "good" | "uncertain" | "bad" | "stale" | "missing";
 export type MiningStatus = "normal" | "warning" | "high" | "stopped" | "unknown";
 export type MiningMetric = "feed" | "density" | "vibration" | "water-energy";
 

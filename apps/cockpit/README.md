@@ -55,6 +55,8 @@ Overview must include all 24 modules and all 56 tag rows, including missing/bad
 observations; absent observations are null/unknown, not zero. KPI coverage is
 0–1, water/energy ratios require at least 90% common coverage, and the backend
 applies startup/feed denominator rules. Its summary window defaults to 15 minutes.
+`uncertain` quality remains distinct from `bad` but is never usable as a good
+reading, KPI, status, or chart sample; unsupported quality is not treated as good.
 Replay freshness is evaluated at `asOf`; latest provenance timestamps are UTC.
 `normalBand` is a demo normal band, never the catalog's broad simulation envelope.
 Every run-scoped response includes `plantId`, `runId` and `catalogVersion`;
