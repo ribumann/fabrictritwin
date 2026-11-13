@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fabrictritwin.local/schemas/d01-catalog-row-v1.json",
+  "title": "D01 authored catalog row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plant_id",
+    "catalog_version",
+    "record_kind",
+    "record_id",
+    "module_id",
+    "record_json"
+  ],
+  "properties": {
+    "plant_id": { "const": "D01" },
+    "catalog_version": {
+      "const": "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce"
+    },
+    "record_kind": { "enum": ["module", "equipment", "tag", "stream"] },
+    "record_id": { "type": "string", "minLength": 1 },
+    "module_id": { "type": ["string", "null"] },
+    "record_json": { "type": "object" }
+  },
+  "$comment": "record_json is the unchanged authored object from plant-catalog.json. module/equipment/tag/stream rows preserve catalog IDs and module relationships; streams have null module_id and keep directed source/target module and port IDs in record_json."
+}
