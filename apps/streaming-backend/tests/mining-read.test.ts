@@ -271,6 +271,15 @@ describe("approved mining read boundary", () => {
     const unavailable = await request(app).get("/api/mining/trends").query(valid);
     expect(unavailable.status).toBe(503);
     expect(unavailable.body.error.code).toBe("mining_curated_source_unavailable");
+    const unsupported = await request(app).get("/api/mining/compare-lines").query({
+      start: valid.start,
+      end: valid.end,
+      metric: "water-energy",
+      binMinutes: "1",
+      maxRows: "1000",
+    });
+    expect(unsupported.status).toBe(400);
+    expect(unsupported.body.error.message).toContain("not supported");
     expect(read).not.toHaveBeenCalled();
   });
 

@@ -81,6 +81,9 @@ function validateQuery(
   if (route === "trends" || route === "compare-lines") {
     const start = get("start");
     const end = get("end");
+    if (route === "compare-lines" && get("metric") === "water-energy") {
+      return "Water and energy are not supported as per-line comparison metrics.";
+    }
     if (
       !start ||
       !end ||

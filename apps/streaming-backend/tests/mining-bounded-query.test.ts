@@ -1,5 +1,6 @@
 import { ClientRequestProperties, KustoResponseDataSet, KustoResultTable } from "azure-kusto-data";
 import { describe, expect, it, vi } from "vitest";
+import { D01_PLANT_CATALOG } from "@triathlon-twin/simulator/mining";
 import { createBoundedMiningQuery } from "../src/mining/read/bounded-query.js";
 
 const uri = "https://example.region.kusto.windows.net";
@@ -80,6 +81,30 @@ describe("bounded mining query transport", () => {
     expect(properties.getClientTimeout()).toBe(9000);
     expect(client.axiosInstance.defaults.maxContentLength).toBe(1_048_576);
     expect(client.close).toHaveBeenCalled();
+  });
+
+  it("uses only the other four allowlisted function signatures", async () => {
+    const f = fixture();
+    const scope = { runId: input.runId, maxRows: 1000 };
+    const asOf = input.end;
+    await f.query({ ...scope, kind: "latest", asOf });
+    await f.query({ ...scope, kind: "incidents", asOf });
+    await f.query({ ...scope, kind: "summary", start: input.start, end: input.end });
+    await f.query({
+      ...scope,
+      kind: "trend",
+      start: input.start,
+      end: input.end,
+      moduleId: D01_PLANT_CATALOG.modules[0].id,
+      metric: "vibration",
+      binMinutes: 5,
+    });
+    expect(f.client.executeQuery.mock.calls.map((call) => call[1])).toEqual([
+      expect.stringContaining("mining_PlantLatest(plant, run, asof)"),
+      expect.stringContaining("mining_ActiveIncidents(plant, run, asof)"),
+      expect.stringContaining("mining_PlantSummary(plant, run, start, end)"),
+      expect.stringContaining("mining_AssetTrend(plant, run, module, metric, start, end, bin)"),
+    ]);
   });
 
   it("rejects foreign targets, invalid scope, future windows and unsupported metrics before querying", async () => {
