@@ -204,6 +204,70 @@ planner-safeguard checks only; they do not prove KQL syntax, ingestion,
 timestamp preservation, policy state or runtime results. No live definitions,
 data, queries or permissions are changed by these scripts or checks.
 
+### Synthetic KQL engine self-test
+
+`fixtures/mining-engine-self-test.kql` is a query-local scalar test assembled
+from the frozen `MiningValidation.kql` and `MiningQueries.kql` function bodies.
+The builder pins those exact source hashes and the D01 catalog/profile code,
+then rewrites every source table/function reference to a private `_selftest_`
+alias. All rows come from local `datatable` bindings; the query has no stored
+definition commands, endpoint references, or business-table reads. It covers
+one happy-path call for each of the five G5 functions plus same-event retry
+deduplication and receive-time selection. The fixture is sized to the frozen
+catalog/profile contract and expects 42 t/h plant feed, 0.7 processed tonnes,
+full common coverage, three running lines, one active incident, and bounded
+trend/line result counts.
+
+The local source-contract row deliberately sets timestamp/writer flags to
+exercise the READY branches. This synthetic status is **not** source,
+deployment, timestamp-preservation, or authorization evidence. The final row
+contains only scalar booleans, counts, and aggregate values. It cannot grant
+readiness or replace independent target/native-definition readback.
+
+Rebuild or verify the pinned payload from the repository root:
+
+```powershell
+node .\scripts\fabric\build-mining-engine-self-test.mjs
+node .\scripts\fabric\build-mining-engine-self-test.mjs --check
+Invoke-Pester .\tests\pester\Mining-EngineSelfTest.Tests.ps1
+```
+
+The generated payload is capped at 256 KiB and its exact UTF-8 SHA-256 and
+byte count are recorded in the adjacent manifest. It has **not** been run
+against hosted KQL. Offline generation/tests validate source pins, locality,
+payload bounds and fixture expectations only; engine compilation, actual
+query results and all error branches remain unverified.
+The builder checks each pinned source against its exact frozen bytes, or
+against the equivalent original CRLF checkout form when read from an LF
+Git-blob checkout. It then normalizes source text to LF for extraction.
+Source pins remain unchanged; the output hash identifies the normalized
+successor payload and is reproducible across Windows and Linux.
+
+The manifest freezes the input arguments and independent expected results for
+all five G5 functions. In brief: PlantLatest returns 56 catalog tags and four
+states (11 observed tags, 45 unknown); PlantSummary expects 42 t/h, 0.7
+processed tonnes, three running lines, full common coverage, 1/21 m3/t water
+and 50/21 kWh/t energy; AssetTrend returns the A-crusher ore-flow series at
+12 t/h; ActiveIncidents returns one unacknowledged warning; CompareLines
+returns the A/B/C feed series at 12/14/16 t/h. These are deterministic
+query-local expectations, not hosted results. The emitted assertions check
+each summary line's feed and exactly one matching CompareLines row per
+expected line; repeated copies of one line cannot substitute for another.
+Focused offline predicate-model regressions reject duplicate/missing lines
+and swapped summary feeds, but do not execute or compile KQL.
+
+The adjacent manifest also records a **requirements-only, unissued** proof
+contract. For each raw canary table, allow duplicate copies but require exactly
+one distinct event ID, at least one copy, timestamp-lexeme and non-null raw
+ingestion-time matches for every copy, and zero copies in the opposite table.
+Classifier proof is separate: compare duplicate-preserving multisets keyed by
+event ID and raw ingestion time against event ID and `received_at`; pin the
+expected classifier rows independently, require all expected rows to have a
+non-null `received_at` and match, and require one conflict-free deduplicated
+row per event with the minimum receipt time. Do not infer expected classifier
+rows from observed raw copies. A synthetic readiness string or this engine
+self-test is never proof.
+
 Kusto soft-delete periods are minimum availability periods, not guaranteed
 immediate deletion. Retention commands are scoped to mining-owned tables only;
 the ledger leaves triathlon objects, database recoverability, and unrelated
@@ -257,7 +321,14 @@ validation remain pending an approved verification window.
 
 ### Disposable raw-source canary approval scope
 
-This is a proposed, unexecuted canary, not authorization or an apply procedure.
+This is a proposed, unexecuted canary, not a frozen native mutation packet,
+authorization, or an apply procedure. The reviewed source is pinned in the
+adjacent manifest; no fresh target readback/ETag, exact current target hash,
+independently protected target identity, or observed permission evidence is
+included. The offline candidate/preimage files are not proof of current cloud
+state. The planner authenticates nowhere, so required Eventstream and KQL
+database write permissions remain untested.
+
 Its write scope is limited to two mining raw tables (`mining_TelemetryRaw`,
 `mining_PlantStateEvents`), their two root-document JSON mappings, their
 7-day table-scoped retention policies, and these six Eventstream nodes:
@@ -277,7 +348,8 @@ write is included.
 Use two synthetic messages only. The fixed sample below is for offline review;
 an approved run must use a fresh run ID and current canonical UTC millisecond
 timestamp strings, recomputing each event ID from `run_id:sequence` and
-retaining those exact strings for the proof query.
+retaining those exact strings for the proof query. The per-table event count is
+scoped to that fresh run, not to all historical rows.
 
 ```jsonl
 {"entityType":"PlantTelemetry","schema_version":2,"run_id":"00000000-0000-4000-8000-000000000001","event_id":"a49cfbfc2222aac3040a8adecfe8bb3775bc5501d3782830ebeac39035d5511a","sequence":1,"interval_seconds":30,"timestamp":"2026-01-15T12:00:00.123Z","plant_id":"D01","module_id":"D01.A.crusher","equipment_id":"D01.A.crusher.feeder","tag_id":"D01.A.crusher.ore_flow","value":42.0,"unit":"t/h","quality":"good"}
@@ -285,30 +357,49 @@ retaining those exact strings for the proof query.
 ```
 
 Acceptance is at least one matching raw row per event ID, exactly one distinct
-event ID in each intended table, and every delivered copy preserves the sent
-timestamp string in `timestamp_raw` and `event["timestamp"]` (whose type must
-remain `string`). The opposite mining raw table must have no copy of that
-event ID. A bounded telemetry proof query is:
+canary event ID in each intended table for the fresh run, and every delivered
+copy preserves the sent timestamp string in `timestamp_raw` and
+`event["timestamp"]` (whose type must remain `string`) with non-null
+`ingestion_time()`. The opposite mining raw table must have no copy of that
+event ID. `ingestion_time()` can be null when the table's ingestion-time
+policy is disabled; this packet neither reads nor changes that policy. If the
+count is null, the canary fails and any policy change requires a separately
+reviewed mining-table-only scope. A bounded telemetry proof query is:
 
 ```kusto
+let expected_run_id = "00000000-0000-4000-8000-000000000001";
 let expected_event_id = "a49cfbfc2222aac3040a8adecfe8bb3775bc5501d3782830ebeac39035d5511a";
 let expected_timestamp = "2026-01-15T12:00:00.123Z";
 mining_TelemetryRaw
-| where tostring(event["event_id"]) == expected_event_id
-| summarize copies = count(),
-    exact_lexeme_copies = countif(timestamp_raw == expected_timestamp and
+| where tostring(event["run_id"]) == expected_run_id
+| summarize observed_distinct_event_ids = dcount(tostring(event["event_id"])),
+    copies = countif(tostring(event["event_id"]) == expected_event_id),
+    raw_ingestion_nonnull_copies = countif(
+        tostring(event["event_id"]) == expected_event_id and
+        isnotnull(ingestion_time())),
+    exact_lexeme_copies = countif(tostring(event["event_id"]) == expected_event_id and
         gettype(event["timestamp"]) == "string" and
+        timestamp_raw == expected_timestamp and
         tostring(event["timestamp"]) == expected_timestamp)
 ```
 
 Run the same check against `mining_PlantStateEvents` using its fixture ID and
 timestamp, and require zero matches for each ID in the opposite raw table.
-Accept only when each intended table has `copies >= 1` and
-`exact_lexeme_copies == copies`. Use aggregate-only checks; do not return or log
-raw payloads. This proves only raw mapping and
+Accept only when each intended table has
+`observed_distinct_event_ids == 1`, `copies >= 1`,
+`exact_lexeme_copies == copies`, and
+`raw_ingestion_nonnull_copies == copies`. Use aggregate-only checks; do not
+return or log raw payloads. This proves only raw mapping and
 `DirectIngestion` compatibility. It does not prove classifier readiness or
 authorize setting `raw_timestamp_shape_verified`; exclusive-writer approval
 remains a separate gate.
+
+Canary counts are duplicate-tolerant: require exactly one distinct event ID
+per intended table, at least one copy, exact timestamp-lexeme match and
+non-null raw ingestion time for every copy, and zero copies in the opposite
+table. Classifier propagation must be collected separately against
+independently frozen expected row counts; its expected/matched rows cannot be
+inferred from raw copy counts.
 
 Before any later update, an authorized operator must compare a freshly read
 Eventstream definition with the private approved preimage and the complete
@@ -323,6 +414,15 @@ external owner must provide a serialized writer-free maintenance window and the
 target must be re-read immediately before the write. Current Apply remains
 blocked; no capacity resume, permission change, live send, or cloud write is part
 of this packet.
+
+There is no exact frozen native mutation packet ready for approval here: the
+source scope and local structural checks are documented, but the current target
+hash/identity and permissions are not established. The Eventstream update is a
+full-definition replacement without documented atomic compare-and-swap; the
+writer-free interval must be provided by the external owner and cover the
+fresh preflight, update, and post-update readback. Until those target and
+authorization facts are independently collected, this section remains offline
+planning only.
 
 References: [Eventstream definition](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/eventstream-definition),
 [update definition](https://learn.microsoft.com/en-us/rest/api/fabric/eventstream/items/update-eventstream-definition),
