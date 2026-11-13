@@ -1,16 +1,27 @@
 // Proposed mining-owned objects only. Do not apply without reviewing existing
-// table schemas and policies. Incoming documents are retained intact so that
-// validation can distinguish invalid values from absent or coerced values.
-.create table mining_TelemetryRaw (event:dynamic)
-.create table mining_PlantStateEvents (event:dynamic)
+// table schemas and policies. Dynamic values can be type-converted by Kusto;
+// timestamp_raw is a separate string projection whose preservation needs a
+// hosted probe before the source contract can become Ready.
+.create table mining_TelemetryRaw (event:dynamic, timestamp_raw:string)
+.create table mining_PlantStateEvents (event:dynamic, timestamp_raw:string)
 .create table mining_PlantCatalog (plant_id:string, catalog_version:string, record_kind:string, record_id:string, module_id:string, record_json:dynamic)
+.create table mining_PublishProfile (plant_id:string, catalog_version:string, profile_version:string, tag_id:string, interval_seconds:int)
+.create table mining_SourceContract (contract_version:string, catalog_version:string, profile_version:string, status:string, raw_timestamp_shape_verified:bool, exclusive_writer_approved:bool, incident_source_version:string, incident_source_ready:bool, recorded_at:datetime)
+.create table mining_ValidatedTelemetry (plant_id:string, run_id:string, event_id:string, sequence:long, timestamp:datetime, received_at:datetime, module_id:string, equipment_id:string, tag_id:string, value:real, unit:string, quality:string, interval_seconds:int, catalog_version:string, profile_version:string, source_contract_version:string, payload_fingerprint:string)
+.create table mining_ValidatedState (plant_id:string, run_id:string, event_id:string, sequence:long, timestamp:datetime, received_at:datetime, scope_id:string, scheduled_running:bool, state:string, catalog_version:string, source_contract_version:string, payload_fingerprint:string)
+.create table mining_Quarantine (source_kind:string, received_at:datetime, raw_event:dynamic, timestamp_raw:string, plant_id:string, run_id:string, event_id:string, sequence:long, disposition:string, reason_codes:dynamic, source_contract_version:string)
 .create table mining_AlertTransitions (plant_id:string, run_id:string, transition_id:string, timestamp:datetime, rule_id:string, scope_id:string, transition:string, severity:string, evidence:dynamic)
+.create table mining_IncidentLedger (plant_id:string, run_id:string, incident_id:string, event_id:string, event_sequence:long, occurred_at:datetime, received_at:datetime, rule_id:string, scope_id:string, event_type:string, severity:string, evidence:dynamic, source_contract_version:string)
 
-.create table mining_TelemetryRaw ingestion json mapping 'mining_telemetry_json_map' '[{"column":"event","Properties":{"path":"$"}}]'
-.create table mining_PlantStateEvents ingestion json mapping 'mining_state_json_map' '[{"column":"event","Properties":{"path":"$"}}]'
+.create table mining_TelemetryRaw ingestion json mapping 'mining_telemetry_json_map' '[{"column":"event","Properties":{"path":"$"}},{"column":"timestamp_raw","Properties":{"path":"$.timestamp"}}]'
+.create table mining_PlantStateEvents ingestion json mapping 'mining_state_json_map' '[{"column":"event","Properties":{"path":"$"}},{"column":"timestamp_raw","Properties":{"path":"$.timestamp"}}]'
 
 .alter table mining_TelemetryRaw policy ingestiontime true
 .alter table mining_PlantStateEvents policy ingestiontime true
 .alter-merge table mining_TelemetryRaw policy retention softdelete = 7d
 .alter-merge table mining_PlantStateEvents policy retention softdelete = 7d
+.alter-merge table mining_ValidatedTelemetry policy retention softdelete = 7d
+.alter-merge table mining_ValidatedState policy retention softdelete = 7d
+.alter-merge table mining_Quarantine policy retention softdelete = 7d
 .alter-merge table mining_AlertTransitions policy retention softdelete = 30d
+.alter-merge table mining_IncidentLedger policy retention softdelete = 30d
