@@ -136,21 +136,111 @@ Describe 'Offline mining definition plan' {
 }
 
 Describe 'Mining KQL ownership ledger' {
-    It 'contains only the four owned tables and table-scoped policies' {
-        $path = Join-Path $PSScriptRoot '..\..\infra\fabric\eventhouse\MiningSchema.kql'
-        $commands = @(Get-Content -LiteralPath $path | Where-Object { $_ -match '^\.' })
+    BeforeAll {
+        $script:SchemaPath = Join-Path $PSScriptRoot '..\..\infra\fabric\eventhouse\MiningSchema.kql'
+        $script:SchemaText = Get-Content -LiteralPath $script:SchemaPath -Raw
+        $script:Commands = @(Get-Content -LiteralPath $script:SchemaPath | Where-Object { $_ -match '^\.' })
+    }
+
+    It 'contains only the ten mining-owned tables and table-scoped policies' {
+        $commands = $script:Commands
         $created = @($commands | Where-Object { $_ -match '^\.create table (mining_\w+) \(' } |
             ForEach-Object { [regex]::Match($_, '^\.create table (mining_\w+) \(').Groups[1].Value })
-        $created | Should -HaveCount 4
+        $created | Should -HaveCount 10
         $created | Should -Contain 'mining_TelemetryRaw'
         $created | Should -Contain 'mining_PlantStateEvents'
         $created | Should -Contain 'mining_PlantCatalog'
+        $created | Should -Contain 'mining_PublishProfile'
+        $created | Should -Contain 'mining_SourceContract'
+        $created | Should -Contain 'mining_ValidatedTelemetry'
+        $created | Should -Contain 'mining_ValidatedState'
+        $created | Should -Contain 'mining_Quarantine'
         $created | Should -Contain 'mining_AlertTransitions'
+        $created | Should -Contain 'mining_IncidentLedger'
         foreach ($command in $commands) {
             $command | Should -Match '^\.((create|alter|alter-merge) table) mining_\w+ '
         }
         @($commands | Where-Object { $_ -match 'ingestion json mapping .*\$\W' }) | Should -HaveCount 2
-        @($commands | Where-Object { $_ -match 'policy retention softdelete = 7d$' }) | Should -HaveCount 2
-        @($commands | Where-Object { $_ -match 'policy retention softdelete = 30d$' }) | Should -HaveCount 1
+        @($commands | Where-Object { $_ -match 'policy retention softdelete = 7d$' }) | Should -HaveCount 5
+        @($commands | Where-Object { $_ -match 'policy retention softdelete = 30d$' }) | Should -HaveCount 2
+        $script:SchemaText | Should -Match 'timestamp_raw:string'
+    }
+
+    It 'does not declare a database-wide retention or teardown command' {
+        $script:Commands | Should -Not -Contain '.drop database'
+        $script:Commands | Should -Not -Contain '.alter-merge database policy retention'
+    }
+}
+
+Describe 'Offline mining source and query contracts (static checks only)' {
+    BeforeAll {
+        $root = Join-Path $PSScriptRoot '..\..\infra\fabric\eventhouse'
+        $script:ValidationText = Get-Content -LiteralPath (Join-Path $root 'MiningValidation.kql') -Raw
+        $script:QueriesText = Get-Content -LiteralPath (Join-Path $root 'MiningQueries.kql') -Raw
+    }
+
+    It 'gates curated dispositions on timestamp proof and exclusive writer approval' {
+        $script:ValidationText | Should -Match 'd01-validated-source-v1'
+        $script:ValidationText | Should -Match 'BLOCKED_RAW_TIMESTAMP_PROOF'
+        $script:ValidationText | Should -Match 'BLOCKED_WRITER_APPROVAL'
+        $script:ValidationText | Should -Match 'raw_timestamp_shape_verified'
+        $script:ValidationText | Should -Match 'exclusive_writer_approved'
+        $script:ValidationText | Should -Match 'timestamp_raw matches regex'
+        $script:ValidationText | Should -Match 'disposition = case'
+        $script:ValidationText | Should -Match '"QUARANTINED"'
+        $script:ValidationText | Should -Match '"BLOCKED"'
+        $script:ValidationText | Should -Match '"ACCEPTED"'
+    }
+
+    It 'retains v2 quality categories without converting uncertain to bad' {
+        $script:ValidationText | Should -Match 'quality in \("good", "uncertain", "bad"\)'
+        $script:QueriesText | Should -Match 'quality = iff\(event_conflict, string\(null\), quality\)'
+        $script:QueriesText | Should -Match 'uncertain_count = countif\(quality == "uncertain"\)'
+        $script:QueriesText | Should -Match 'bad_count = countif\(quality == "bad"\)'
+        $script:QueriesText | Should -Match '"UNCERTAIN_QUALITY"'
+        $script:QueriesText | Should -Match '"MIXED_NON_GOOD_QUALITY"'
+    }
+
+    It 'defines all five stable, mining-prefixed query signatures' {
+        $script:QueriesText | Should -Match '(?s)mining_PlantLatest\(\s*plant_id:string,\s*run_id:string,\s*as_of_utc:datetime'
+        $script:QueriesText | Should -Match '(?s)mining_PlantSummary\(\s*plant_id:string,\s*run_id:string,\s*window_start_utc:datetime,\s*window_end_utc:datetime'
+        $script:QueriesText | Should -Match '(?s)mining_AssetTrend\(\s*plant_id:string,\s*run_id:string,\s*requested_module_id:string,\s*metric_family:string'
+        $script:QueriesText | Should -Match '(?s)mining_ActiveIncidents\(\s*plant_id:string,\s*requested_run_id:string,\s*as_of_utc:datetime'
+        $script:QueriesText | Should -Match '(?s)mining_CompareLines\(\s*plant_id:string,\s*run_id:string,\s*metric_family:string'
+    }
+
+    It 'reads curated sources rather than raw dynamic tables' {
+        $script:QueriesText | Should -Match 'mining_ValidatedTelemetry'
+        $script:QueriesText | Should -Match 'mining_ValidatedState'
+        $script:QueriesText | Should -Not -Match 'mining_TelemetryRaw'
+        $script:QueriesText | Should -Not -Match 'mining_PlantStateEvents'
+        $script:QueriesText | Should -Not -Match '\.set-or-append|\.append|\.ingest'
+    }
+
+    It 'preserves canonical CompareLines tags, units, metric families, and overflow status' {
+        $script:QueriesText | Should -Match 'D01\.A\.crusher\.ore_flow'
+        $script:QueriesText | Should -Match 'D01\.B\.crusher\.ore_flow'
+        $script:QueriesText | Should -Match 'D01\.C\.crusher\.ore_flow'
+        $script:QueriesText | Should -Match 'D01\.A\.dms\.medium_density'
+        $script:QueriesText | Should -Match 'D01\.A\.crusher\.vibration_rms'
+        $script:QueriesText | Should -Match 'metric_ok = metric_family in \("feed", "density", "vibration"\)'
+        $script:QueriesText | Should -Match 'tag_id, metric, unit, metric_family'
+        $script:QueriesText | Should -Match 'row_count > 1000, "TOO_MANY_ROWS"'
+        $script:QueriesText | Should -Match 'row_count <= 1000'
+        $script:QueriesText | Should -Not -Match 'water-energy|line energy|hopper|sorter'
+    }
+
+    It 'uses half-open windows and interval-end binning for trend and summary coverage' {
+        $script:QueriesText | Should -Match 'timestamp < window_end_utc'
+        $script:QueriesText | Should -Match 'bin\(timestamp - 1ms, safe_bin_minutes \* 1m\)'
+        $script:QueriesText | Should -Match 'minute = bin\(timestamp - 1ms, 1m\)'
+        $script:QueriesText | Should -Match 'minute_coverage >= 0\.90'
+        $script:QueriesText | Should -Match 'common_coverage = common_seconds / duration_seconds'
+        $script:QueriesText | Should -Match 'common_coverage >= 0\.90 and common_feed >= 10\.0'
+        $script:QueriesText | Should -Match '(?s)conflict_event_count > 0, "DUPLICATE_CONFLICT",\s*isnull\(feed_a_good\).*"NO_DATA"'
+    }
+
+    It 'keeps these static checks separate from hosted KQL validation' {
+        $script:QueriesText | Should -Match 'No function reads a raw dynamic table'
     }
 }
