@@ -9,6 +9,7 @@ import {
   type MiningStore,
   type StoredDocument,
 } from "../src/mining/store.js";
+import { createD01RunContract } from "../src/mining-incidents/catalog.js";
 
 const first = "11111111-1111-4111-8111-111111111111";
 const second = "22222222-2222-4222-8222-222222222222";
@@ -199,11 +200,111 @@ describe("mining durable run coordination", () => {
     await active.finish();
     const historyPath = `history/${first}.json`;
     const history = storage.documents.get(historyPath)!;
+    const historyValue = history.value as { version: number; run: Record<string, unknown> };
     storage.documents.set(historyPath, {
       ...history,
-      value: { ...(history.value as object), runId: second },
+      value: { ...historyValue, run: { ...historyValue.run, runId: second } },
     });
     await expect(replicaB.status(first)).rejects.toMatchObject({ code: "invalid" });
+  });
+
+  it("fences a versioned contract before acceptance and preserves it without sharing mutable state", async () => {
+    const write = vi.spyOn(storage, "write");
+    const untrustedInput = {
+      ...input,
+      contract: { catalogVersion: "caller-controlled" },
+    };
+    const result = await replicaA.start(untrustedInput);
+    if (result.kind !== "started") throw new Error("Expected fresh owner.");
+    const contract = createD01RunContract();
+    expect(write.mock.calls[0]).toEqual([
+      plantPath,
+      expect.objectContaining({ version: 2, run: expect.objectContaining({ contract }) }),
+      expect.any(String),
+      expect.any(String),
+    ]);
+    expect(write.mock.calls[1]?.[0]).toBe(`requests/${first}.json`);
+    result.run.contract!.profileVersion = "caller-mutated";
+    await result.owner.heartbeat();
+    expect(await replicaB.start(input)).toMatchObject({
+      kind: "observed",
+      status: { run: { contract } },
+    });
+    await result.owner.finish();
+    expect(storage.documents.get(`history/${first}.json`)?.value).toMatchObject({
+      version: 2,
+      run: { contract, phase: "publisher_complete" },
+    });
+    await owner(replicaB, { ...input, requestId: second });
+    expect(await replicaA.status(first)).toMatchObject({ run: { contract } });
+  });
+
+  it("keeps legacy records unbound while rejecting version corruption and downgrade claims", async () => {
+    const result = await replicaA.start(input);
+    if (result.kind !== "started") throw new Error("Expected fresh owner.");
+    const plant = storage.documents.get(plantPath)!;
+    const versioned = structuredClone(plant.value) as {
+      version: number;
+      run: Record<string, unknown>;
+    };
+    const { contract: _contract, ...legacyRun } = versioned.run;
+    storage.documents.set(plantPath, { ...plant, value: { version: 1, run: legacyRun } });
+    expect((await replicaB.status(first))?.run).not.toHaveProperty("contract");
+    for (const value of [
+      { version: 1, run: versioned.run },
+      { version: 2, run: legacyRun },
+      { version: 3, run: versioned.run },
+      {
+        version: 2,
+        run: { ...versioned.run, contract: { ...createD01RunContract(), profileVersion: "wrong" } },
+      },
+      {
+        version: 2,
+        run: {
+          ...versioned.run,
+          contract: { ...createD01RunContract(), evaluatorReplayVersion: 2 },
+        },
+      },
+      {
+        version: 2,
+        run: { ...versioned.run, contract: { ...createD01RunContract(), extra: true } },
+      },
+    ]) {
+      storage.documents.set(plantPath, { ...plant, value });
+      await expect(replicaB.status(first)).rejects.toMatchObject({ code: "invalid" });
+    }
+    storage.documents.set(plantPath, plant);
+    await result.owner.finish();
+    const historyPath = `history/${first}.json`;
+    const history = storage.documents.get(historyPath)!;
+    storage.documents.set(historyPath, { ...history, value: legacyRun });
+    expect((await replicaB.status(first))?.run).not.toHaveProperty("contract");
+    storage.documents.set(historyPath, { ...history, value: { version: 3, run: legacyRun } });
+    await expect(replicaB.status(first)).rejects.toMatchObject({ code: "invalid" });
+  });
+
+  it("does not overwrite a conflicting immutable history or report terminal success", async () => {
+    const result = await replicaA.start(input);
+    if (result.kind !== "started") throw new Error("Expected fresh owner.");
+    const conflict = { ...result.run, seed: 9 };
+    await storage.create(`history/${first}.json`, { version: 2, run: conflict });
+    await expect(result.owner.finish()).rejects.toMatchObject({ code: "invalid" });
+    expect(storage.documents.get(`history/${first}.json`)?.value).toMatchObject({
+      version: 2,
+      run: { seed: 9 },
+    });
+  });
+
+  it("rejects version-2 plant state in the previous writer's schema check", async () => {
+    const result = await replicaA.start(input);
+    if (result.kind !== "started") throw new Error("Expected fresh owner.");
+    const persisted = storage.documents.get(plantPath)!.value as { version: number };
+    const previousWriterParsePlant = () => {
+      if (persisted.version !== 1)
+        throw new Error("Unsupported mining coordination document version.");
+    };
+    expect(previousWriterParsePlant).toThrow("Unsupported");
+    await result.owner.finish();
   });
 
   it("persists cross-replica stop acceptance separately from acknowledgement", async () => {
@@ -306,6 +407,23 @@ describe("mining durable run coordination", () => {
     expect(retry.kind).toBe("observed");
     expect(retry).not.toHaveProperty("owner");
     expect(retry).not.toMatchObject({ status: { phase: "publisher_complete" } });
+  });
+
+  it("retains the fenced contract when the plant write response is lost, without admitting a retry", async () => {
+    storage.fault = { operation: "write", path: plantPath, after: true };
+    await expect(replicaA.start(input)).rejects.toMatchObject({ code: "uncertain" });
+    expect(storage.documents.get(plantPath)?.value).toMatchObject({
+      version: 2,
+      run: { runId: first, contract: createD01RunContract() },
+    });
+    expect(await replicaB.start(input)).toMatchObject({
+      kind: "observed",
+      status: {
+        admission: "pending",
+        phase: "interrupted",
+        run: { contract: createD01RunContract() },
+      },
+    });
   });
 
   it("reports unconfirmed acquisition as unknown, blocks other senders until finite expiry", async () => {

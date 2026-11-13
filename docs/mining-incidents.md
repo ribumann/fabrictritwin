@@ -129,11 +129,18 @@ incidents/D01/<sha256(JSON runId)>/<sha256(JSON page)>.json
 ```
 
 Schema 1 head is `{schema, binding, tail, pages, bytes}`. The binding is SHA-256
-of the exact serialized approved run/catalog. Immutable pages are
+of the exact serialized run/catalog definition, not an authorization proof. Immutable pages are
 `{schema, binding, previous, commands}`. Commands are observations with receipt
 time, evaluations, or acknowledgements, in their actual processing order.
-The version covers evaluator replay semantics too: incompatible evaluator
-changes require a new version/migration, not silent replay under new rules.
+Schema 2 uses the same head/page shape but binds the exact canonical definition
+including the prospective run contract (catalog version, profile version and
+`evaluatorReplayVersion: 1`). Both versions explicitly use evaluator replay
+semantics 1. Unknown contracts, head/page versions, and cross-schema recovery
+are rejected; schema-1 heads and definitions are never rewritten as schema 2.
+Incompatible evaluator changes require an explicit new replay version and
+implementation/migration, not silent replay under new rules. The source-recorded
+contract and matching digest alone do not prove authorization, deployed code,
+publisher delivery or source readiness.
 
 The existing Blob reader limits a document to **16,384 bytes**. Every page is
 sized before storage; the compact head never contains an evaluator snapshot,

@@ -9,6 +9,11 @@ import {
   type MiningStateObservation,
   type MiningTag,
 } from "./evaluator.js";
+import {
+  assertD01RunContract,
+  createD01VersionedIncidentRun,
+  type D01RunContract,
+} from "./catalog.js";
 
 type Observation = MiningReadingObservation | MiningStateObservation;
 type Command =
@@ -21,6 +26,8 @@ export interface MiningIncidentRun {
   startedAt: string;
   endsAt: string;
   tags: readonly MiningTag[];
+  /** Present only for a prospective schema-2 journal; absent on legacy schema 1. */
+  contract?: D01RunContract;
 }
 
 /**
@@ -46,7 +53,7 @@ export interface MiningIncidentSource {
 }
 
 interface Head {
-  schema: 1;
+  schema: 1 | 2;
   binding: string;
   tail: string | null;
   pages: number;
@@ -54,7 +61,7 @@ interface Head {
 }
 
 interface Page {
-  schema: 1;
+  schema: 1 | 2;
   binding: string;
   previous: string | null;
   commands: Command[];
@@ -100,11 +107,11 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function head(value: unknown, binding: string): Head {
+function head(value: unknown, binding: string, schema: 1 | 2): Head {
   const row = object(value);
   if (
     Object.keys(row).sort().join() !== "binding,bytes,pages,schema,tail" ||
-    row.schema !== 1 ||
+    row.schema !== schema ||
     row.binding !== binding ||
     (row.tail !== null && (typeof row.tail !== "string" || !/^[a-f0-9]{64}$/.test(row.tail))) ||
     !Number.isSafeInteger(row.pages) ||
@@ -122,6 +129,23 @@ function head(value: unknown, binding: string): Head {
 
 function definition(input: MiningIncidentRun): MiningIncidentRun {
   const run = structuredClone(input);
+  if ("contract" in run) {
+    try {
+      assertD01RunContract(run.contract);
+      const canonical = createD01VersionedIncidentRun({
+        runId: run.runId,
+        startedAt: run.startedAt,
+        stopAt: run.endsAt,
+        contract: run.contract,
+      });
+      if (JSON.stringify(run) !== JSON.stringify(canonical))
+        invalid("Noncanonical versioned incident run/catalog binding.");
+    } catch (cause) {
+      throw new MiningCoordinationError("invalid", "Invalid versioned incident run binding.", {
+        cause,
+      });
+    }
+  }
   const start = utc(run.startedAt);
   const end = utc(run.endsAt);
   if (
@@ -211,7 +235,7 @@ async function loadJournal(
     const row = object(stored.value);
     if (
       Object.keys(row).sort().join() !== "binding,commands,previous,schema" ||
-      row.schema !== 1 ||
+      row.schema !== checkpoint.schema ||
       row.binding !== checkpoint.binding ||
       !Array.isArray(row.commands) ||
       !row.commands.length ||
@@ -274,7 +298,7 @@ export async function readMiningIncidentJournal(
   };
   const document = await read(headPath(run.runId));
   if (!document) return undefined;
-  const checkpoint = head(document.value, digest(run));
+  const checkpoint = head(document.value, digest(run), run.contract ? 2 : 1);
   const { state } = await loadJournal(run, checkpoint, read);
   return { ...snapshot(run, state), notifications: outbox(state, options.afterId, options.limit) };
 }
@@ -311,7 +335,13 @@ export class MiningIncidentRuntime {
     this.deadline = this.monotonic() + 31 * MINUTE;
     this.wait = dependencies.wait ?? ((ms, signal) => sleep(ms, undefined, { signal }));
     this.state = new Replay(run);
-    this.checkpoint = { schema: 1, binding: this.binding, tail: null, pages: 0, bytes: 0 };
+    this.checkpoint = {
+      schema: run.contract ? 2 : 1,
+      binding: this.binding,
+      tail: null,
+      pages: 0,
+      bytes: 0,
+    };
   }
 
   static async open(
@@ -353,7 +383,7 @@ export class MiningIncidentRuntime {
       runtime.alive();
       const stored = await runtime.read(runtime.path);
       if (!stored) invalid("Incident head disappeared.");
-      runtime.checkpoint = head(stored.value, runtime.binding);
+      runtime.checkpoint = head(stored.value, runtime.binding, runtime.checkpoint.schema);
       runtime.etag = stored.etag;
       await runtime.restore();
       await runtime.check();
@@ -517,7 +547,12 @@ export class MiningIncidentRuntime {
     for (const command of [...this.journal, ...commands]) candidate.apply(command);
     let next = { ...this.checkpoint };
     const staged: Page[] = [];
-    let page: Page = { schema: 1, binding: this.binding, previous: next.tail, commands: [] };
+    let page: Page = {
+      schema: next.schema,
+      binding: this.binding,
+      previous: next.tail,
+      commands: [],
+    };
     const seal = () => {
       staged.push(page);
       next = {
@@ -526,7 +561,7 @@ export class MiningIncidentRuntime {
         pages: next.pages + 1,
         bytes: next.bytes + bytes(page),
       };
-      page = { schema: 1, binding: this.binding, previous: next.tail, commands: [] };
+      page = { schema: next.schema, binding: this.binding, previous: next.tail, commands: [] };
     };
     for (const command of commands) {
       page.commands.push(command);

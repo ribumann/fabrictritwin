@@ -18,7 +18,7 @@ import {
   MiningIncidentRuntime,
   type MiningIncidentDependencies,
 } from "../mining-incidents/runtime.js";
-import { createD01IncidentRun } from "../mining-incidents/catalog.js";
+import { createD01VersionedIncidentRun } from "../mining-incidents/catalog.js";
 
 const STEP_MS = 5_000;
 const MAX_LATENESS_MS = 1_000;
@@ -275,8 +275,11 @@ class IncidentExecution {
   ) {}
 
   async start(): Promise<void> {
+    if (!this.run.contract) {
+      throw new MiningCoordinationError("invalid", "Incident run contract is missing.");
+    }
     const opening = MiningIncidentRuntime.open(
-      createD01IncidentRun(this.run),
+      createD01VersionedIncidentRun({ ...this.run, contract: this.run.contract }),
       "fresh",
       this.config.dependencies,
       this.cancellation.signal,
