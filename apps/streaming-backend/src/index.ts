@@ -13,6 +13,7 @@ import { resolveRuntimeProfile } from "./services/runtime-profile.js";
 import { SyntheticRuntime } from "./services/synthetic-runtime.js";
 import { createSyntheticRouter } from "./api/synthetic.js";
 import { createMiningReadRouter } from "./api/mining-read.js";
+import { configuredMiningCuratedProvider } from "./mining/read/runtime.js";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
@@ -27,7 +28,13 @@ const alertListener = synthetic
   : createDefaultAlertListener();
 
 app.use(express.json());
-app.use("/api/mining", createMiningReadRouter({ synthetic }));
+app.use(
+  "/api/mining",
+  createMiningReadRouter({
+    synthetic,
+    curated: synthetic ? undefined : configuredMiningCuratedProvider(),
+  }),
+);
 if (runtime) {
   app.use("/api", createSyntheticRouter(runtime));
 } else {

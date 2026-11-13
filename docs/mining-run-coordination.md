@@ -48,7 +48,7 @@ variables. Both endpoint types require public-cloud authentication metadata,
 the same verified Kusto token resource and the explicitly selected managed
 identity; there is no endpoint, identity or token-resource fallback.
 
-The unmounted DTO mappers target the reviewed
+The DTO mappers target the reviewed
 G5 source contract, including the summary conflict fix in source PR #32 at
 `4e5373d744057161f73888ac5d57ee0e6fdc8f07`. That source is not installed as native
 functions in the hosted estate. A readiness control row or a successful scalar
@@ -57,22 +57,58 @@ No data route invokes the transport while those prerequisites and a truthful
 current-incident evidence contract remain unverified.
 The explicitly injectable `createMiningCuratedProvider` now composes these
 mappers with the bounded transport and read-only persisted incident replay.
-It is **not configured by the production entrypoint**. A trusted host must supply
-an independently approved receipt pin/expectations and an actual native verifier;
-the source-only `createMiningNativeVerifier` can supply that callback, but no
-native verifier is mounted and no newly issued receipt is provided by this source.
+The production entrypoint can now compose it lazily through
+`configuredMiningCuratedProvider`, **disabled by default and always omitted in
+synthetic mode**. A trusted host must supply independently approved protected
+configuration; the factory always uses the actual `createMiningNativeVerifier`,
+not a no-op callback. This source change does not install configuration, issue
+a receipt, deploy an image or activate mining.
 Every request revalidates the downloaded canonical bytes, strict receipt schema,
 approved target/run/source/semantic expectations, observation consistency and
 fresh native verification before reading the matching incident journal or data.
 Flags, successful scalar queries, a receipt's own claims, and test doubles are
 not substitutes for that verifier. There is no readiness cache.
 
+### Protected production read composition
+
+Only literal `MINING_READ_ENABLED=true` selects the lazy live provider.
+`MINING_READ_CONFIGURATION_JSON` is a private, independently approved host
+document, not a browser/request parameter, downloaded receipt or runtime-generated
+self-pin. Its maximum UTF-8 size is 16 KiB; the versioned structure rejects
+unknown/missing fields, invalid IDs/hashes and duplicate/missing semantic
+contracts:
+
+| Field           | Contract                                                                                                                                                                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion` | Exactly `1`.                                                                                                                                                                                                                                                   |
+| `receiptPin`    | Lowercase SHA-256 of the approved canonical private receipt bytes.                                                                                                                                                                                             |
+| `expectations`  | Exact `MiningReceiptExpectations`: authorized/canary run IDs, full target and source identity, canary/semantic fixture hashes and all five semantic contracts. Each contract contains only `functionName`, `assertionCount`, `resultRowCount`, `outputSha256`. |
+| `native`        | Exactly `managedIdentityPrincipalId`, `eventstreamNativeDefinitionSha256`, `eventhouseNativeDefinitionSetSha256`, independently reviewed against the native v1 contracts below. The target is reused from protected expectations, never from downloaded proof. |
+
+Configuration is captured from the host environment at construction but is
+validated only inside an authorized, durably admitted read. Missing/invalid
+enabled configuration fails the mining request closed without preventing
+triathlon startup. The run/catalog/profile must also match the approved
+environment values, the protected Fabric tenant must match
+`ASSISTANT_AUTH_TENANT_ID`, and the selected managed identity and exact query
+configuration remain mandatory. The dedicated store must be explicitly enabled
+and configured as below. There is no default storage account, principal, proof
+pin or native hash.
+
+The reader composes only storage reads, fresh native verification and bounded
+queries. It does not create containers, take leases, publish runs or issue
+proofs. No previous readiness is cached; each request repeats the proof/native
+gates. Preserve the existing static-write approval, real exclusive-writer
+window and separate bootstrap/activation requirements: setting these variables
+does not fulfill them.
+
 ### Fresh native drift verification
 
 `src/mining/read/native-verifier.ts` performs fresh, read-only Eventstream
 `getDefinition` and native Kusto `.show database schema as csl script` requests.
-It is **not wired into the production entrypoint** and does not issue a receipt,
-provision resources, install functions, grant permissions or activate mining.
+It is wired only by the opt-in lazy production composition above and does not
+issue a receipt, provision resources, install functions, grant permissions or
+activate mining.
 The host must supply independently protected `MiningNativeExpectations`: the
 full exact target, selected managed identity's **principal object ID**, and both
 native hashes. These must not be copied from the downloaded receipt. The full
@@ -151,10 +187,10 @@ bounded window, canonical tags, metric and bins. One HTTP deadline/disconnect
 cancels proof, native verification, journal and query work; failure also cancels
 the provider's sibling queries. No leases, evaluator recovery, acknowledgements,
 publishers or other writes are started by a curated read.
-The unmounted current-incident mapper uses `moduleId` for direct measurement or
+The current-incident mapper uses `moduleId` for direct measurement or
 rule context only. It leaves `affectedModuleIds` empty because the evaluator
 does not model propagated impact or causation.
-The source-only transport uses a single abort signal for bounded public-cloud
+The transport uses a single abort signal for bounded public-cloud
 metadata discovery, the Container Apps loopback managed-identity broker, and the
 query response. It requires `MINING_MANAGED_IDENTITY_CLIENT_ID` and the platform's
 `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`; it rejects unknown cloud metadata and
@@ -171,14 +207,15 @@ create/write and lease acquire/renew/release. Do not grant account-wide roles,
 reuse token-store paths, enable shared keys, or provide credentials to a browser.
 Container creation and RBAC are not approved or performed by this source layer.
 
-Future runtime integration may call `configuredMiningStore()` explicitly:
+The opt-in read composition calls `configuredMiningStore()` only after its
+protected configuration checks; other callers must opt in explicitly:
 
-| Variable                            | Contract                                                                                                     |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `MINING_RUN_COORDINATION_ENABLED`   | Absent/`false`: disabled. Only `true` enables client construction.                                           |
-| `MINING_STATE_BLOB_ENDPOINT`        | Explicit HTTPS Azure public-cloud Blob account root, no query/credentials/path. No deployed-account default. |
-| `MINING_STATE_CONTAINER`            | Dedicated `mining-state` or `mining-state-<suffix>` name.                                                    |
-| `MINING_MANAGED_IDENTITY_CLIENT_ID` | Optional existing user-assigned MI client ID; absent uses system-assigned MI.                                |
+| Variable                            | Contract                                                                                                                          |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `MINING_RUN_COORDINATION_ENABLED`   | Absent/`false`: disabled. Only `true` enables client construction.                                                                |
+| `MINING_STATE_BLOB_ENDPOINT`        | Explicit HTTPS Azure public-cloud Blob account root, no query/credentials/path. No deployed-account default.                      |
+| `MINING_STATE_CONTAINER`            | Dedicated `mining-state` or `mining-state-<suffix>` name.                                                                         |
+| `MINING_MANAGED_IDENTITY_CLIENT_ID` | Explicit selected user-assigned MI client ID is mandatory for live reads; the store alone can use system-assigned MI when absent. |
 
 ManagedIdentityCredential is intentional: no developer-credential, shared-key,
 SAS, connection-string or local resource fallback. Configuration construction

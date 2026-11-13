@@ -107,13 +107,13 @@ const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const uuid4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const sha256 = /^[0-9a-f]{64}$/;
 const commit = /^[0-9a-f]{40}$/;
-const functions = [
+export const miningSemanticFunctions = [
   "mining_PlantLatest",
   "mining_PlantSummary",
   "mining_AssetTrend",
   "mining_ActiveIncidents",
   "mining_CompareLines",
-];
+] as const;
 
 function fail(): never {
   throw new MiningReceiptError("Receipt schema is invalid.");
@@ -215,6 +215,65 @@ function endpoint(value: unknown): string {
   return text;
 }
 
+export function parseMiningProofTarget(value: unknown): MiningProofReceipt["target"] {
+  const target = object(value, [
+    "cloud",
+    "environment",
+    "tenantId",
+    "subscriptionId",
+    "workspaceId",
+    "eventstreamId",
+    "eventhouseWorkspaceId",
+    "kqlDatabaseId",
+    "endpoint",
+    "databaseName",
+  ]);
+  if (target.cloud !== "AzurePublic") return fail();
+  return {
+    cloud: "AzurePublic",
+    environment: string(target.environment),
+    tenantId: string(target.tenantId, guid),
+    subscriptionId: string(target.subscriptionId, guid),
+    workspaceId: string(target.workspaceId, guid),
+    eventstreamId: string(target.eventstreamId, guid),
+    eventhouseWorkspaceId: string(target.eventhouseWorkspaceId, guid),
+    kqlDatabaseId: string(target.kqlDatabaseId, guid),
+    endpoint: endpoint(target.endpoint),
+    databaseName: string(target.databaseName),
+  };
+}
+
+export function parseMiningProofIdentity(value: unknown): MiningProofReceipt["identity"] {
+  const identity = object(value, [
+    "plantId",
+    "catalogVersion",
+    "profileVersion",
+    "sourceContractVersion",
+    "sourceCommitSha",
+    "sourceFilesSha256",
+    "querySetSha256",
+  ]);
+  const source = object(identity.sourceFilesSha256, [
+    "MiningSchema",
+    "MiningValidation",
+    "MiningQueries",
+  ]);
+  if (identity.plantId !== "D01") return fail();
+  return {
+    plantId: "D01",
+    catalogVersion: string(identity.catalogVersion),
+    profileVersion: string(identity.profileVersion),
+    sourceContractVersion: string(identity.sourceContractVersion),
+    sourceCommitSha: string(identity.sourceCommitSha, commit),
+    sourceFilesSha256: {
+      MiningSchema: string(source.MiningSchema, sha256),
+      MiningValidation: string(source.MiningValidation, sha256),
+      MiningQueries: string(source.MiningQueries, sha256),
+    },
+    querySetSha256: string(identity.querySetSha256, sha256),
+  };
+}
+
 /** Structural parsing only. A parsed receipt does not establish trusted readiness. */
 export function parseMiningProofReceipt(value: unknown): MiningProofReceipt {
   const root = object(
@@ -236,32 +295,8 @@ export function parseMiningProofReceipt(value: unknown): MiningProofReceipt {
   );
   if (root.schemaVersion !== 1) return fail();
   const issuer = object(root.issuer, ["tenantId", "principalObjectId", "collectorCommitSha"]);
-  const target = object(root.target, [
-    "cloud",
-    "environment",
-    "tenantId",
-    "subscriptionId",
-    "workspaceId",
-    "eventstreamId",
-    "eventhouseWorkspaceId",
-    "kqlDatabaseId",
-    "endpoint",
-    "databaseName",
-  ]);
-  const identity = object(root.identity, [
-    "plantId",
-    "catalogVersion",
-    "profileVersion",
-    "sourceContractVersion",
-    "sourceCommitSha",
-    "sourceFilesSha256",
-    "querySetSha256",
-  ]);
-  const source = object(identity.sourceFilesSha256, [
-    "MiningSchema",
-    "MiningValidation",
-    "MiningQueries",
-  ]);
+  const target = parseMiningProofTarget(root.target);
+  const identity = parseMiningProofIdentity(root.identity);
   const deployment = object(root.deploymentObservation, [
     "observedAtUtc",
     "eventstreamNativeDefinitionSha256",
@@ -286,11 +321,7 @@ export function parseMiningProofReceipt(value: unknown): MiningProofReceipt {
     "querySetSha256",
     "contracts",
   ]);
-  if (
-    target.cloud !== "AzurePublic" ||
-    identity.plantId !== "D01" ||
-    !Array.isArray(semantic.contracts)
-  ) {
+  if (!Array.isArray(semantic.contracts)) {
     return fail();
   }
   const contracts: SemanticContract[] = semantic.contracts.map((value: unknown) => {
@@ -302,10 +333,10 @@ export function parseMiningProofReceipt(value: unknown): MiningProofReceipt {
       "resultRowCount",
       "outputSha256",
     ]);
-    const name = string(item.functionName);
-    if (!functions.includes(name)) return fail();
+    const name = miningSemanticFunctions.find((name) => name === item.functionName);
+    if (!name) return fail();
     return {
-      functionName: name as SemanticContract["functionName"],
+      functionName: name,
       assertionCount: count(item.assertionCount),
       observedAssertionCount: count(item.observedAssertionCount),
       mismatchCount: count(item.mismatchCount),
@@ -314,8 +345,8 @@ export function parseMiningProofReceipt(value: unknown): MiningProofReceipt {
     };
   });
   if (
-    contracts.length !== functions.length ||
-    new Set(contracts.map((item) => item.functionName)).size !== functions.length
+    contracts.length !== miningSemanticFunctions.length ||
+    new Set(contracts.map((item) => item.functionName)).size !== miningSemanticFunctions.length
   ) {
     return fail();
   }
@@ -356,31 +387,8 @@ export function parseMiningProofReceipt(value: unknown): MiningProofReceipt {
       principalObjectId: string(issuer.principalObjectId, guid),
       collectorCommitSha: string(issuer.collectorCommitSha, commit),
     },
-    target: {
-      cloud: "AzurePublic",
-      environment: string(target.environment),
-      tenantId: string(target.tenantId, guid),
-      subscriptionId: string(target.subscriptionId, guid),
-      workspaceId: string(target.workspaceId, guid),
-      eventstreamId: string(target.eventstreamId, guid),
-      eventhouseWorkspaceId: string(target.eventhouseWorkspaceId, guid),
-      kqlDatabaseId: string(target.kqlDatabaseId, guid),
-      endpoint: endpoint(target.endpoint),
-      databaseName: string(target.databaseName),
-    },
-    identity: {
-      plantId: "D01",
-      catalogVersion: string(identity.catalogVersion),
-      profileVersion: string(identity.profileVersion),
-      sourceContractVersion: string(identity.sourceContractVersion),
-      sourceCommitSha: string(identity.sourceCommitSha, commit),
-      sourceFilesSha256: {
-        MiningSchema: string(source.MiningSchema, sha256),
-        MiningValidation: string(source.MiningValidation, sha256),
-        MiningQueries: string(source.MiningQueries, sha256),
-      },
-      querySetSha256: string(identity.querySetSha256, sha256),
-    },
+    target,
+    identity,
     deploymentObservation: {
       observedAtUtc: deployedAt,
       eventstreamNativeDefinitionSha256: string(
