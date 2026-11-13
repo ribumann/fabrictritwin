@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulator/mining";
-import { createD01IncidentRun } from "../../mining-incidents/catalog.js";
+import {
+  createD01IncidentRun,
+  createD01VersionedIncidentRun,
+} from "../../mining-incidents/catalog.js";
 import type { MiningIncident, MiningIncidentAssessment } from "../../mining-incidents/evaluator.js";
 import type { readMiningIncidentJournal } from "../../mining-incidents/runtime.js";
 import type { MiningRunRecord } from "../run-coordinator.js";
@@ -211,10 +214,13 @@ export function mapCurrentIncidentAssessments(input: {
  * This remains unmounted until independently authorized source and deployment proof is available.
  */
 export function mapCurrentIncidentJournal(input: {
-  run: Pick<MiningRunRecord, "runId" | "startedAt" | "stopAt">;
+  run: Pick<MiningRunRecord, "runId" | "startedAt" | "stopAt" | "contract">;
   journal: NonNullable<Awaited<ReturnType<typeof readMiningIncidentJournal>>>;
 }) {
-  const run = createD01IncidentRun(input.run);
+  const run =
+    input.run.contract === undefined
+      ? createD01IncidentRun(input.run)
+      : createD01VersionedIncidentRun({ ...input.run, contract: input.run.contract });
   const digest = (value: unknown) =>
     createHash("sha256").update(JSON.stringify(value)).digest("hex");
   if (
