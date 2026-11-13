@@ -288,8 +288,8 @@ let _selftest_ValidatedTelemetry = datatable(plant_id:string, run_id:string, eve
     "D01", "d0100000-0000-4000-8000-000000000001", "97f61b4c9c68aca3591d10cad24c30c6740b0e93a83675575e97beda3ebf545a", 21, 30, 1, "D01.shared.control", "D01.shared.control.power-meter", "D01.shared.control.power", 100.000, "kW", "good", 30, "813c4873cede07900ed52bf68aac5c9b24aef5f41318be001beb2712154c368c",
     "D01", "d0100000-0000-4000-8000-000000000001", "b479e0003c9b32de5ec8fb3f4346cedb1deb298b38e3ce8fa46ab21bb932a052", 22, 1, 1, "D01.shared.control", "D01.shared.control.power-meter", "D01.shared.control.power", 100.000, "kW", "good", 30, "e638bac43be01400c508515eb2b890236564ff1c86f048512c91a01c05299461"
 ]
-| extend timestamp = _selftest_WindowEnd - age_seconds * 1s,
-    received_at = timestamp + receive_delay_seconds * 1s,
+| extend timestamp = _selftest_WindowEnd - age_seconds * 1s
+| extend received_at = timestamp + receive_delay_seconds * 1s,
     catalog_version = "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
     profile_version = "d01-publish-profile-v1",
     source_contract_version = "d01-validated-source-v1"
@@ -303,8 +303,8 @@ let _selftest_ValidatedState = datatable(plant_id:string, run_id:string, event_i
     "D01", "d0100000-0000-4000-8000-000000000001", "3ea906245625d72d0c2b413a78d36e479984cdc37d34c0d5731ca36ffc25b235", 102, "C", true, "running", "43316617e8d8682fc65c819d9381841d2e46e2272d4be16bfb955b3375d852c1",
     "D01", "d0100000-0000-4000-8000-000000000001", "1df6d6b89df45999bb51fa2fc88b29a7ebb627a0ecabff7ed972f8ca86b3e53f", 103, "shared", true, "running", "03ddd59a26d4437294dce0a30373fe14f648777b0161435065520ae0b2325aee"
 ]
-| extend timestamp = _selftest_WindowEnd - 10s,
-    received_at = timestamp + 1s,
+| extend timestamp = _selftest_WindowEnd - 10s
+| extend received_at = timestamp + 1s,
     catalog_version = "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
     source_contract_version = "d01-validated-source-v1"
 | project plant_id, run_id, event_id, sequence, timestamp, received_at,
@@ -313,8 +313,8 @@ let _selftest_ValidatedState = datatable(plant_id:string, run_id:string, event_i
 let _selftest_IncidentLedger = datatable(plant_id:string, run_id:string, incident_id:string, event_id:string, event_sequence:long, age_seconds:long, receive_delay_seconds:long, rule_id:string, scope_id:string, event_type:string, severity:string, evidence:dynamic, source_contract_version:string)[
     "D01", "d0100000-0000-4000-8000-000000000001", "d0100000-0000-4000-8000-000000000002", "b57283ff5d8a8d5cc8f08b40114f3899a2669ae686e089f2fe196d4b05915b7b", 1, 20, 1, "self-test-rule", "A", "raised", "warning", dynamic({"source":"synthetic-self-test"}), "d01-incident-ledger-v1"
 ]
-| extend occurred_at = _selftest_WindowEnd - age_seconds * 1s,
-    received_at = occurred_at + receive_delay_seconds * 1s
+| extend occurred_at = _selftest_WindowEnd - age_seconds * 1s
+| extend received_at = occurred_at + receive_delay_seconds * 1s
 | project plant_id, run_id, incident_id, event_id, event_sequence,
     occurred_at, received_at, rule_id, scope_id, event_type, severity,
     evidence, source_contract_version;
@@ -458,12 +458,12 @@ let source_status = toscalar(_selftest_SourceReadiness() | project status);
             | project profile_tag_id = tag_id, cadence = interval_seconds
         ) on $left.tag_id == $right.profile_tag_id
         | project tag_id, module_id, equipment_id, metric, unit, cadence;
-    let latest =
+    let latest_telemetry =
         _selftest_DeduplicatedTelemetry(plant_id, requested_run_id, as_of_utc - 7d, as_of_utc)
         | summarize arg_max(timestamp, *) by tag_id;
     let tag_rows =
         tags
-        | join kind=leftouter latest on tag_id
+        | join kind=leftouter latest_telemetry on tag_id
         | where request_ok and source_status == "READY"
         | extend age_seconds = iff(isnull(timestamp), long(null), datetime_diff("second", as_of_utc, timestamp))
         | extend status = case(
@@ -478,7 +478,7 @@ let source_status = toscalar(_selftest_SourceReadiness() | project status);
         | project status, plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "tag",
             module_id, equipment_id, scope_id = "", tagId = tag_id, seriesId = tag_id, metric,
             value = iff(event_conflict, real(null), value), unit,
-            quality = iff(event_conflict, string(null), quality), event_time = timestamp,
+            quality = iff(event_conflict, "", quality), event_time = timestamp,
             received_at, age_seconds, state = "", scheduled_running = bool(null),
             coverage = real(null);
     let states =
@@ -502,7 +502,7 @@ let source_status = toscalar(_selftest_SourceReadiness() | project status);
         | project status, plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "state",
             module_id = "", equipment_id = "", scope_id, tagId = "", seriesId = "", metric = "",
             value = real(null), unit = "", quality = "", event_time = timestamp,
-            received_at, age_seconds, state = iff(event_conflict, string(null), state),
+            received_at, age_seconds, state = iff(event_conflict, "", state),
             scheduled_running = iff(event_conflict, bool(null), scheduled_running), coverage = real(null);
     let blocked =
         print status = iff(not(request_ok), "INVALID_REQUEST", source_status),
@@ -741,17 +741,17 @@ let source_status = toscalar(_selftest_SourceReadiness() | project status);
         | join kind=inner (common_stats | extend join_key = 1) on join_key
         | extend join_key = 1
         | join kind=inner (conflicting_events | extend join_key = 1) on join_key
-        | extend feed_a_coverage = todouble(feed_a_good) / floor(todouble(duration_seconds) / todouble(feed_a_cadence)),
-            feed_b_coverage = todouble(feed_b_good) / floor(todouble(duration_seconds) / todouble(feed_b_cadence)),
-            feed_c_coverage = todouble(feed_c_good) / floor(todouble(duration_seconds) / todouble(feed_c_cadence)),
-            water_coverage = todouble(water_good) / floor(todouble(duration_seconds) / todouble(water_cadence)),
-            power_coverage = todouble(power_good) / floor(todouble(duration_seconds) / todouble(power_cadence))
+        | extend feed_a_coverage = todouble(feed_a_good) / bin(todouble(duration_seconds) / todouble(feed_a_cadence), 1.0),
+            feed_b_coverage = todouble(feed_b_good) / bin(todouble(duration_seconds) / todouble(feed_b_cadence), 1.0),
+            feed_c_coverage = todouble(feed_c_good) / bin(todouble(duration_seconds) / todouble(feed_c_cadence), 1.0),
+            water_coverage = todouble(water_good) / bin(todouble(duration_seconds) / todouble(water_cadence), 1.0),
+            power_coverage = todouble(power_good) / bin(todouble(duration_seconds) / todouble(power_cadence), 1.0)
         | extend feed_coverage = min_of(feed_a_coverage, feed_b_coverage, feed_c_coverage),
             common_coverage = common_seconds / duration_seconds
         | extend coverage_valid = feed_a_coverage <= 1.0 and feed_b_coverage <= 1.0 and
             feed_c_coverage <= 1.0 and water_coverage <= 1.0 and power_coverage <= 1.0 and
-            invalid_common_bins == 0,
-            ratio_ok = coverage_valid and conflict_event_count == 0 and state_conflict_count == 0 and
+            invalid_common_bins == 0
+        | extend ratio_ok = coverage_valid and conflict_event_count == 0 and state_conflict_count == 0 and
                 common_coverage >= 0.90 and common_feed >= 10.0
         | project status = case(
             source_status != "READY", source_status,

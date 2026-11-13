@@ -75,12 +75,12 @@
             | project profile_tag_id = tag_id, cadence = interval_seconds
         ) on $left.tag_id == $right.profile_tag_id
         | project tag_id, module_id, equipment_id, metric, unit, cadence;
-    let latest =
+    let latest_telemetry =
         mining_DeduplicatedTelemetry(plant_id, requested_run_id, as_of_utc - 7d, as_of_utc)
         | summarize arg_max(timestamp, *) by tag_id;
     let tag_rows =
         tags
-        | join kind=leftouter latest on tag_id
+        | join kind=leftouter latest_telemetry on tag_id
         | where request_ok and source_status == "READY"
         | extend age_seconds = iff(isnull(timestamp), long(null), datetime_diff("second", as_of_utc, timestamp))
         | extend status = case(
@@ -95,7 +95,7 @@
         | project status, plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "tag",
             module_id, equipment_id, scope_id = "", tagId = tag_id, seriesId = tag_id, metric,
             value = iff(event_conflict, real(null), value), unit,
-            quality = iff(event_conflict, string(null), quality), event_time = timestamp,
+            quality = iff(event_conflict, "", quality), event_time = timestamp,
             received_at, age_seconds, state = "", scheduled_running = bool(null),
             coverage = real(null);
     let states =
@@ -119,7 +119,7 @@
         | project status, plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "state",
             module_id = "", equipment_id = "", scope_id, tagId = "", seriesId = "", metric = "",
             value = real(null), unit = "", quality = "", event_time = timestamp,
-            received_at, age_seconds, state = iff(event_conflict, string(null), state),
+            received_at, age_seconds, state = iff(event_conflict, "", state),
             scheduled_running = iff(event_conflict, bool(null), scheduled_running), coverage = real(null);
     let blocked =
         print status = iff(not(request_ok), "INVALID_REQUEST", source_status),
@@ -361,17 +361,17 @@
         | join kind=inner (common_stats | extend join_key = 1) on join_key
         | extend join_key = 1
         | join kind=inner (conflicting_events | extend join_key = 1) on join_key
-        | extend feed_a_coverage = todouble(feed_a_good) / floor(todouble(duration_seconds) / todouble(feed_a_cadence)),
-            feed_b_coverage = todouble(feed_b_good) / floor(todouble(duration_seconds) / todouble(feed_b_cadence)),
-            feed_c_coverage = todouble(feed_c_good) / floor(todouble(duration_seconds) / todouble(feed_c_cadence)),
-            water_coverage = todouble(water_good) / floor(todouble(duration_seconds) / todouble(water_cadence)),
-            power_coverage = todouble(power_good) / floor(todouble(duration_seconds) / todouble(power_cadence))
+        | extend feed_a_coverage = todouble(feed_a_good) / bin(todouble(duration_seconds) / todouble(feed_a_cadence), 1.0),
+            feed_b_coverage = todouble(feed_b_good) / bin(todouble(duration_seconds) / todouble(feed_b_cadence), 1.0),
+            feed_c_coverage = todouble(feed_c_good) / bin(todouble(duration_seconds) / todouble(feed_c_cadence), 1.0),
+            water_coverage = todouble(water_good) / bin(todouble(duration_seconds) / todouble(water_cadence), 1.0),
+            power_coverage = todouble(power_good) / bin(todouble(duration_seconds) / todouble(power_cadence), 1.0)
         | extend feed_coverage = min_of(feed_a_coverage, feed_b_coverage, feed_c_coverage),
             common_coverage = common_seconds / duration_seconds
         | extend coverage_valid = feed_a_coverage <= 1.0 and feed_b_coverage <= 1.0 and
             feed_c_coverage <= 1.0 and water_coverage <= 1.0 and power_coverage <= 1.0 and
-            invalid_common_bins == 0,
-            ratio_ok = coverage_valid and conflict_event_count == 0 and state_conflict_count == 0 and
+            invalid_common_bins == 0
+        | extend ratio_ok = coverage_valid and conflict_event_count == 0 and state_conflict_count == 0 and
                 common_coverage >= 0.90 and common_feed >= 10.0
         | project status = case(
             source_status != "READY", source_status,

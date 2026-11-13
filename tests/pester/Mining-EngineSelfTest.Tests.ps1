@@ -9,7 +9,7 @@ BeforeAll {
     $script:Manifest = Get-Content -LiteralPath $script:ManifestPath -Raw | ConvertFrom-Json
     $script:ExpectedSourceHashes = @{
         'infra/fabric/eventhouse/MiningValidation.kql' = 'e733da5365075ea850588f1bf57ff3bc3ff7a2055fa3217149c5f4d26b94e0df'
-        'infra/fabric/eventhouse/MiningQueries.kql' = 'aa2e41fa8d370f77e217da5304cd0ad7c5c4c1cce2b22b8ca541fa9b38f19c05'
+        'infra/fabric/eventhouse/MiningQueries.kql' = '818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a'
         'apps/simulator/src/mining/plant-catalog.json' = '0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce'
         'apps/simulator/src/mining/catalog.ts' = 'ae699fe26beaad2f245a317ecb96e9dbfdecdf0414a34e1eb26a31f5f1930a66'
         'infra/fabric/eventhouse/MiningSchema.kql' = 'd8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1'
@@ -18,11 +18,28 @@ BeforeAll {
 
 Describe 'Synthetic mining KQL engine self-test' {
     It 'pins the exact generated payload and frozen source files' {
-        $script:Manifest.schemaVersion | Should -Be 1
+        $script:Manifest.schemaVersion | Should -Be 2
         $script:Manifest.status | Should -Be 'synthetic-engine-self-test-only'
-        $script:Manifest.sourceCommit | Should -Be '324d73496913b4a2944713eb8861f2b7fdba4c02'
-        $script:Manifest.querySha256 | Should -Be 'a1a05bf82f28989d32b8c7190e7fc3a341038b90f4e28a5c9d1edae4f15034b4'
-        $script:Manifest.queryBytes | Should -Be 108379
+        $script:Manifest.sourceRevision | Should -Be 'd01-kql-coverage-bins-v5'
+        $script:Manifest.sourceBaseCommit | Should -Be '4d1f93b6d1cc7e940d24f73621742329c112197d'
+        $script:Manifest.historicalSource.sourceCommit | Should -Be '324d73496913b4a2944713eb8861f2b7fdba4c02'
+        $script:Manifest.historicalSource.sourceFiles[1].sha256 | Should -Be 'aa2e41fa8d370f77e217da5304cd0ad7c5c4c1cce2b22b8ca541fa9b38f19c05'
+        $script:Manifest.historicalSource.querySha256 | Should -Be 'a1a05bf82f28989d32b8c7190e7fc3a341038b90f4e28a5c9d1edae4f15034b4'
+        $script:Manifest.historicalSource.queryBytes | Should -Be 108379
+        $script:Manifest.previousCandidates[0].sourceCommit | Should -Be '40d13ed257b0eeba7323d89710bc364872c23956'
+        $script:Manifest.previousCandidates[0].miningQueriesSha256 | Should -Be '68e69067deb7f898196ce2c64a95cd98e92652fd81b4e64866657d8acc037105'
+        $script:Manifest.previousCandidates[0].querySha256 | Should -Be 'c90677d2dbba05d300b4550f35601a56b0d8a32a7c219ee461253325e08e0677'
+        $script:Manifest.previousCandidates[0].queryBytes | Should -Be 108399
+        $script:Manifest.previousCandidates[1].sourceCommit | Should -Be '73e4e428128d5dffd527074feca90d3a103231c9'
+        $script:Manifest.previousCandidates[1].miningQueriesSha256 | Should -Be '9658f006440604d87b4211007dbd6e4990043ed6b80780e1808040dc343f91b8'
+        $script:Manifest.previousCandidates[1].querySha256 | Should -Be '0b3e3027612fab95ce513d2dafcfbfabc01cda0fdf34773c135e85713bd8a9cb'
+        $script:Manifest.previousCandidates[1].queryBytes | Should -Be 108379
+        $script:Manifest.previousCandidates[2].sourceCommit | Should -Be 'b43bfc477da75433ef9cd33bf2eed56059b527cc'
+        $script:Manifest.previousCandidates[2].miningQueriesSha256 | Should -Be '63f84951b34cf27722fb74f58234dac659af058d50dc2cb1430b58409fe48b4c'
+        $script:Manifest.previousCandidates[2].querySha256 | Should -Be '380c2234bbd86545ea52b8cc0af90e58a7671b38aa5f76c4b8974c7eae9ffd41'
+        $script:Manifest.previousCandidates[2].queryBytes | Should -Be 108395
+        $script:Manifest.querySha256 | Should -Be '8097f6b29dfb2d483e36088d956015796d60c6c226ccc52c69e213b165867e5f'
+        $script:Manifest.queryBytes | Should -Be 108410
         $script:Manifest.fixtureSha256 | Should -Be '5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1'
         (Get-FileHash -LiteralPath $script:QueryPath -Algorithm SHA256).Hash.ToLowerInvariant() |
             Should -Be $script:Manifest.querySha256
@@ -60,6 +77,62 @@ Describe 'Synthetic mining KQL engine self-test' {
         $finalOutput = $script:Query.Substring($script:Query.LastIndexOf("`nprint") + 1)
         $finalOutput | Should -Match '(?s)^print\s+self_test_passed\s*=.*summary_feed_tph.*compare_good_samples.*active_incidents.*;$'
         $finalOutput | Should -Not -Match '\b(event_id|tagId|seriesId|evidence|received_at)\b'
+    }
+
+    It 'fixes the reserved latest identifier in deployable source and extracted payload' {
+        $source = Get-Content -LiteralPath (Join-Path $script:Root 'infra\fabric\eventhouse\MiningQueries.kql') -Raw
+        foreach ($text in @($source, $script:Query)) {
+            $text | Should -Not -Match '\blet\s+latest\s*='
+            $text | Should -Not -Match '\bjoin\s+kind=leftouter\s+latest\s+on\b'
+            $text | Should -Match '\blet\s+latest_telemetry\s*='
+            $text | Should -Match '\bjoin\s+kind=leftouter\s+latest_telemetry\s+on\s+tag_id\b'
+        }
+    }
+
+    It 'masks conflicted strings with supported empty literals without hiding the conflict status' {
+        $source = Get-Content -LiteralPath (Join-Path $script:Root 'infra\fabric\eventhouse\MiningQueries.kql') -Raw
+        foreach ($text in @($source, $script:Query)) {
+            $text | Should -Not -Match '\bstring\s*\(\s*null\s*\)'
+            $text | Should -Match 'quality = iff\(event_conflict, "", quality\)'
+            $text | Should -Match 'state = iff\(event_conflict, "", state\)'
+            ([regex]::Matches($text, 'event_conflict, "DUPLICATE_CONFLICT"')).Count | Should -BeGreaterOrEqual 2
+        }
+    }
+
+    It 'orders fixture timestamp dependencies and preserves real curated column contracts (offline only)' {
+        $schema = Get-Content -LiteralPath (Join-Path $script:Root 'infra\fabric\eventhouse\MiningSchema.kql') -Raw
+        foreach ($table in @('ValidatedTelemetry', 'ValidatedState', 'IncidentLedger')) {
+            $columns = [regex]::Match(
+                $schema, "\.create table mining_$table \(([^)]+)\)"
+            ).Groups[1].Value.Split(',') | ForEach-Object { $_.Trim().Split(':')[0] }
+            $binding = [regex]::Match(
+                $script:Query, "(?s)let _selftest_$table = datatable\(.*?\| project ([^;]+);"
+            )
+            $binding.Success | Should -BeTrue
+            $projected = $binding.Groups[1].Value.Split(',') | ForEach-Object { $_.Trim() }
+            ($projected -join ',') | Should -Be ($columns -join ',')
+            $timeColumn = if ($table -eq 'IncidentLedger') { 'occurred_at' } else { 'timestamp' }
+            $binding.Value | Should -Match "\| extend $timeColumn = [^\r\n]+\r?\n\| extend received_at = $timeColumn \+"
+        }
+    }
+
+    It 'binds summary coverage before ratio eligibility in real source and extracted payload' {
+        $source = Get-Content -LiteralPath (Join-Path $script:Root 'infra\fabric\eventhouse\MiningQueries.kql') -Raw
+        foreach ($text in @($source, $script:Query)) {
+            $text | Should -Match 'invalid_common_bins == 0\s*\| extend ratio_ok = coverage_valid and conflict_event_count == 0'
+            $text | Should -Not -Match 'invalid_common_bins == 0,\s*ratio_ok'
+        }
+    }
+
+    It 'uses explicit unit-sized bins for all summary expected-sample denominators' {
+        $source = Get-Content -LiteralPath (Join-Path $script:Root 'infra\fabric\eventhouse\MiningQueries.kql') -Raw
+        foreach ($text in @($source, $script:Query)) {
+            $text | Should -Not -Match '\bfloor\('
+            foreach ($signal in @('feed_a', 'feed_b', 'feed_c', 'water', 'power')) {
+                $expected = "${signal}_coverage = todouble(${signal}_good) / bin(todouble(duration_seconds) / todouble(${signal}_cadence), 1.0)"
+                $text | Should -Match ([regex]::Escape($expected))
+            }
+        }
     }
 
     It 'pins deterministic happy-path expectations and labels synthetic readiness' {

@@ -243,6 +243,34 @@ Git-blob checkout. It then normalizes source text to LF for extraction.
 Source pins remain unchanged; the output hash identifies the normalized
 successor payload and is reproducible across Windows and Linux.
 
+Manifest v2 identifies successor `d01-kql-coverage-bins-v5` relative to
+`sourceBaseCommit`; `sourceFiles` pins its effective inputs, not unchanged
+inputs from the original commit. `historicalSource` preserves the original
+source pins and the reviewed v1 payload identity. The deployable PlantLatest
+binding and extracted payload use `latest_telemetry` instead of reserved
+`latest`, which native parsing rejected. This successor does not refresh any
+trusted receipt expectations, authorize deployment, or prove native execution.
+Existing independently protected receipt identities still require exact
+comparison and fresh authorized readback; none are supplied by this manifest.
+`previousCandidates` retains the exact v2 source/payload identity rejected by
+the native parser for `string(null)`. Kusto's string type does not support
+nulls ([null-value documentation](https://learn.microsoft.com/kusto/query/scalar-data-types/null-values?view=microsoft-fabric)).
+The v3 deployable source and extracted payload mask conflicted quality/state
+strings with `""` while retaining `DUPLICATE_CONFLICT`; no quality or state is
+fabricated. Independent happy-path fixture expectations remain unchanged.
+The v4 fixture binds telemetry/state `timestamp` and incident `occurred_at`
+before the dependent `received_at` expression, rather than in the same
+`extend`. Deployable PlantSummary likewise binds `coverage_valid` before
+`ratio_ok`. The v3 candidate identity is retained, and offline regressions
+compare all three fixture projections to the real curated-table schemas.
+This is column-contract checking, not an offline KQL compiler or native pass.
+The v5 source uses `bin(duration / cadence, 1.0)` for all five summary
+expected-sample denominators. Kusto's `floor()` is an alias of `bin()` and
+[requires the rounding size](https://learn.microsoft.com/kusto/query/bin-function?view=microsoft-fabric);
+the v4 single-argument calls failed native semantic analysis. The exact v4
+identity remains in `previousCandidates`. Neither an isolated diagnostic
+success nor this source correction certifies deployment or live readiness.
+
 The manifest freezes the input arguments and independent expected results for
 all five G5 functions. In brief: PlantLatest returns 56 catalog tags and four
 states (11 observed tags, 45 unknown); PlantSummary expects 42 t/h, 0.7

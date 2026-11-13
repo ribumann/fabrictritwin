@@ -1,10 +1,62 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "status": "synthetic-engine-self-test-only",
-  "sourceCommit": "324d73496913b4a2944713eb8861f2b7fdba4c02",
+  "sourceRevision": "d01-kql-coverage-bins-v5",
+  "sourceBaseCommit": "4d1f93b6d1cc7e940d24f73621742329c112197d",
+  "historicalSource": {
+    "sourceCommit": "324d73496913b4a2944713eb8861f2b7fdba4c02",
+    "sourceFiles": [
+      {
+        "path": "infra/fabric/eventhouse/MiningValidation.kql",
+        "sha256": "e733da5365075ea850588f1bf57ff3bc3ff7a2055fa3217149c5f4d26b94e0df"
+      },
+      {
+        "path": "infra/fabric/eventhouse/MiningQueries.kql",
+        "sha256": "aa2e41fa8d370f77e217da5304cd0ad7c5c4c1cce2b22b8ca541fa9b38f19c05"
+      },
+      {
+        "path": "apps/simulator/src/mining/plant-catalog.json",
+        "sha256": "0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce"
+      },
+      {
+        "path": "apps/simulator/src/mining/catalog.ts",
+        "sha256": "ae699fe26beaad2f245a317ecb96e9dbfdecdf0414a34e1eb26a31f5f1930a66"
+      },
+      {
+        "path": "infra/fabric/eventhouse/MiningSchema.kql",
+        "sha256": "d8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1"
+      }
+    ],
+    "payloadCommit": "94e90886629b07ee4100223077f0a6747636dfd6",
+    "querySha256": "a1a05bf82f28989d32b8c7190e7fc3a341038b90f4e28a5c9d1edae4f15034b4",
+    "queryBytes": 108379
+  },
+  "previousCandidates": [
+    {
+      "sourceRevision": "d01-kql-reserved-identifier-v2",
+      "sourceCommit": "40d13ed257b0eeba7323d89710bc364872c23956",
+      "miningQueriesSha256": "68e69067deb7f898196ce2c64a95cd98e92652fd81b4e64866657d8acc037105",
+      "querySha256": "c90677d2dbba05d300b4550f35601a56b0d8a32a7c219ee461253325e08e0677",
+      "queryBytes": 108399
+    },
+    {
+      "sourceRevision": "d01-kql-string-conflict-v3",
+      "sourceCommit": "73e4e428128d5dffd527074feca90d3a103231c9",
+      "miningQueriesSha256": "9658f006440604d87b4211007dbd6e4990043ed6b80780e1808040dc343f91b8",
+      "querySha256": "0b3e3027612fab95ce513d2dafcfbfabc01cda0fdf34773c135e85713bd8a9cb",
+      "queryBytes": 108379
+    },
+    {
+      "sourceRevision": "d01-kql-column-bindings-v4",
+      "sourceCommit": "b43bfc477da75433ef9cd33bf2eed56059b527cc",
+      "miningQueriesSha256": "63f84951b34cf27722fb74f58234dac659af058d50dc2cb1430b58409fe48b4c",
+      "querySha256": "380c2234bbd86545ea52b8cc0af90e58a7671b38aa5f76c4b8974c7eae9ffd41",
+      "queryBytes": 108395
+    }
+  ],
   "queryPath": "scripts/fabric/fixtures/mining-engine-self-test.kql",
-  "querySha256": "a1a05bf82f28989d32b8c7190e7fc3a341038b90f4e28a5c9d1edae4f15034b4",
-  "queryBytes": 108379,
+  "querySha256": "8097f6b29dfb2d483e36088d956015796d60c6c226ccc52c69e213b165867e5f",
+  "queryBytes": 108410,
   "maxBytes": 262144,
   "fixtureSha256": "5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1",
   "sourceFiles": [
@@ -14,7 +66,7 @@
     },
     {
       "path": "infra/fabric/eventhouse/MiningQueries.kql",
-      "sha256": "aa2e41fa8d370f77e217da5304cd0ad7c5c4c1cce2b22b8ca541fa9b38f19c05"
+      "sha256": "818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a"
     },
     {
       "path": "apps/simulator/src/mining/plant-catalog.json",
@@ -201,7 +253,8 @@
       "profileVersion": "d01-publish-profile-v1",
       "sourceContractVersion": "d01-validated-source-v1",
       "incidentSourceVersion": "d01-incident-ledger-v1",
-      "sourceCommit": "324d73496913b4a2944713eb8861f2b7fdba4c02",
+      "sourceRevision": "d01-kql-coverage-bins-v5",
+      "sourceBaseCommit": "4d1f93b6d1cc7e940d24f73621742329c112197d",
       "selfTestRunId": "d0100000-0000-4000-8000-000000000001",
       "selfTestFixtureSha256": "5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1"
     },
