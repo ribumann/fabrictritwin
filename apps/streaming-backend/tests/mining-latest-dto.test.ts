@@ -89,6 +89,22 @@ describe("latest mining source mapping", () => {
     expect(() => mapLatestRows(input, rows)).toThrow("timestamp");
   });
 
+  it("accepts a state without an ingestion timestamp but rejects malformed provenance", () => {
+    const rows = sourceRows();
+    const state = rows[56];
+    Object.assign(state, {
+      status: "OK",
+      event_time: "2026-01-01T00:04:50.000Z",
+      received_at: null,
+      age_seconds: 10,
+      state: "running",
+      scheduled_running: true,
+    });
+    expect(mapLatestRows(input, rows).states.A).toEqual({ status: "running", state: "running" });
+    state.received_at = "invalid";
+    expect(() => mapLatestRows(input, rows)).toThrow("timestamp");
+  });
+
   it("rejects incomplete or spoofed grids and exposes source conflict", () => {
     const rows = sourceRows();
     expect(() => mapLatestRows(input, rows.slice(1))).toThrow("Incomplete");
