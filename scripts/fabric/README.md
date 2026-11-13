@@ -204,6 +204,40 @@ planner-safeguard checks only; they do not prove KQL syntax, ingestion,
 timestamp preservation, policy state or runtime results. No live definitions,
 data, queries or permissions are changed by these scripts or checks.
 
+### Synthetic KQL engine self-test
+
+`fixtures/mining-engine-self-test.kql` is a query-local scalar test assembled
+from the frozen `MiningValidation.kql` and `MiningQueries.kql` function bodies.
+The builder pins those exact source hashes and the D01 catalog/profile code,
+then rewrites every source table/function reference to a private `_selftest_`
+alias. All rows come from local `datatable` bindings; the query has no stored
+definition commands, endpoint references, or business-table reads. It covers
+one happy-path call for each of the five G5 functions plus same-event retry
+deduplication and receive-time selection. The fixture is sized to the frozen
+catalog/profile contract and expects 42 t/h plant feed, 0.7 processed tonnes,
+full common coverage, three running lines, one active incident, and bounded
+trend/line result counts.
+
+The local source-contract row deliberately sets timestamp/writer flags to
+exercise the READY branches. This synthetic status is **not** source,
+deployment, timestamp-preservation, or authorization evidence. The final row
+contains only scalar booleans, counts, and aggregate values. It cannot grant
+readiness or replace independent target/native-definition readback.
+
+Rebuild or verify the pinned payload from the repository root:
+
+```powershell
+node .\scripts\fabric\build-mining-engine-self-test.mjs
+node .\scripts\fabric\build-mining-engine-self-test.mjs --check
+Invoke-Pester .\tests\pester\Mining-EngineSelfTest.Tests.ps1
+```
+
+The generated payload is capped at 256 KiB and its exact UTF-8 SHA-256 and
+byte count are recorded in the adjacent manifest. It has **not** been run
+against hosted KQL. Offline generation/tests validate source pins, locality,
+payload bounds and fixture expectations only; engine compilation, actual
+query results and all error branches remain unverified.
+
 Kusto soft-delete periods are minimum availability periods, not guaranteed
 immediate deletion. Retention commands are scoped to mining-owned tables only;
 the ledger leaves triathlon objects, database recoverability, and unrelated

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "status": "synthetic-engine-self-test-only",
+  "sourceCommit": "324d73496913b4a2944713eb8861f2b7fdba4c02",
+  "queryPath": "scripts/fabric/fixtures/mining-engine-self-test.kql",
+  "querySha256": "8726333c69ca5de38c8d784ec555e035a7b9b10662564609d79826e752d4f9e4",
+  "queryBytes": 106707,
+  "maxBytes": 262144,
+  "fixtureSha256": "4e08566ab5d6ed9995a31588f70ac745067ad124196ef01d7c79929d33d8c7c5",
+  "sourceFiles": [
+    {
+      "path": "infra/fabric/eventhouse/MiningValidation.kql",
+      "sha256": "e733da5365075ea850588f1bf57ff3bc3ff7a2055fa3217149c5f4d26b94e0df"
+    },
+    {
+      "path": "infra/fabric/eventhouse/MiningQueries.kql",
+      "sha256": "aa2e41fa8d370f77e217da5304cd0ad7c5c4c1cce2b22b8ca541fa9b38f19c05"
+    },
+    {
+      "path": "apps/simulator/src/mining/plant-catalog.json",
+      "sha256": "0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce"
+    },
+    {
+      "path": "apps/simulator/src/mining/catalog.ts",
+      "sha256": "ae699fe26beaad2f245a317ecb96e9dbfdecdf0414a34e1eb26a31f5f1930a66"
+    }
+  ],
+  "fixture": {
+    "catalogRows": 194,
+    "profileRows": 56,
+    "telemetryRows": 23,
+    "telemetryLogicalEvents": 22,
+    "stateRows": 4,
+    "incidentRows": 1,
+    "expected": {
+      "sourceStatus": "READY (synthetic only)",
+      "latestTagRows": 56,
+      "latestGoodTagRows": 11,
+      "latestStateRows": 4,
+      "unknownTagRows": 45,
+      "summaryStatus": "OK",
+      "summaryFeedTph": 42,
+      "summaryProcessedTonnes": 0.7,
+      "summaryRunningLines": 3,
+      "summaryCommonCoverage": 1,
+      "assetTrendRows": 1,
+      "compareLinesRows": 3,
+      "compareGoodSamples": 6,
+      "activeIncidents": 1,
+      "retryCopies": 2,
+      "retryReceivedAt": "minimum received_at for same event_id"
+    }
+  },
+  "limitations": [
+    "Query-local datatable fixtures only; no deployed table, function, endpoint, or business-row reads.",
+    "Synthetic source readiness flags exercise query branches and are not evidence of deployment or source readiness.",
+    "Aggregate scalar output does not establish hosted KQL compilation, ingestion, timestamp preservation, or runtime readiness.",
+    "Happy-path query results and same-event retry behavior are covered; hosted semantics and all error branches remain unverified."
+  ]
+}
