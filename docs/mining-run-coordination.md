@@ -39,7 +39,16 @@ The unmounted query transport additionally requires
 match the existing `EVENTHOUSE_QUERY_URI` and `EVENTHOUSE_DATABASE_NAME`, plus
 `MINING_CURATED_SOURCE_VERSION=d01-validated-source-v1` and
 `MINING_CURATED_QUERY_VERSION=d01-g5-query-v1`. These values are configuration,
-not evidence of source readiness. The unmounted DTO mappers target the reviewed
+not evidence of source readiness.
+
+The query transport accepts public Azure Data Explorer (`*.kusto.windows.net`)
+and native Fabric KQL (`*.kusto.fabric.microsoft.com`) query endpoints, never
+ingestion endpoints. The exact configured target must still match both sets of
+variables. Both endpoint types require public-cloud authentication metadata,
+the same verified Kusto token resource and the explicitly selected managed
+identity; there is no endpoint, identity or token-resource fallback.
+
+The unmounted DTO mappers target the reviewed
 G5 source contract, including the summary conflict fix in source PR #32 at
 `4e5373d744057161f73888ac5d57ee0e6fdc8f07`. That source has not been compiled
 or deployed to the hosted estate. A readiness control row or a successful scalar
