@@ -38,6 +38,9 @@ match the existing `EVENTHOUSE_QUERY_URI` and `EVENTHOUSE_DATABASE_NAME`, plus
 `MINING_CURATED_QUERY_VERSION=d01-g5-query-v1`. These values are configuration,
 not evidence of source readiness. No data route invokes this transport until the
 reviewed functions' readiness control rows and result schemas are connected.
+The SDK's separate metadata discovery is not cancellable by the query client's
+close operation; the transport must not be mounted until its entire pre-query
+and query path is bounded and cancellable.
 
 ## Prerequisites and configuration
 
