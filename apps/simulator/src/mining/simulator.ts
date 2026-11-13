@@ -30,6 +30,7 @@ export interface D01SimulationBatch {
   batch_id: string;
   timestamp: string;
   events: readonly D01TransportBody[];
+  /** Simulator-only diagnostics; not part of the transport events or operational incidents. */
   alert_transitions: readonly D01AlertTransition[];
 }
 
@@ -38,6 +39,7 @@ export interface D01SimulationStep {
   timestamp: string;
   numeric_events: readonly D01NumericTelemetryEvent[];
   state_events: readonly D01PlantStateEvent[];
+  /** Simulator-only diagnostics; not authoritative operational incidents. */
   alert_transitions: readonly D01AlertTransition[];
   batch: D01SimulationBatch | null;
   completed: boolean;

@@ -2,8 +2,11 @@
 
 This mining-scoped package is independent of the simulator's existing triathlon
 models, generators, Eventstream publisher, and `DEMO_PROFILE`. The repository
-root entry point does not re-export mining types. Nothing here starts a hosted
-run or publishes to Fabric.
+root entry point does not re-export mining types. After building the simulator,
+import its public API and types from `@triathlon-twin/simulator/mining` (backed
+by `dist/mining/index.js` and `dist/mining/index.d.ts`). The existing
+`@triathlon-twin/simulator` entry point remains unchanged. Nothing here starts
+a hosted run or publishes to Fabric.
 
 `plant-catalog.json` is the byte-for-byte published D01 metadata asset. Its
 SHA-256 and the individually verified authored-asset receipts are recorded in
@@ -28,8 +31,12 @@ The simulator accumulates one transport batch every 30 simulated seconds
 (flushing a final partial batch if a custom duration ends between boundaries).
 An unacknowledged batch blocks further steps; retry it with `getPendingBatch()`
 and acknowledge its `batch_id` only after successful delivery. This preserves
-event IDs and prevents accidental overlapping sends. Alert transition rows ride
-beside the transport batch as rows, not as a third `entityType`.
-Alert transitions are derived from emitted measurements or observed telemetry
-gaps; scripted scenario selection and state transitions are not copied into
-alert evidence. Scenario oracles should remain separate from observed data.
+event IDs and prevents accidental overlapping sends. `events` contains only
+numeric and state transport bodies. `alert_transitions` contains **non-authoritative
+simulator diagnostics**, not operational incidents or a third `entityType`;
+they must not be published as actual incidents. The private evaluator has four
+simplified threshold/gap rules, not the required five-rule incident engine: it
+does not implement escalation, hold timers, startup gating, state-heartbeat
+freshness, or acknowledgment workflows. Its measurements and telemetry gaps
+are not scripted scenario labels, but that does not make the evaluator suitable
+for real observations. Scenario oracles should remain separate from observed data.

@@ -44,6 +44,7 @@ export interface D01PlantStateEvent {
 export type D01AlertSeverity = "warning" | "high";
 export type D01AlertTransitionKind = "raised" | "cleared";
 
+/** Simulator-only diagnostic, not an authoritative operational incident. */
 export interface D01AlertTransition {
   plant_id: typeof D01_PLANT_ID;
   run_id: string;
