@@ -23,6 +23,40 @@ delegate to the coordinator and never start a sender. Stop acceptance is intent,
 not acknowledgement. An optional caller AbortSignal fails the run; it is not a
 durable operator stop. Use the authorized `requestStop` path for that.
 
+Incident processing is a separate **explicit** optional third argument to
+`run(input, cancellation, incidents)`: the trusted host supplies
+`MiningIncidentDependencies`, including a delegated authority and a real
+strictly validated curated source. The pure `createD01IncidentRun(run)` factory
+binds `runId`, `startedAt` and `endsAt` to the freshly admitted run and its
+model `stopAt`, never `finalFlushUntil`. It freezes tags in canonical source
+catalog order, joins module scopes and the versioned publication profile by
+ID, and checks their identities and intervals. It never uses the raw interval
+placeholder. Incident processing requires a whole number of minutes. No
+constructor, configuration flag, observed admission, status read or ordinary
+viewer disconnect activates or adopts it. There is no production curated
+adapter or delegated write boundary in this source.
+
+The factory can reconstruct a read-only journal binding from a durable run
+record without activating it. Run records do not currently persist catalog or
+profile versions: a digest match does not establish historical authorization or
+which producer version ran. An independently trusted approved-run/version
+proof is still required before exposing incident data.
+
+On an accepted stop through this runtime, the local incident processor is
+aborted as soon as stop intent is persisted, even if the subsequent status
+read fails; that failure still reaches the caller. An uncertain stop write
+aborts local incident and sender work and remains an error. A stop recorded
+elsewhere is observed by the next owner heartbeat or batch admission. Owner cancellation or runtime shutdown also
+aborts it. `close()` initiates incident-head lease release but does not join
+ongoing reads or commits: the runner awaits both close and the actual scheduled
+operation before owner terminal persistence/release. An already admitted send
+still settles under the existing batch rules. Unknown incident writes remain
+uncertain, including a commit that may have preceded lease release; cleanup
+errors fail the run rather than being reported as a successful stop. A
+non-cooperative dependency can delay settlement until owner authority expires.
+Stopping incident processing does not prove that the final curated minute was
+processed or that ingestion completed.
+
 The clock and scheduler are injectable for local tests. Production uses wall
 UTC, monotonic `performance.now()` and abortable timer waits, not a simulator
 catch-up loop. Every five-second step must occur at/after its exact UTC deadline,
