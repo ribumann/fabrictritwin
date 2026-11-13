@@ -1,10 +1,11 @@
 # Mining incident evaluation
 
-`apps/streaming-backend/src/mining-incidents/evaluator.ts` is a bounded,
-in-memory advisory state machine over curated D01 observations. It is not wired
-to an API, runner, Fabric query, persistent store or notification route. It does
-not establish live ingestion or mining acceptance. The simulator's diagnostic
-alerts are separate and are not authoritative inputs.
+`apps/streaming-backend/src/mining-incidents/evaluator.ts` is a bounded advisory
+state machine over curated D01 observations. `runtime.ts` adds an **unmounted,
+default-off** durable processing and in-app notification/outbox foundation.
+Neither is bound to an HTTP endpoint, startup hook or live Fabric source. Offline
+tests do not establish live ingestion or mining acceptance. The simulator's
+diagnostic alerts are separate and are not authoritative inputs.
 
 ## Input boundary
 
@@ -60,12 +61,123 @@ and state evidence with source event identities. Staleness separately records
 the last valid observation time, which can predate the three-minute evidence
 window; a missing observation is never represented as a fabricated reading.
 
-## Runtime gates
+## Durable runtime contract
 
-An authorized adapter still needs curated query inputs, durable incident and
-acknowledgement persistence, single-owner/fenced scheduling, restart recovery,
-authenticated writes, and end-of-run shutdown. The current class cannot restore
-incidents after a restart. A future notification adapter must deduplicate
-transitions and enforce acknowledgement/reminder cooldowns; no Teams/email
-delivery is implemented. These are demonstration advisories, never protective
-controls or maintenance authorization.
+The host must explicitly call `MiningIncidentRuntime.open(run, "fresh" | "recover",
+dependencies, cancellation?)`. `MiningIncidentRun` pins the run ID, canonical
+start/end times and exact catalog (including order); its interval must be whole
+minutes and no longer than 30 minutes. Construction, imports, environment flags,
+status and read-only requests never activate or recover processing.
+
+`MiningIncidentAuthority.authorize` is a **trusted delegated authorization**
+boundary for fresh activation, recovery and acknowledgement, not a managed
+identity permission check. `checkRun` must reject revoked approvals, accepted
+stops, disconnected owners and incorrect run bindings. Both callbacks receive
+cancellation. A managed identity with storage access is not permission to
+activate a run. Anonymous clients must not supply these callbacks.
+
+The injected `MiningIncidentSource.read({runId, asOf, signal})` must return only
+strictly validated, curated G5 observations and their actual `receivedAt` time.
+Arrival order in the returned array is preserved; receipt times cannot move
+backwards. Do not fabricate healthy readings, derive authority from raw or
+simulator diagnostics, or substitute publisher completion for ingestion
+completion. Query/DTO agreement with the curated-source owner is an integration
+prerequisite. The adapter should return newly observed arrivals, including late
+arrivals, rather than repeatedly returning its whole historical lookback.
+Observation commands, including repeats, have a total budget of 4,096 per run.
+
+`processMinute(asOf)` accepts consecutive run-relative minute boundaries,
+starting at minute zero, never future minutes. Repeating an already committed
+minute does not requery the source or produce effects. `runScheduled()` is an
+explicit, caller-awaited bounded loop through the real run end; it renews
+authority during waits of at most 15 seconds and closes on completion. Each
+activation has a 31-minute monotonic lifetime bound even if wall time moves
+backwards; a later restart needs another explicit authorized recovery. Explicit
+recovery can process missed historical minutes using actual curated arrivals,
+not inferred observations. This does not reconstruct unknown pre-restart arrival
+times for observations that were never committed.
+
+Call and await `close()` on accepted stop/disconnect; it aborts reads
+synchronously and releases the actual head lease. An accepted stop is not proof
+that shutdown has settled. `close()` revokes authority but does not join an
+outstanding operation: the host must also await its processing/loop promise
+before reporting stopped. Dependencies must honor the supplied signal and settle
+their I/O; no timeout races leave an unobserved background side effect. Runtime
+source/authority/read budgets signal cancellation after 10 seconds, while the
+existing Blob store bounds transport attempts independently. Wire the
+reader-owned optional `MiningStore.read(path, signal?)` Blob download/body
+cancellation contract before live activation. No storage/coordinator lease
+semantics are modified here.
+
+## Journal and fencing
+
+All paths are relative to the already-selected dedicated private mining-state
+container; there is no alternate account/container or provisioning path:
+
+```text
+incidents/D01/<sha256(JSON runId)>/head.json
+incidents/D01/<sha256(JSON runId)>/<sha256(JSON page)>.json
+```
+
+Schema 1 head is `{schema, binding, tail, pages, bytes}`. The binding is SHA-256
+of the exact serialized approved run/catalog. Immutable pages are
+`{schema, binding, previous, commands}`. Commands are observations with receipt
+time, evaluations, or acknowledgements, in their actual processing order.
+The version covers evaluator replay semantics too: incompatible evaluator
+changes require a new version/migration, not silent replay under new rules.
+
+The existing Blob reader limits a document to **16,384 bytes**. Every page is
+sized before storage; the compact head never contains an evaluator snapshot,
+catalog copy, transition collection or unbounded pointer list. The committed
+chain is limited to 512 pages / 2 MiB / 4,383 commands (4,096 observations,
+31 evaluations, 256 acknowledgements). Replay reconstructs hold floors, history,
+verification, active/cleared incidents, stable transitions and acknowledgements.
+There is no second serialized copy of the evaluator state.
+
+Only a head write using **both its own lease ID and ETag** commits staged pages.
+The lease is acquired explicitly and renewed before reads/commits; ETags or
+local mutual exclusion alone are not authority. Losing authority, cancellation
+or invalid input makes that runtime unusable. Missing/corrupt pages, incompatible
+schema, byte/count mismatch and conflicting catalog/run bindings fail explicitly;
+they never reset incidents to empty or healthy.
+
+A lost head-write response or cancellation during its response is **unconfirmed**,
+not success or an instruction to retry. Explicit authorized recovery reconciles
+the committed head. A commit that reached storage before cancellation can be
+present on recovery; no local notification is published after cancellation.
+Late writes after lease release fail their actual Blob lease condition. Staged
+immutable pages have no effects until referenced by the committed head. A failed
+attempt can leave orphan pages; there is no automatic garbage collection or
+deletion of unrelated state. Retention/cleanup requires a separately approved
+operator policy.
+
+## In-app notification and read integration
+
+`snapshot()` returns `{runId, asOf, incidents}` from committed local state.
+`outbox(afterId?, limit?)` returns deterministic transition notifications with
+their stable `eventId` identities, at most 100 per page. `afterId` is the last
+seen transition event ID. This is **availability for in-app reading**, never a
+claim of delivery. The journal and deterministic replay make these entries
+durable without another external-write transaction.
+
+`acknowledge(incidentId, at)` is separately authorized and durable. The first
+acknowledgement wins; repeating it does not write or send again, including after
+restart. Acknowledgement does not clear an incident, consume/delete outbox
+entries or suppress a later escalation/clear transition. There are no periodic
+reminders, cooldown-triggered sends, delivery receipts or external Teams/email
+services. A future reminder/delivery adapter needs its own approved durable
+cooldown and unknown-delivery policy; do not treat acknowledgement as delivery.
+
+`readMiningIncidentJournal(store, run, {signal?, afterId?, limit?})` is the
+reader-owned route integration hook. It reads a single head and immutable chain,
+returning `{runId, asOf, incidents, notifications}` without acquiring a lease,
+recovering a runtime, querying Fabric or writing. Missing persistence returns
+`undefined`; `asOf: null` means no minute has been processed, not healthy
+ingestion. Corruption throws. The route still needs its own curated G5
+readiness/approval gate and must not present journal availability as ingestion
+proof. No HTTP routes or live dependencies are mounted by this item.
+
+Live acceptance still requires approved storage configuration, delegated
+activation/acknowledgement, curator-bound source validation, host lifecycle
+integration, and hosted restart/fence/stop demonstrations. These are
+demonstration advisories, never protective controls or maintenance authorization.
