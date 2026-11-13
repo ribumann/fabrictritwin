@@ -1,0 +1,124 @@
+# Mining run coordination (source only)
+
+This isolated backend module is **not wired to HTTP, a simulator sender, or deployment**.
+It does not prove G3 authoritative hosted delivery or G8 live stop/ingestion. Existing
+triathlon locks, routes, simulator jobs and `DEMO_PROFILE` behavior are unchanged.
+No storage operation is performed merely by importing the module.
+
+## Prerequisites and configuration
+
+An authorized operator must first approve and provision one **private, dedicated**
+`mining-state[-suffix]` container in the selected existing StorageV2 account.
+Assign the existing backend managed identity **Storage Blob Data Contributor at
+that container scope only**, or an approved equivalent permitting blob read,
+create/write and lease acquire/renew/release. Do not grant account-wide roles,
+reuse token-store paths, enable shared keys, or provide credentials to a browser.
+Container creation and RBAC are not approved or performed by this source layer.
+
+Future runtime integration may call `configuredMiningStore()` explicitly:
+
+| Variable                            | Contract                                                                                                     |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `MINING_RUN_COORDINATION_ENABLED`   | Absent/`false`: disabled. Only `true` enables client construction.                                           |
+| `MINING_STATE_BLOB_ENDPOINT`        | Explicit HTTPS Azure public-cloud Blob account root, no query/credentials/path. No deployed-account default. |
+| `MINING_STATE_CONTAINER`            | Dedicated `mining-state` or `mining-state-<suffix>` name.                                                    |
+| `MINING_MANAGED_IDENTITY_CLIENT_ID` | Optional existing user-assigned MI client ID; absent uses system-assigned MI.                                |
+
+ManagedIdentityCredential is intentional: no developer-credential, shared-key,
+SAS, connection-string or local resource fallback. Configuration construction
+does not validate live permission. The first actual storage operation reports
+missing container (`prerequisite`), denied access (`unauthorized`) or service/read
+failure explicitly. There is no `createIfNotExists` call, container enumeration
+or provisioning code. SDK automatic retries are disabled: uncertain writes and
+lease acquisition must be reconciled, not blindly retried.
+
+## API for the later authorized runner
+
+Import `MiningRunCoordinator` from `apps/streaming-backend/src/mining/run-coordinator.ts`
+and construct it with the configured store. Authentication and plant/run
+authorization **must be enforced by the future caller**; this is not a public API.
+
+- `start({plantId:"D01", requestId, durationSeconds?, scenario?, seed?})`: requestId
+  is a caller-retained lowercase UUID and is also the runId. Defaults are 1200
+  seconds, `normal`, seed 1. Duration is a multiple of 5 from 5..1800 seconds, seed uint32.
+  Scenarios: `normal`, `bearing-b`, `dms-c`, `shared-water-restriction`,
+  `communication-gap`. Identity parameters are immutable for that request.
+- Only a fresh, fully acknowledged admission returns `kind:"started"` with
+  `run.startedAt`, `run.stopAt` and an ephemeral `owner`. Pass that exact runId,
+  start UTC, duration, seed and scenario to the deterministic simulator.
+  Retry returns `kind:"observed"` with durable status and **never an owner**,
+  including after crash, expiry or uncertain acquisition. Conflicting start
+  throws `conflict`. Do not launch a sender from status or recover an owner.
+- `owner.runBatch(async signal => ...)` renews authority, conditionally persists
+  lifecycle and checks stop before authorizing one batch. Await it, perform only
+  that batch's bounded transport work inside the callback, honor its AbortSignal,
+  and never detach network work or bypass the gate with internal retries.
+  Event delivery uncertainty still requires event-ID reconciliation downstream.
+- `owner.heartbeat()` must be awaited at least every 30 seconds between batches.
+  Owner operations are serialized; concurrent calls fail explicitly, rather
+  than queue work beyond stop. A batch that hangs beyond safe authority is aborted;
+  it cannot authorize a later batch. No automatic simulator or evaluator starts.
+- `requestStop(runId)` may run on another authorized replica. It persists an
+  immutable stop intent **without acquiring/breaking the active lease**.
+  `accepted:true` is not stopped acknowledgement. The owner observes intent on
+  its next heartbeat/batch gate; stop and batch admission can race, allowing
+  at most the single already-authorized/in-flight batch to drain.
+- `owner.finish("publisher_complete" | "failed")` must be awaited after transport
+  settles (including a failed callback). It acknowledges `stopped` when stop was
+  observed, persists terminal state/history and releases the lease. A heartbeat
+  or batch gate observing cancellation with no batch in flight also finalizes.
+  `publisher_complete` means only sender lifecycle completion, **not Fabric
+  ingestion or expected event counts**. Failed/uncertain terminal writes throw.
+- `status(runId)` returns admission (`pending`, `accepted`, `rejected`), explicit
+  lifecycle, stop intent and immutable run bounds, or undefined for no request.
+  `admission_unknown`/`interrupted` are not successful starts or stopped
+  acknowledgements. Status reads never renew a lease or start work.
+
+## Concurrency, failure and recovery
+
+One leased `plants/D01.json` blob is the authoritative plant state shared by all
+backend replicas/revisions. Every authoritative state write supplies **both
+lease ID and ETag**. Blob leases last 60 seconds; local authority ends after 45
+seconds measured conservatively from before acquisition/renewal, with monotonic
+and wall-clock guards. The runner must use synchronized host clocks. A watchdog
+aborts at lease authority expiry or the configured duration (never over 30
+minutes), even during transport. Expired capabilities never renew themselves:
+[Azure allows renewal of expired leases](https://learn.microsoft.com/azure/storage/blobs/storage-blob-lease-javascript),
+but this module deliberately refuses resurrection.
+
+`requests/<runId>.json` is a conditional-create admission receipt; separate
+`stops/<runId>.json` is immutable stop intent. `history/<runId>.json` retains a
+terminal or interrupted snapshot before another explicit run replaces plant
+state. Records contain only bounded run parameters, IDs, timestamps and lifecycle;
+no credentials, prompts or user identity. There is no automatic blob cleanup or
+resource deletion. Establish an approved mining-only retention/cleanup policy
+before prolonged use; never remove a live lease or pending request to force retry.
+
+Expected BlobAlreadyExists/conditional-create conflicts and LeaseAlreadyPresent
+are distinguished from auth/network failures. A 412 on fenced writes or rejected
+lease renewal loses the capability immediately; unknown outcomes do too. Only
+BlobNotFound is an absent blob; ContainerNotFound is a missing prerequisite.
+Unknown 409/404 failures are not swallowed as contention/absence.
+
+After an uncertain start, inspect the **same request/run ID**. An accepted run may
+have no surviving sender; there is no takeover. Let the finite lease expire,
+record interrupted/unknown status, and use a **new explicit request ID** only
+after reconciling any already-authorized batch. A new explicit run may acquire
+the expired plant lease but never resumes the old run. This does not provide
+exactly-once transport or fence an external Eventstream itself: that requires the
+runner's cooperative abort/batch contract and downstream stable-ID deduplication.
+
+## Change ledger and rollback
+
+| Target                   | Change                                                      | Permission/cost impact                                                | Rollback                                                                                                 |
+| ------------------------ | ----------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Existing backend source  | New isolated mining module and official Blob SDK dependency | None while unwired/disabled                                           | Revert source layer                                                                                      |
+| Existing storage account | Proposed one private mining-state container, not created    | Approval and container-scoped MI role required; small bounded records | Disable future mining caller; retain evidence, remove only mining-owned configuration after lease expiry |
+
+Local checks use shared fake storage across independent coordinator instances and
+mock SDK calls; no cloud writes, container reads or credentials are needed.
+See [runtime operations](live-runtime-operations.md) for existing release
+boundaries and [configuration](dependencies-and-configuration.md) for backend
+configuration context. Actual runtime/auth wiring, approved container/RBAC,
+hosted concurrency/failure tests, sender integration and Fabric ingestion proof
+remain separate release gates.
