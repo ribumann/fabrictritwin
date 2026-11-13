@@ -1,9 +1,29 @@
 # Mining run coordination (source only)
 
-This isolated backend module is **not wired to HTTP, a simulator sender, or deployment**.
+The backend exposes a gated, read-only status endpoint; the coordinator is **not
+wired to HTTP actions, a simulator sender, or deployment**.
 It does not prove G3 authoritative hosted delivery or G8 live stop/ingestion. Existing
 triathlon locks, routes, simulator jobs and `DEMO_PROFILE` behavior are unchanged.
 No storage operation is performed merely by importing the module.
+
+## Read-only HTTP boundary
+
+The backend's `/api/mining` routes are disabled unless `MINING_READ_ENABLED=true`
+in the live profile. They require the existing signed bearer-token verification
+configuration (`ASSISTANT_AUTH_TENANT_ID` and `ASSISTANT_AUTH_CLIENT_ID`), a
+comma-separated `MINING_VIEWER_PRINCIPAL_IDS` allowlist of lowercase Entra object
+UUIDs, and one independently approved lowercase UUID in `MINING_APPROVED_RUN_ID`.
+The approval must explicitly bind `MINING_APPROVED_CATALOG_VERSION` to
+`sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce`
+and `MINING_APPROVED_PROFILE_VERSION` to `d01-publish-profile-v1`. These settings
+record operator approval; they do not prove that the publisher used those versions.
+The approved run must also have a matching durable admission in the configured
+mining-state store below. No Easy Auth header or athlete mapping grants access.
+Status and context perform read-only durable reads; publisher completion does not
+prove ingestion. Queries, incident persistence and the assistant are not connected:
+context reports `readAvailable: false`, while data routes return explicit 503.
+Start, cancel and acknowledgement remain unavailable without delegated authorization.
+Do not enable these settings as a substitute for approving infrastructure or data access.
 
 ## Prerequisites and configuration
 
@@ -119,6 +139,6 @@ Local checks use shared fake storage across independent coordinator instances an
 mock SDK calls; no cloud writes, container reads or credentials are needed.
 See [runtime operations](live-runtime-operations.md) for existing release
 boundaries and [configuration](dependencies-and-configuration.md) for backend
-configuration context. Actual runtime/auth wiring, approved container/RBAC,
+configuration context. Authorized write wiring, approved container/RBAC,
 hosted concurrency/failure tests, sender integration and Fabric ingestion proof
 remain separate release gates.

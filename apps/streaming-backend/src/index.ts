@@ -12,6 +12,7 @@ import { createDefaultAlertListener } from "./services/alert-listener.js";
 import { resolveRuntimeProfile } from "./services/runtime-profile.js";
 import { SyntheticRuntime } from "./services/synthetic-runtime.js";
 import { createSyntheticRouter } from "./api/synthetic.js";
+import { createMiningReadRouter } from "./api/mining-read.js";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
@@ -26,6 +27,7 @@ const alertListener = synthetic
   : createDefaultAlertListener();
 
 app.use(express.json());
+app.use("/api/mining", createMiningReadRouter({ synthetic }));
 if (runtime) {
   app.use("/api", createSyntheticRouter(runtime));
 } else {
