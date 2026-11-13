@@ -59,12 +59,82 @@ The explicitly injectable `createMiningCuratedProvider` now composes these
 mappers with the bounded transport and read-only persisted incident replay.
 It is **not configured by the production entrypoint**. A trusted host must supply
 an independently approved receipt pin/expectations and an actual native verifier;
-no production native verifier or newly issued receipt is provided by this source.
+the source-only `createMiningNativeVerifier` can supply that callback, but no
+native verifier is mounted and no newly issued receipt is provided by this source.
 Every request revalidates the downloaded canonical bytes, strict receipt schema,
 approved target/run/source/semantic expectations, observation consistency and
 fresh native verification before reading the matching incident journal or data.
 Flags, successful scalar queries, a receipt's own claims, and test doubles are
 not substitutes for that verifier. There is no readiness cache.
+
+### Fresh native drift verification
+
+`src/mining/read/native-verifier.ts` performs fresh, read-only Eventstream
+`getDefinition` and native Kusto `.show database schema as csl script` requests.
+It is **not wired into the production entrypoint** and does not issue a receipt,
+provision resources, install functions, grant permissions or activate mining.
+The host must supply independently protected `MiningNativeExpectations`: the
+full exact target, selected managed identity's **principal object ID**, and both
+native hashes. These must not be copied from the downloaded receipt. The full
+receipt/run/source/semantic gates in `createMiningCuratedProvider` remain required.
+
+The verifier first compares receipt/host targets and native pins without I/O.
+It then validates public-cloud metadata and acquires separate Fabric/Kusto
+audience tokens from the loopback broker using the selected client ID. Broker
+response and token claims must match the configured client, protected principal,
+tenant, audience and lifetime; the upstream services authenticate the tokens.
+The live Fabric KQL item must also bind the protected item ID, Eventhouse
+workspace, database display name and native query endpoint with `ReadWrite` type;
+an inaccessible item or changed/shortcut binding fails closed.
+There is no alternate identity, audience, endpoint or retry. Requests and their
+bounded body reads share one nine-second deadline and caller cancellation;
+a failure cancels siblings. Responses are limited to 16 KiB for metadata/tokens
+and KQL item binding, and 1 MiB for each native export, with at most 1,000 script
+rows. An HTTP 202 operation fails closed: the verifier does not follow `Location`, poll, cache a
+previous success or exceed the enclosing HTTP deadline. Slow exports can
+therefore keep reads unavailable even when the caller has sufficient permission.
+
+The receipt's native hash fields use these explicit **v1 snapshot contracts**.
+Collectors must use the exported hash helpers, not hash Git source or raw REST
+envelopes:
+
+- Eventstream: require unique safe `InlineBase64` part paths and a JSON object in
+  `eventstream.json`; hash the exact decoded bytes of **every** returned part.
+  Sort `{path, sha256}` entries by path using ordinal comparison, then SHA-256
+  hash canonical UTF-8 JSON `{contract:"d01-native-eventstream-v1",parts:[...]}`.
+  Formatting and any additional part count as drift.
+- Eventhouse: request
+  `.show database schema as csl script with (ShowObfuscatedStrings=false, IncludeSecuritySettings=true, IncludeEncodingPolicies=true, IncludeIngestionMappings=true) | project NativeDefinition=tostring(pack_all())`
+  on the exact approved database. Require the complete V1 management envelope,
+  its three-entry table of contents and successful query status; errors,
+  warnings, truncation, missing status and unexpected result shapes fail closed.
+  Extract each `DatabaseSchemaScript` string without trimming or reordering.
+  Hash canonical UTF-8 JSON
+  `{contract:"d01-native-kql-schema-v1",statements:[...]}`.
+
+Canonical JSON uses the same recursive ordinal-key sorting and UTF-8 validation
+as pinned receipts, without whitespace or a trailing newline. Native KQL export
+includes table/function definitions, policies and mappings, not business rows.
+Security settings are included; obfuscated credential strings are **never
+revealed**, so this is not proof of hidden credential values. Neither export nor
+tokens are logged by the verifier. Whole-database changes, including triathlon
+schema changes, conservatively invalidate the pin. The two service observations
+are point-in-time reads, not atomic deployment proof or an exclusive-writer lock.
+
+Fabric documents read **and write** permission as a prerequisite for the
+read-only [Eventstream `getDefinition` operation](https://learn.microsoft.com/rest/api/fabric/eventstream/items/get-eventstream-definition);
+[Kusto schema export](https://learn.microsoft.com/kusto/management/show-schema-database?view=microsoft-fabric)
+requires database read/monitor access, and the
+[KQL item binding read](https://learn.microsoft.com/rest/api/fabric/kqldatabase/items/get-kql-database)
+requires item read access. An actual backend-identity probe on
+2026-11-13 succeeded for all three reads without changing permissions: the
+Eventstream returned three parts, the native schema returned 36 script rows
+with successful management status, and a KQL item read matched the exact protected
+ID/workspace/name/endpoint. Two consecutive schema exports had identical v1
+snapshot hashes. This proves capability only, not mining
+deployment or readiness. One earlier eight-second attempt timed out; the later
+Eventstream response took about 8.4 seconds, so deadline availability still
+requires live acceptance. No speculative role grant is warranted.
 
 An explicitly composed reader still requires the router's signed viewer/run
 authorization and a durable **accepted** run before proof or query reads. Missing,

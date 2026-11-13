@@ -11,7 +11,7 @@ export class MiningReceiptError extends Error {
   }
 }
 
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (typeof value === "string") {
     if (Buffer.from(value, "utf8").toString("utf8") !== value) {
       throw new MiningReceiptError("Receipt contains invalid Unicode.");
