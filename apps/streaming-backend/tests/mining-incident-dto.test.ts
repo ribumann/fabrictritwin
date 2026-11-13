@@ -90,4 +90,10 @@ describe("current incident assessment mapping", () => {
     expect(() => map(assessment("crusher-bearing", "shared"))).toThrow();
     expect(() => mapCurrentIncidentAssessments({ runId, catalogHash, asOf, assessments: [value, value] })).toThrow();
   });
+
+  it("does not copy unexpected journal incident properties into the public DTO", () => {
+    const value = assessment("unplanned-stop", "A");
+    const result = map({ ...value, incident: { ...value.incident, unexpected: "private" } });
+    expect(result.incidents[0]).not.toHaveProperty("unexpected");
+  });
 });

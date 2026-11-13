@@ -170,7 +170,14 @@ export function mapCurrentIncidentAssessments(input: {
     rowCount += 1 + evidence.length;
     if (rowCount > 1000) throw new MiningQueryError("overflow", "Mining incident response exceeds row limit.");
     return {
-      ...incident,
+      incidentId: incident.incidentId,
+      ruleId: incident.ruleId,
+      scopeId: incident.scopeId,
+      severity: incident.severity,
+      raisedAt: incident.raisedAt,
+      clearedAt: incident.clearedAt,
+      acknowledgedAt: incident.acknowledgedAt,
+      verification: incident.verification,
       moduleId: target.moduleId,
       affectedModuleIds: target.moduleId ? [target.moduleId] : [],
       metric: target.metric,
