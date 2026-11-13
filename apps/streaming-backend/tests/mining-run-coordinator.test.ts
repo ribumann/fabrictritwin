@@ -324,6 +324,43 @@ describe("mining durable run coordination", () => {
     expect(await replicaB.requestStop(first)).toMatchObject({ status: { phase: "stopped" } });
   });
 
+  it("does not submit stop intent if its caller aborts during the admission read", async () => {
+    const active = await owner(replicaA);
+    const status = await replicaB.status(first);
+    const controller = new AbortController();
+    vi.spyOn(replicaB, "status").mockImplementationOnce(async () => {
+      controller.abort();
+      return status;
+    });
+    const create = vi.spyOn(storage, "create");
+    await expect(
+      replicaB.requestStop(first, undefined, undefined, controller.signal),
+    ).rejects.toThrow();
+    expect(create).not.toHaveBeenCalled();
+    expect(storage.documents.has(`stops/${first}.json`)).toBe(false);
+    await active.finish();
+  });
+
+  it("preserves a stop committed during disconnect instead of claiming rollback or retrying", async () => {
+    const active = await owner(replicaA);
+    const controller = new AbortController();
+    const create = storage.create.bind(storage);
+    const mutation = vi.spyOn(storage, "create").mockImplementationOnce(async (path, value) => {
+      const result = await create(path, value);
+      controller.abort();
+      return result;
+    });
+    const persisted = vi.fn();
+    await expect(
+      replicaB.requestStop(first, persisted, undefined, controller.signal),
+    ).rejects.toThrow();
+    expect(persisted).toHaveBeenCalledOnce();
+    expect(mutation).toHaveBeenCalledTimes(1);
+    expect(await replicaA.status(first)).toMatchObject({ stopRequested: true, phase: "running" });
+    await active.finish();
+    expect(await replicaA.status(first)).toMatchObject({ phase: "stopped" });
+  });
+
   it("drains at most the single already-authorized batch, then acknowledges stop", async () => {
     const active = await owner(replicaA);
     let settle!: () => void;
