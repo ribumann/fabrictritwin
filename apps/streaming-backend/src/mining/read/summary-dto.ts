@@ -145,12 +145,12 @@ export function mapSummaryRows(
   ) {
     return fail("Invalid mining summary quality counts.");
   }
+  const allLineFeedsPresent = feedA !== null && feedB !== null && feedC !== null;
   if (
-    feedA !== null &&
-    feedB !== null &&
-    feedC !== null &&
-    plantFeed !== null &&
-    Math.abs(plantFeed - (feedA + feedB + feedC)) > Math.max(1, plantFeed) * 1e-9
+    (plantFeed !== null) !== allLineFeedsPresent ||
+    (plantFeed !== null &&
+      allLineFeedsPresent &&
+      Math.abs(plantFeed - (feedA + feedB + feedC)) > Math.max(1, plantFeed) * 1e-9)
   ) {
     return fail("Inconsistent mining throughput.");
   }

@@ -90,6 +90,8 @@ describe("mining summary source mapping", () => {
   it("rejects malformed, inconsistent or out-of-scope source data", () => {
     const invalid = [
       { ...row(), plant_feed_tph: 119 },
+      { ...row(), status: "STATE_COVERAGE_INCOMPLETE", running_lines: null, line_a_feed_tph: null },
+      { ...row(), status: "INSUFFICIENT_COMMON_COVERAGE", plant_feed_tph: null },
       { ...row(), common_coverage: 1.1 },
       { ...row(), running_lines: 4 },
       { ...row(), status: "STATE_COVERAGE_INCOMPLETE", running_lines: 3 },

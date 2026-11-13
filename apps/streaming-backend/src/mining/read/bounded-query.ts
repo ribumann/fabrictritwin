@@ -351,8 +351,12 @@ async function prepare(
   properties.setParameter("start", `datetime(${start})`);
   properties.setParameter("end", `datetime(${end})`);
   const windowHead = `${head}, start:datetime, end:datetime`;
-  if (input.kind === "summary")
+  if (input.kind === "summary") {
+    if (Date.parse(end) - Date.parse(start) < 60_000) {
+      throw new MiningQueryError("invalid", "Mining summary windows must be at least one minute.");
+    }
     return `${windowHead}); mining_PlantSummary(plant, run, start, end)`;
+  }
   if (
     !["feed", "density", "vibration", "water-energy"].includes(input.metric) ||
     (input.kind === "compare" && input.metric === "water-energy") ||

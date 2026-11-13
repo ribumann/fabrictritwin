@@ -148,6 +148,15 @@ describe("bounded mining query transport", () => {
       { ...input, metric: "water-energy" as const },
     ])
       await expect(f.query(invalid)).rejects.toMatchObject({ code: "invalid" });
+    await expect(
+      f.query({
+        kind: "summary",
+        runId: input.runId,
+        maxRows: 1000,
+        start: "2026-01-01T11:59:30Z",
+        end: "2026-01-01T12:00:00Z",
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
     expect(f.request).not.toHaveBeenCalled();
   });
 
