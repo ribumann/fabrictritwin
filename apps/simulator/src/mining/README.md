@@ -17,6 +17,18 @@ surveyed engineering truth. Its source project is MIT-licensed; see `LICENSE`.
 The receipt pins remote GLBs and layout for later UI use without importing the
 GPU reconstruction toolchain or copying those assets here.
 
+The pinned functional specification describes the raw catalog tag field
+`suggested_interval_ms: 1000` as an initial placeholder, not the publication
+cadence; it must not drive validation or one-second publishing. Export
+`toD01PublishProfileRecords()` from `@triathlon-twin/simulator/mining` for the
+operational profile. Each row has `plant_id`, the raw `catalog_version`,
+`profile_version` (`d01-publish-profile-v1`), `tag_id`, and `interval_seconds`
+(30 or 60). Join by plant, catalog version, profile version and tag ID.
+This profile covers all 56 tags (45 at 30 seconds and 11 at 60 seconds);
+`getD01TagIntervalSeconds` uses the same mapping for simulator output and numeric
+validation. The original `record_json` and catalog hash remain unchanged. The
+profile follows `docs/diamond-plant-demo.md` at the revision in the receipt.
+
 The v2 numeric and state payload schemas are separate files. The flattened
 transport body adds `entityType` (`PlantTelemetry` or `PlantStateEvent`) outside
 those strict payloads. `simulator.ts` exposes deterministic 5-second stepping;

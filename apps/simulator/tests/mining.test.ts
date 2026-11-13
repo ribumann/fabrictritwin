@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   D01_CATALOG_VERSION,
   D01_PLANT_CATALOG,
+  D01_PUBLISH_PROFILE_VERSION,
   assertD01AlertTransition,
   assertD01NumericTelemetryEvent,
   assertD01PlantStateEvent,
@@ -12,6 +13,7 @@ import {
   createD01Simulation,
   getD01TagIntervalSeconds,
   toD01CatalogRecords,
+  toD01PublishProfileRecords,
   toD01TransportBody,
   validateD01PlantCatalog,
 } from "../src/mining/index.js";
@@ -80,6 +82,74 @@ function readReceipt(): {
 }
 
 describe("D01 mining contracts and catalog", () => {
+  it("exports the versioned publication cadence for every canonical tag", () => {
+    const sixtySecondTags = new Set([
+      "D01.A.crusher.bearing_temperature",
+      "D01.B.crusher.bearing_temperature",
+      "D01.C.crusher.bearing_temperature",
+      "D01.A.medium.level",
+      "D01.B.medium.level",
+      "D01.C.medium.level",
+      "D01.shared.hopper.level",
+      "D01.shared.thickener.level",
+      "D01.shared.water.level",
+      "D01.shared.lab.product_mass",
+      "D01.shared.tailings.level",
+    ]);
+    const records = toD01PublishProfileRecords();
+    expect(records).toHaveLength(56);
+    expect(new Set(records.map((record) => record.tag_id)).size).toBe(56);
+    expect(records.filter((record) => record.interval_seconds === 30)).toHaveLength(45);
+    expect(records.filter((record) => record.interval_seconds === 60)).toHaveLength(11);
+
+    for (const tag of D01_PLANT_CATALOG.telemetry_tags) {
+      const interval = sixtySecondTags.has(tag.id) ? 60 : 30;
+      const record = records.find((item) => item.tag_id === tag.id);
+      expect(record).toEqual({
+        plant_id: "D01",
+        catalog_version: D01_CATALOG_VERSION,
+        profile_version: D01_PUBLISH_PROFILE_VERSION,
+        tag_id: tag.id,
+        interval_seconds: interval,
+      });
+      expect(tag.suggested_interval_ms).toBe(1000);
+      expect(getD01TagIntervalSeconds(tag)).toBe(interval);
+      const event = {
+        schema_version: 2,
+        run_id: runId,
+        event_id: createD01EventId(runId, 1),
+        sequence: 1,
+        interval_seconds: interval,
+        timestamp: "2024-01-01T00:01:00.000Z",
+        plant_id: "D01",
+        module_id: tag.module_id,
+        equipment_id: tag.equipment_id,
+        tag_id: tag.id,
+        value: (tag.simulation_envelope[0]! + tag.simulation_envelope[1]!) / 2,
+        unit: tag.unit,
+        quality: "good",
+      };
+      expect(() => assertD01NumericTelemetryEvent(event)).not.toThrow();
+      expect(() => assertD01NumericTelemetryEvent({ ...event, interval_seconds: 1 })).toThrow(
+        /interval_seconds/,
+      );
+      expect(() =>
+        assertD01NumericTelemetryEvent({
+          ...event,
+          interval_seconds: interval === 30 ? 60 : 30,
+        }),
+      ).toThrow(/interval disagrees/);
+    }
+
+    records[0]!.interval_seconds = 60;
+    expect(toD01PublishProfileRecords()[0]!.interval_seconds).toBe(
+      getD01TagIntervalSeconds(D01_PLANT_CATALOG.telemetry_tags[0]!),
+    );
+    expect(() =>
+      getD01TagIntervalSeconds({ ...D01_PLANT_CATALOG.telemetry_tags[0]!, id: "unknown" }),
+    ).toThrow(/No D01 publish interval/);
+  });
+
   it("preserves the published metadata hash, row joins, counts, and v1 contract", () => {
     const receipt = readReceipt();
     expect(D01_CATALOG_VERSION).toBe(`sha256:${receipt.catalog.sha256}`);
@@ -252,6 +322,13 @@ describe("D01 deterministic bounded simulator", () => {
     const state = first.events.filter((event) => event.entityType === "PlantStateEvent");
 
     expect(numeric).toHaveLength(2020);
+    for (const profile of toD01PublishProfileRecords()) {
+      const samples = numeric.filter((event) => event.tag_id === profile.tag_id);
+      expect(samples).toHaveLength(1200 / profile.interval_seconds);
+      expect(samples.every((event) => event.interval_seconds === profile.interval_seconds)).toBe(
+        true,
+      );
+    }
     expect(state).toHaveLength(92);
     expect(first.alerts).toHaveLength(0);
     expect(first.batches.map((batch) => batch.batch_id)).toEqual(
