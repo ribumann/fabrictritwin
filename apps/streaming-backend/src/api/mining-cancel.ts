@@ -4,6 +4,7 @@ import { verifyMcpCallerClaimsWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningRunCoordinator } from "../mining/run-coordinator.js";
 import { MiningCoordinationError } from "../mining/store.js";
+import { hasApprovedDelegatedOperatorClaims } from "./mining-delegated-auth.js";
 
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const runIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -36,10 +37,11 @@ export function createMiningCancelRouter(options: Options): Router {
     const operators = (env.MINING_CANCEL_OPERATOR_PRINCIPAL_IDS ?? "")
       .split(",")
       .map((id) => id.trim());
+    const tenantId = env.ASSISTANT_AUTH_TENANT_ID;
     const runId = env.MINING_APPROVED_RUN_ID;
     const scope = env.MINING_CANCEL_DELEGATED_SCOPE;
     if (
-      !guid.test(env.ASSISTANT_AUTH_TENANT_ID ?? "") ||
+      !guid.test(tenantId ?? "") ||
       !guid.test(env.ASSISTANT_AUTH_CLIENT_ID ?? "") ||
       !guid.test(env.MINING_MANAGED_IDENTITY_CLIENT_ID ?? "") ||
       !runId ||
@@ -56,6 +58,8 @@ export function createMiningCancelRouter(options: Options): Router {
       );
       return;
     }
+    const approvedTenantId = tenantId!;
+    const approvedScope = scope!;
     const controller = new AbortController();
     const available = () => !controller.signal.aborted && !res.headersSent && !res.destroyed;
     const timer = setTimeout(() => {
@@ -93,13 +97,12 @@ export function createMiningCancelRouter(options: Options): Router {
       return;
     }
     if (
-      typeof claims.oid !== "string" ||
-      !operators.includes(claims.oid) ||
-      claims.tid !== env.ASSISTANT_AUTH_TENANT_ID ||
-      !Number.isSafeInteger(claims.exp) ||
-      (claims.idtyp !== undefined && claims.idtyp !== "user") ||
-      typeof claims.scp !== "string" ||
-      !claims.scp.split(/\s+/).includes(scope)
+      !hasApprovedDelegatedOperatorClaims({
+        claims,
+        operators,
+        tenantId: approvedTenantId,
+        scope: approvedScope,
+      })
     ) {
       error(
         res,
