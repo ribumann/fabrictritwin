@@ -3,13 +3,19 @@ import {
   MiningReads,
   MiningPolling,
   usable,
+  formatTimestamp,
   readingAt,
   normalizeReading,
   unknownQuality,
+  validIncidentWindows,
+  validIncidentAssociation,
+  refreshedIncidentSelection,
   sameScope,
   moduleStatus,
   validOverview,
   validAsOf,
+  currentIncidentQuery,
+  validCurrentAssessmentAsOf,
   validSeries,
 } from "../src/ui/public/mining/data.js";
 import { connections, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
@@ -87,6 +93,107 @@ describe("mining request lifecycle", () => {
   });
 });
 describe("unknown and catalog selection semantics", () => {
+  it("accepts an absent current hold without weakening the evidence window", () => {
+    const incident = {
+      holdWindowStart: null,
+      holdWindowEnd: null,
+      evidenceWindowStart: "2026-01-01T00:00:00Z",
+      evidenceWindowEnd: "2026-01-01T00:05:00Z",
+    };
+    expect(validIncidentWindows(incident)).toBe(true);
+    expect(
+      validIncidentWindows({
+        ...incident,
+        holdWindowStart: "2026-01-01T00:00:00Z",
+      }),
+    ).toBe(false);
+    expect(
+      validIncidentWindows({
+        ...incident,
+        evidenceWindowEnd: "2025-12-31T23:59:00Z",
+      }),
+    ).toBe(false);
+    expect(
+      validIncidentWindows({
+        ...incident,
+        holdWindowStart: "2026-01-01T00:01:00Z",
+        holdWindowEnd: "2026-01-01T00:00:00Z",
+      }),
+    ).toBe(false);
+  });
+  it("rejects non-string evidence-window bounds before parsing", () => {
+    const incident = {
+      holdWindowStart: null,
+      holdWindowEnd: null,
+      evidenceWindowStart: "2026-01-01T00:00:00Z",
+      evidenceWindowEnd: "2026-01-01T00:05:00Z",
+    };
+    expect(validIncidentWindows({ ...incident, evidenceWindowStart: 2026 })).toBe(false);
+    expect(validIncidentWindows({ ...incident, evidenceWindowEnd: 2026 })).toBe(false);
+  });
+  it("keeps incident assessments current-only and separates measurement time from replay time", () => {
+    const now = Date.parse("2026-01-01T12:00:00Z");
+    const replayParams = {
+      plantId: "D01",
+      runId: "approved",
+      asOf: "2026-01-01T11:59:00Z",
+    };
+    expect(currentIncidentQuery("replay", replayParams)).toBeNull();
+    expect(currentIncidentQuery("live", replayParams)).toEqual({
+      plantId: "D01",
+      runId: "approved",
+    });
+    expect(validCurrentAssessmentAsOf(replayParams.asOf, now)).toBe(true);
+    expect(validCurrentAssessmentAsOf("2026-01-01T11:58:00Z", now)).toBe(false);
+    expect(validCurrentAssessmentAsOf("not-a-timestamp", now)).toBe(false);
+    expect(validCurrentAssessmentAsOf(2026, Date.parse("2026-01-01T00:00:00Z"))).toBe(false);
+  });
+  it("allows only canonical module associations and does not invent a metric for state-only incidents", () => {
+    const catalog = { modules: [{ id: "D01.A.crusher" }] };
+    expect(
+      validIncidentAssociation(
+        { moduleId: null, metric: null, affectedModuleIds: [] },
+        catalog,
+      ),
+    ).toBe(true);
+    expect(
+      validIncidentAssociation(
+        { moduleId: null, metric: "feed", affectedModuleIds: [] },
+        catalog,
+      ),
+    ).toBe(false);
+    expect(
+      validIncidentAssociation(
+        {
+          moduleId: "D01.A.crusher",
+          metric: null,
+          affectedModuleIds: ["D01.A.crusher"],
+        },
+        catalog,
+      ),
+    ).toBe(true);
+    expect(
+      validIncidentAssociation(
+        { moduleId: "D01.foreign.crusher", metric: "vibration", affectedModuleIds: [] },
+        catalog,
+      ),
+    ).toBe(false);
+  });
+  it("refreshes selected incident data and clears a selection no longer active", () => {
+    const selected = {
+      incidentId: "incident-1",
+      holdWindowStart: "2026-01-01T00:00:00Z",
+      holdWindowEnd: "2026-01-01T00:05:00Z",
+    };
+    const refreshed = {
+      incidentId: "incident-1",
+      holdWindowStart: null,
+      holdWindowEnd: null,
+    };
+    expect(refreshedIncidentSelection(selected, [refreshed])).toBe(refreshed);
+    expect(refreshedIncidentSelection(selected, [])).toBeNull();
+    expect(refreshedIncidentSelection(null, [refreshed])).toBeNull();
+  });
   it("preserves uncertain quality without exposing its value as usable or healthy", () => {
     const asOf = "2026-01-01T00:01:00Z";
     const reading = {
@@ -114,6 +221,12 @@ describe("unknown and catalog selection semantics", () => {
       ),
     ).toBe("unknown");
     expect(normalizeReading({ ...reading, quality: "unsupported" }, asOf).quality).toBe("missing");
+  });
+  it("keeps absent or invalid ingestion timestamps unknown", () => {
+    expect(formatTimestamp(null)).toBe("unknown");
+    expect(formatTimestamp(undefined)).toBe("unknown");
+    expect(formatTimestamp("not-a-timestamp")).toBe("unknown");
+    expect(formatTimestamp("2026-01-01T00:00:00Z")).toBe("2026-01-01T00:00:00.000Z");
   });
   it("rejects same-run replay details for another time, metric, module, unit or bin", () => {
     const params = {

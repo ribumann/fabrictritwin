@@ -37,7 +37,7 @@ foreign-run browsing. Athlete IDs and athlete permissions are not mining grants.
 | `context`               | `MiningContext`                                   | none; backend-selected approved run, catalog version, capabilities                 |
 | `overview`              | `MiningOverview` (`PlantLatest` + `PlantSummary`) | `plantId=D01`, approved `runId`, optional replay `asOf` UTC                        |
 | `trends`                | `MiningSeries` (`AssetTrend`)                     | plant/run, canonical `moduleId`, `metric`, `start`, `end`, `binMinutes`, `maxRows` |
-| `incidents`             | `MiningIncidents` (`ActiveIncidents`)             | plant/run, optional replay `asOf`                                                  |
+| `incidents`             | `MiningIncidents` (`ActiveIncidents`)             | plant/run; current assessment only                                                |
 | `compare-lines`         | `MiningSeries` (`CompareLines`)                   | plant/run, `metric`, `start`, `end`, `binMinutes`, `maxRows`                       |
 | `runs/status`           | `MiningRun`                                       | plant/run                                                                          |
 
@@ -47,8 +47,11 @@ Metric families are `feed`, `density`, `vibration`, `water-energy`. Bins are 1 o
 joins, UTC semantics and bound query parameters, never concatenate user KQL.
 Chart `seriesId` values are exact canonical tag IDs with their catalog units,
 not arbitrary line labels. `MiningSeries.moduleId` echoes the requested module
-for AssetTrend and is null for CompareLines. Response windows, metric, bin size,
-tag/module joins and replay incident `asOf` must match the request.
+for AssetTrend and is null for CompareLines. Response windows, metric, bin size and tag/module joins must match the request.
+Active incidents are current-only and are not requested in replay, even when a
+replay time equals the latest evaluator time. `MiningIncidents.asOf` is the
+evaluator-measured logical assessment time, not the HTTP response time;
+`acknowledgedAt` remains an independent source timestamp.
 Trend requests require explicit start/end, metric, binMinutes and maxRows
 (and moduleId for AssetTrend); omission cannot delegate unbounded defaults.
 Overview must include all 24 modules and all 56 tag rows, including missing/bad
@@ -61,10 +64,19 @@ Replay freshness is evaluated at `asOf`; latest provenance timestamps are UTC.
 `normalBand` is a demo normal band, never the catalog's broad simulation envelope.
 Every run-scoped response includes `plantId`, `runId` and `catalogVersion`;
 cross-run/catalog responses are rejected, including late arrivals after a switch.
+The Cockpit's pinned catalog version is an approved expected scope, not verified
+publisher provenance; a matching response does not prove which catalog the
+publisher actually used.
 Publisher statuses preserve `admission_pending`, `admission_unknown`,
 `interrupted` and `publisher_complete` without inventing terminal success.
 Incident responses have at most 20 active records with retained unverified state,
-rule/scope IDs, hold/evidence window bounds and separate acknowledgment/clear timestamps.
+rule/scope IDs and separate acknowledgment/clear timestamps. Module and metric
+associations may be null for state-only or unsupported tag scopes; the client
+does not invent a representative equipment module or trend. Current qualifying
+hold bounds are nullable as a pair; null means there is no current qualifying hold.
+The bounded evidence window remains required and is not a substitute for an active hold.
+Evidence `ingestionTime` may be null; the UI renders it as unknown and never
+substitutes evaluator or response-receipt time.
 
 The BFF constructs its own service-auth headers for reads, ignoring all browser
 authorization/principal headers. It uses only the existing viewer-scoped Cockpit

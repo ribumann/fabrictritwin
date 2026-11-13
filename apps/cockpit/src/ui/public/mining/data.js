@@ -29,6 +29,62 @@ export function unknownQuality(quality) {
   return quality === "uncertain" || quality === "bad" ? `${quality} / unknown` : "unknown";
 }
 
+export function formatTimestamp(value) {
+  const timestamp = typeof value === "string" ? Date.parse(value) : NaN;
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "unknown";
+}
+
+export function validIncidentWindows(incident) {
+  const hasHoldStart = typeof incident?.holdWindowStart === "string";
+  const hasHoldEnd = typeof incident?.holdWindowEnd === "string";
+  if (
+    typeof incident?.evidenceWindowStart !== "string" ||
+    typeof incident?.evidenceWindowEnd !== "string"
+  )
+    return false;
+  const evidenceStart = Date.parse(incident.evidenceWindowStart);
+  const evidenceEnd = Date.parse(incident.evidenceWindowEnd);
+  if (
+    hasHoldStart !== hasHoldEnd ||
+    !Number.isFinite(evidenceStart) ||
+    !Number.isFinite(evidenceEnd) ||
+    evidenceStart > evidenceEnd
+  )
+    return false;
+  if (!hasHoldStart) return incident.holdWindowStart === null && incident.holdWindowEnd === null;
+  const holdStart = Date.parse(incident.holdWindowStart);
+  const holdEnd = Date.parse(incident.holdWindowEnd);
+  return Number.isFinite(holdStart) && Number.isFinite(holdEnd) && holdStart <= holdEnd;
+}
+
+export function validIncidentAssociation(incident, catalog) {
+  const metrics = ["feed", "density", "vibration", "water-energy"];
+  return (
+    (incident?.moduleId === null ||
+      catalog.modules.some((module) => module.id === incident?.moduleId)) &&
+    (incident?.metric === null || metrics.includes(incident?.metric)) &&
+    (incident?.moduleId !== null || incident?.metric === null) &&
+    Array.isArray(incident?.affectedModuleIds) &&
+    incident.affectedModuleIds.every((id) => catalog.modules.some((module) => module.id === id))
+  );
+}
+
+export function refreshedIncidentSelection(selectedIncident, incidents) {
+  if (!selectedIncident) return null;
+  return incidents.find((incident) => incident.incidentId === selectedIncident.incidentId) ?? null;
+}
+
+export function currentIncidentQuery(mode, params) {
+  if (mode === "replay") return null;
+  return { plantId: params.plantId, runId: params.runId };
+}
+
+export function validCurrentAssessmentAsOf(value, now = Date.now()) {
+  if (typeof value !== "string") return false;
+  const assessedAt = Date.parse(value);
+  return Number.isFinite(assessedAt) && assessedAt >= now - 90_000 && assessedAt <= now + 15_000;
+}
+
 export function sameScope(data, runId, catalogVersion) {
   return data?.plantId === "D01" && data.runId === runId && data.catalogVersion === catalogVersion;
 }

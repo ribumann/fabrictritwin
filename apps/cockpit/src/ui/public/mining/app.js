@@ -2,12 +2,18 @@ import {
   MiningReads,
   MiningPolling,
   usable,
+  formatTimestamp,
   normalizeReading,
   unknownQuality,
+  validIncidentWindows,
+  validIncidentAssociation,
+  refreshedIncidentSelection,
   sameScope,
   moduleStatus,
   validOverview,
   validAsOf,
+  currentIncidentQuery,
+  validCurrentAssessmentAsOf,
   validSeries,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
@@ -25,8 +31,7 @@ const number = (value) =>
   Number.isFinite(value)
     ? value.toLocaleString(undefined, { maximumFractionDigits: 2 })
     : "Unknown";
-const timestamp = (value) =>
-  Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : "unknown";
+const timestamp = formatTimestamp;
 const coverage = (value) =>
   Number.isFinite(value) && value >= 0 && value <= 1 ? `${Math.round(value * 100)}%` : "unknown";
 const reads = new MiningReads();
@@ -39,6 +44,7 @@ let catalog,
   requestEpoch = 0,
   selectedIncident = null;
 let incidents = [];
+let incidentAsOf = null;
 let mode = "live";
 let replayTime = null;
 const lines = new Set(["A", "B", "C", "shared"]);
@@ -134,13 +140,72 @@ function drawOverview() {
   drawPlant();
   drawDrawer();
 }
+function drawIncidentEvidence() {
+  if (!selectedIncident) {
+    text("incident-evidence", "");
+    return;
+  }
+  const hold =
+    selectedIncident.holdWindowStart === null
+      ? "no current qualifying hold"
+      : `${timestamp(selectedIncident.holdWindowStart)} to ${timestamp(selectedIncident.holdWindowEnd)}`;
+  const evidence = selectedIncident.evidence.length
+    ? selectedIncident.evidence
+        .map(
+          (reading) =>
+            `${reading.tagId}: ${usable(reading) ? number(reading.value) : "Unknown"} ${reading.unit}, ${reading.quality}, ${timestamp(reading.sampleTime)}`,
+        )
+        .join("; ")
+    : "No numeric readings are present in this incident DTO.";
+  const moduleContext = selectedIncident.affectedModuleIds.length
+    ? ` · Module context: ${selectedIncident.affectedModuleIds.join(", ")} (not proven causation).`
+    : "";
+  text(
+    "incident-evidence",
+    `${selectedIncident.title} · rule ${selectedIncident.ruleId} · scope ${selectedIncident.scopeId} · ${selectedIncident.verification} · assessed ${timestamp(incidentAsOf)} · raised ${timestamp(selectedIncident.raisedAt)} · acknowledged ${selectedIncident.acknowledgedAt ? timestamp(selectedIncident.acknowledgedAt) : "not acknowledged"} (separate from assessment time). Current hold: ${hold}; evidence window: ${timestamp(selectedIncident.evidenceWindowStart)} to ${timestamp(selectedIncident.evidenceWindowEnd)}. ${evidence}${moduleContext}`,
+  );
+}
 function drawDrawer() {
-  if (!catalog || !selected) return;
+  if (!catalog) return;
+  if (!selected) {
+    text("asset-heading", selectedIncident?.title ?? "No module selected");
+    text("asset-id", selectedIncident ? `Scope ${selectedIncident.scopeId}` : "No module selected");
+    text(
+      "asset-status",
+      selectedIncident
+        ? `Status: ${selectedIncident.verification} · no single module association`
+        : "Status: unknown",
+    );
+    text(
+      "diagnostic-scope",
+      selectedIncident
+        ? "No module-level trend is associated with this assessment."
+        : "Select a module for its diagnostic trend.",
+    );
+    $("readings").replaceChildren(
+      node(
+        "p",
+        selectedIncident
+          ? "No single equipment module is identified for this assessment."
+          : "Select an equipment module to inspect its readings.",
+      ),
+    );
+    for (const direction of ["upstream", "downstream"])
+      $(direction).replaceChildren(node("p", "No single module is associated."));
+    if (selectedIncident) chart($("diagnostic-chart"), null);
+    drawIncidentEvidence();
+    return;
+  }
   const module = catalog.modules.find((item) => item.id === selected);
   text("asset-heading", module.label);
   text("asset-id", selected);
   text("asset-status", `Status: ${moduleStatus(overview, selected)}`);
-  text("diagnostic-scope", `Selected module: ${selected} · 30-minute default trend`);
+  text(
+    "diagnostic-scope",
+    selectedIncident?.metric === null
+      ? "No supported trend metric is associated with this incident; choose a diagnostic to inspect a separate series."
+      : `Selected module: ${selected} · 30-minute default trend`,
+  );
   const readings = $("readings");
   readings.replaceChildren();
   const tags = relevantTags(catalog, selected);
@@ -193,12 +258,8 @@ function drawDrawer() {
     }
     if (!container.childNodes.length) container.append(node("p", "No authored connection."));
   }
-  text(
-    "incident-evidence",
-    selectedIncident
-      ? `${selectedIncident.title} · rule ${selectedIncident.ruleId} · scope ${selectedIncident.scopeId} · ${selectedIncident.verification} · raised ${timestamp(selectedIncident.raisedAt)}. Hold: ${timestamp(selectedIncident.holdWindowStart)} to ${timestamp(selectedIncident.holdWindowEnd)}; evidence: ${timestamp(selectedIncident.evidenceWindowStart)} to ${timestamp(selectedIncident.evidenceWindowEnd)}. ${selectedIncident.evidence.map((reading) => `${reading.tagId}: ${usable(reading) ? number(reading.value) : "Unknown"} ${reading.unit}, ${reading.quality}, ${timestamp(reading.sampleTime)}`).join("; ")}${selectedIncident.affectedModuleIds.length ? ` · Topology context: ${selectedIncident.affectedModuleIds.join(", ")} (not proven causation).` : ""}`
-      : "",
-  );
+  if (selectedIncident?.metric === null) chart($("diagnostic-chart"), null);
+  drawIncidentEvidence();
 }
 function select(id, incident = null) {
   if (!catalog.modules.some((module) => module.id === id)) return;
@@ -209,22 +270,41 @@ function select(id, incident = null) {
   document.querySelectorAll('input[name="line"]').forEach((input) => {
     input.checked = lines.has(input.value);
   });
-  if (incident) $("diagnostic").value = incident.metric === "feed" ? "vibration" : incident.metric;
-  else
+  if (incident?.metric)
+    $("diagnostic").value = incident.metric === "feed" ? "vibration" : incident.metric;
+  else if (!incident)
     $("diagnostic").value =
       module.kind === "dms" ? "density" : module.kind === "water" ? "water-energy" : "vibration";
   drawPlant();
   drawDrawer();
-  if (context?.readAvailable && context?.approvedRun && !document.hidden) refresh("diagnostic");
+  if (
+    context?.readAvailable &&
+    context?.approvedRun &&
+    !document.hidden &&
+    (!incident || incident.metric !== null)
+  )
+    refresh("diagnostic");
 }
-function drawIncidents() {
+function selectIncident(incident) {
+  if (incident.moduleId) {
+    select(incident.moduleId, incident);
+    return;
+  }
+  selected = null;
+  selectedIncident = incident;
+  drawPlant();
+  drawDrawer();
+}
+function drawIncidents(emptyMessage = "No active incidents at the latest measured assessment.") {
   const container = $("incidents");
   container.replaceChildren();
   text(
     "incident-status",
     incidents.length
-      ? "Top three active incidents · advisory only"
-      : "No active incidents reported at the query time.",
+      ? `Top three active incidents · assessed ${timestamp(incidentAsOf)} · advisory only`
+      : incidentAsOf
+        ? `No active incidents at the measured assessment ${timestamp(incidentAsOf)}.`
+        : emptyMessage,
   );
   for (const incident of incidents.slice(0, 3)) {
     const item = node("li");
@@ -238,9 +318,9 @@ function drawIncidents() {
     );
     const button = node(
       "button",
-      `${incident.severity.toUpperCase()} · ${incident.title} · ${incident.moduleId} · ${duration} min · ${incident.verification}${incident.acknowledgedAt ? " · acknowledged (not cleared)" : ""}`,
+      `${incident.severity.toUpperCase()} · ${incident.title} · ${incident.moduleId ?? incident.scopeId} · ${duration} min · ${incident.verification}${incident.acknowledgedAt ? " · acknowledged (not cleared)" : ""}`,
     );
-    button.addEventListener("click", () => select(incident.moduleId, incident));
+    button.addEventListener("click", () => selectIncident(incident));
     item.append(button);
     container.append(item);
   }
@@ -367,6 +447,7 @@ function chart(container, data) {
 function clearReadState(message) {
   overview = null;
   incidents = [];
+  incidentAsOf = null;
   selectedIncident = null;
   text("connection", message);
   drawOverview();
@@ -376,6 +457,13 @@ function clearReadState(message) {
   chart($("diagnostic-chart"), null);
 }
 async function refresh(scope = "all") {
+  if (mode === "replay") {
+    incidents = [];
+    incidentAsOf = null;
+    selectedIncident = null;
+    drawIncidents("Incident assessments are current-only; historical assessments are unavailable in replay.");
+    drawDrawer();
+  }
   if (document.hidden || !context?.readAvailable || !context?.approvedRun) return;
   const epoch = requestEpoch;
   let params;
@@ -425,8 +513,8 @@ async function refresh(scope = "all") {
           text(
             "connection",
             mode === "replay"
-              ? `REPLAY · evaluated at ${params.asOf}`
-              : "Authorized Fabric mining read · simulation provenance is provided by the backend.",
+              ? `REPLAY · evaluated at ${params.asOf} · publisher provenance is not verified.`
+              : "Fabric read succeeded · pinned catalog is the approved expected scope; publisher provenance is not verified.",
           );
           drawOverview();
         } catch (error) {
@@ -438,41 +526,33 @@ async function refresh(scope = "all") {
         }
       })(),
     );
-  if (scope === "all" || scope === "detail")
+  const incidentQuery = currentIncidentQuery(mode, params);
+  if ((scope === "all" || scope === "detail") && incidentQuery)
     tasks.push(
       (async () => {
         try {
-          const data = await reads.read("incidents", {
-            plantId: params.plantId,
-            runId: params.runId,
-            ...(mode === "replay" ? { asOf: params.asOf } : {}),
-          });
+          const data = await reads.read("incidents", incidentQuery);
           if (!current()) return;
           if (
             !sameScope(data, params.runId, catalogVersion) ||
-            !validAsOf(data.asOf, params.asOf, mode === "replay") ||
+            !validCurrentAssessmentAsOf(data.asOf) ||
             !Array.isArray(data.incidents) ||
             data.incidents.length > 20 ||
             data.incidents.some(
               (item) =>
-                !catalog.modules.some((module) => module.id === item.moduleId) ||
                 !Array.isArray(item.evidence) ||
-                !Array.isArray(item.affectedModuleIds) ||
-                !["feed", "density", "vibration", "water-energy"].includes(item.metric) ||
+                !validIncidentAssociation(item, catalog) ||
                 !["warning", "high"].includes(item.severity) ||
                 !["verified", "unverified"].includes(item.verification) ||
                 typeof item.ruleId !== "string" ||
                 typeof item.scopeId !== "string" ||
-                [
-                  "raisedAt",
-                  "holdWindowStart",
-                  "holdWindowEnd",
-                  "evidenceWindowStart",
-                  "evidenceWindowEnd",
-                ].some((key) => !Number.isFinite(Date.parse(item[key]))) ||
-                item.affectedModuleIds.some(
-                  (id) => !catalog.modules.some((module) => module.id === id),
-                ) ||
+                typeof item.title !== "string" ||
+                item.title.trim().length === 0 ||
+                !Number.isFinite(Date.parse(item.raisedAt)) ||
+                (item.clearedAt !== null && !Number.isFinite(Date.parse(item.clearedAt))) ||
+                (item.acknowledgedAt !== null &&
+                  !Number.isFinite(Date.parse(item.acknowledgedAt))) ||
+                !validIncidentWindows(item) ||
                 item.evidence.some(
                   (reading) =>
                     !catalog.telemetry_tags.some(
@@ -487,13 +567,16 @@ async function refresh(scope = "all") {
           )
             throw new Error("Invalid or foreign-run incident response.");
           incidents = data.incidents.filter((item) => !item.clearedAt);
+          incidentAsOf = data.asOf;
+          selectedIncident = refreshedIncidentSelection(selectedIncident, incidents);
           drawIncidents();
+          drawDrawer();
         } catch (error) {
           if (current()) {
             incidents = [];
+            incidentAsOf = null;
             selectedIncident = null;
-            $("incidents").replaceChildren();
-            text("incident-status", error.message);
+            drawIncidents(error.message);
             drawDrawer();
           }
         }
@@ -685,6 +768,7 @@ try {
   if (!receiptResponse.ok) throw new Error("Canonical asset receipt is unavailable.");
   const receipt = await receiptResponse.json();
   catalogVersion = `sha256:${receipt.catalog.sha256}`;
+  text("catalog-scope", `APPROVED EXPECTED catalog scope: ${catalogVersion}`);
   if (
     catalog.modules?.length !== 24 ||
     !Array.isArray(catalog.streams) ||
