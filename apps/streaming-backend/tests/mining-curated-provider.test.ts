@@ -3,6 +3,7 @@ import { get } from "node:http";
 import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
+import { ContainerClient } from "@azure/storage-blob";
 import {
   D01_CATALOG_VERSION,
   D01_PLANT_CATALOG,
@@ -17,6 +18,14 @@ import type { MiningRunRecord } from "../src/mining/run-coordinator.js";
 import { createBoundedMiningQuery } from "../src/mining/read/bounded-query.js";
 import { createMiningCuratedProvider } from "../src/mining/read/curated-provider.js";
 import type { MiningProofReceipt } from "../src/mining/read/receipt-schema.js";
+import { BlobMiningStore } from "../src/mining/blob-store.js";
+import * as storage from "../src/mining/blob-store.js";
+import * as native from "../src/mining/read/native-verifier.js";
+import * as bounded from "../src/mining/read/bounded-query.js";
+import {
+  configuredMiningCuratedProvider,
+  parseMiningReadConfiguration,
+} from "../src/mining/read/runtime.js";
 
 const id = "11111111-1111-4111-8111-111111111111";
 const viewer = "22222222-2222-4222-8222-222222222222";
@@ -172,9 +181,14 @@ function setup(principal = viewer) {
     signal?.throwIfAborted();
     return { bytes, etag: "proof", leased: false };
   });
-  const verifyNative = vi.fn(async (_receipt: MiningProofReceipt, signal: AbortSignal) => {
-    signal.throwIfAborted();
-  });
+  const verifyNative = vi.fn(
+    async (
+      _receipt: Parameters<ReturnType<typeof native.createMiningNativeVerifier>>[0],
+      signal: AbortSignal,
+    ) => {
+      signal.throwIfAborted();
+    },
+  );
   const query = vi.fn<ReturnType<typeof createBoundedMiningQuery>>(async (input, signal) => {
     signal?.throwIfAborted();
     if (input.kind === "latest") {
@@ -323,6 +337,291 @@ function setup(principal = viewer) {
     },
   };
 }
+
+function protectedConfiguration(fixture: ReturnType<typeof setup>) {
+  return {
+    schemaVersion: 1,
+    receiptPin: fixture.dependencies.receiptPin,
+    expectations: {
+      ...structuredClone(fixture.dependencies.expectations),
+      semanticContracts: fixture.dependencies.expectations.semanticContracts.map(
+        ({ functionName, assertionCount, resultRowCount, outputSha256 }) => ({
+          functionName,
+          assertionCount,
+          resultRowCount,
+          outputSha256,
+        }),
+      ),
+    },
+    native: {
+      managedIdentityPrincipalId: viewer,
+      eventstreamNativeDefinitionSha256: hash,
+      eventhouseNativeDefinitionSetSha256: hash,
+    },
+  };
+}
+
+function configureRuntime(fixture: ReturnType<typeof setup>) {
+  const store = new BlobMiningStore(
+    new ContainerClient("https://example.blob.core.windows.net/mining-state"),
+  );
+  vi.spyOn(store, "read").mockImplementation(fixture.read);
+  vi.spyOn(store, "readBytes").mockImplementation(fixture.readBytes);
+  const mutations = ["create", "write", "acquire", "renew", "release"] as const;
+  for (const method of mutations) {
+    vi.spyOn(store, method).mockImplementation(() => {
+      throw new Error("Configured read attempted a storage mutation.");
+    });
+  }
+  const configuredStore = vi.spyOn(storage, "configuredMiningStore").mockReturnValue(store);
+  const verifier = vi
+    .spyOn(native, "createMiningNativeVerifier")
+    .mockReturnValue(fixture.verifyNative);
+  vi.spyOn(bounded, "createBoundedMiningQuery").mockReturnValue(fixture.query);
+  const configuration = protectedConfiguration(fixture);
+  const environment = {
+    ...fixture.dependencies.env,
+    MINING_READ_CONFIGURATION_JSON: JSON.stringify(configuration),
+  };
+  const curated = configuredMiningCuratedProvider(environment);
+  const app = express();
+  app.use(
+    "/api/mining",
+    createMiningReadRouter({
+      synthetic: false,
+      env: environment,
+      verifyPrincipal: async () => viewer,
+      status: fixture.status,
+      curated,
+      now: () => Date.parse(asOf),
+    }),
+  );
+  return { app, store, configuredStore, verifier, configuration, environment, curated, mutations };
+}
+
+describe("configured production mining reads", () => {
+  it("keeps disabled composition inert without interpreting protected values or constructing clients", () => {
+    const configuredStore = vi.spyOn(storage, "configuredMiningStore");
+    const verifier = vi.spyOn(native, "createMiningNativeVerifier");
+    try {
+      for (const enabled of [undefined, "false", "TRUE", "invalid"]) {
+        expect(
+          configuredMiningCuratedProvider({
+            MINING_READ_ENABLED: enabled,
+            MINING_READ_CONFIGURATION_JSON: "malformed private input",
+          }),
+        ).toBeUndefined();
+      }
+      expect(configuredStore).not.toHaveBeenCalled();
+      expect(verifier).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("rejects incomplete, unbounded and unknown protected configuration without echoing its contents", () => {
+    const original = protectedConfiguration(setup());
+    const invalid = [
+      undefined,
+      "private-malformed-value",
+      "{}",
+      "x".repeat(16_385),
+      JSON.stringify({ ...original, receiptPin: "bad" }),
+      JSON.stringify({ ...original, unexpected: true }),
+      JSON.stringify({ ...original, schemaVersion: 2 }),
+      JSON.stringify({
+        ...original,
+        native: { ...original.native, managedIdentityPrincipalId: "bad" },
+      }),
+      JSON.stringify({
+        ...original,
+        expectations: { ...original.expectations, semanticContracts: [] },
+      }),
+      JSON.stringify({
+        ...original,
+        expectations: { ...original.expectations, canaryRunId: "bad" },
+      }),
+      JSON.stringify({
+        ...original,
+        expectations: {
+          ...original.expectations,
+          target: { ...original.expectations.target, environment: "\ud800" },
+        },
+      }),
+    ];
+    for (const value of invalid) {
+      expect(() => parseMiningReadConfiguration(value)).toThrow();
+    }
+    expect(() => parseMiningReadConfiguration("private-malformed-value")).toThrow(
+      "Protected mining read configuration is missing or invalid.",
+    );
+    const duplicate = structuredClone(original);
+    duplicate.expectations.semanticContracts[1] = duplicate.expectations.semanticContracts[0];
+    expect(() => parseMiningReadConfiguration(JSON.stringify(duplicate))).toThrow();
+    const emptyResult = structuredClone(original);
+    emptyResult.expectations.semanticContracts[0].resultRowCount = 0;
+    expect(
+      parseMiningReadConfiguration(JSON.stringify(emptyResult)).expectations.semanticContracts[0]
+        .resultRowCount,
+    ).toBe(0);
+  });
+
+  it("composes the real proof and journal reader with mandatory native verification at the HTTP boundary", async () => {
+    const fixture = setup();
+    const configured = configureRuntime(fixture);
+    const before = structuredClone(fixture.documents);
+    try {
+      for (const route of ["context", "overview", "incidents"]) {
+        expect(
+          (
+            await request(configured.app)
+              .get(`/api/mining/${route}`)
+              .query(route === "context" ? {} : { asOf })
+          ).status,
+        ).toBe(200);
+      }
+      expect(fixture.readBytes).toHaveBeenCalledTimes(3);
+      expect(fixture.verifyNative).toHaveBeenCalledTimes(3);
+      expect(configured.verifier).toHaveBeenCalledWith(
+        {
+          target: configured.configuration.expectations.target,
+          managedIdentityPrincipalId: viewer,
+          deploymentObservation: {
+            eventstreamNativeDefinitionSha256: hash,
+            eventhouseNativeDefinitionSetSha256: hash,
+          },
+        },
+        expect.objectContaining({ MINING_APPROVED_RUN_ID: id }),
+      );
+      expect(fixture.query).toHaveBeenCalledTimes(2);
+      for (const method of configured.mutations)
+        expect(configured.store[method]).not.toHaveBeenCalled();
+      expect(fixture.documents).toEqual(before);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("cannot turn a read flag or a malformed configuration into a healthy context", async () => {
+    const fixture = setup();
+    const configured = configureRuntime(fixture);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      for (const value of [undefined, "{}", JSON.stringify({ readiness: "READY" })]) {
+        const environment = { ...configured.environment, MINING_READ_CONFIGURATION_JSON: value };
+        const provider = configuredMiningCuratedProvider(environment)!;
+        await expect(
+          provider({ kind: "context", run: fixture.run }, new AbortController().signal),
+        ).rejects.toThrow();
+      }
+      expect(configured.configuredStore).not.toHaveBeenCalled();
+      expect(fixture.readBytes).not.toHaveBeenCalled();
+      expect(configured.verifier).not.toHaveBeenCalled();
+      fixture.tamper();
+      expect((await request(configured.app).get("/api/mining/context")).status).toBe(503);
+      expect(fixture.verifyNative).not.toHaveBeenCalled();
+      expect(fixture.query).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("rejects approval disagreement before storage and captures the protected host input", async () => {
+    const fixture = setup();
+    const configured = configureRuntime(fixture);
+    try {
+      for (const change of [
+        { MINING_APPROVED_RUN_ID: viewer },
+        { ASSISTANT_AUTH_TENANT_ID: viewer },
+        { MINING_APPROVED_CATALOG_VERSION: "foreign" },
+        { MINING_APPROVED_PROFILE_VERSION: "foreign" },
+      ]) {
+        const provider = configuredMiningCuratedProvider({ ...configured.environment, ...change })!;
+        await expect(
+          provider({ kind: "context", run: fixture.run }, new AbortController().signal),
+        ).rejects.toThrow();
+      }
+      expect(configured.configuredStore).not.toHaveBeenCalled();
+      configured.environment.MINING_READ_CONFIGURATION_JSON = "{}";
+      await configured.curated!(
+        { kind: "context", run: fixture.run },
+        new AbortController().signal,
+      );
+      expect(fixture.verifyNative).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("returns unavailable when the mandatory native verifier fails, without querying or reading incidents", async () => {
+    const fixture = setup();
+    const configured = configureRuntime(fixture);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      fixture.verifyNative.mockRejectedValueOnce(new Error("Native unavailable."));
+      expect(
+        (await request(configured.app).get("/api/mining/overview").query({ asOf })).status,
+      ).toBe(503);
+      expect(fixture.readBytes).toHaveBeenCalledTimes(1);
+      expect(fixture.read).not.toHaveBeenCalled();
+      expect(fixture.query).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("requires the separately configured dedicated store before constructing native verification", async () => {
+    const fixture = setup();
+    const configured = configureRuntime(fixture);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      configured.configuredStore.mockReturnValueOnce(undefined);
+      expect((await request(configured.app).get("/api/mining/context")).status).toBe(503);
+      expect(configured.verifier).not.toHaveBeenCalled();
+      expect(fixture.readBytes).not.toHaveBeenCalled();
+      expect(fixture.query).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("does not construct live dependencies before viewer authorization and durable accepted admission", async () => {
+    const fixture = setup();
+    const configured = configureRuntime(fixture);
+    const denied = express();
+    denied.use(
+      "/api/mining",
+      createMiningReadRouter({
+        synthetic: false,
+        env: configured.environment,
+        verifyPrincipal: async () => id,
+        status: fixture.status,
+        curated: configured.curated,
+      }),
+    );
+    try {
+      expect((await request(denied).get("/api/mining/context")).status).toBe(403);
+      expect(fixture.status).not.toHaveBeenCalled();
+      fixture.status.mockResolvedValueOnce({
+        runId: id,
+        admission: "pending",
+        phase: "running",
+        stopRequested: false,
+        run: fixture.run,
+      });
+      expect((await request(configured.app).get("/api/mining/context")).status).toBe(503);
+      expect(configured.configuredStore).not.toHaveBeenCalled();
+      expect(configured.verifier).not.toHaveBeenCalled();
+      expect(fixture.readBytes).not.toHaveBeenCalled();
+      expect(fixture.query).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});
 
 describe("explicit curated read composition", () => {
   it("maps real persisted incident replay plus latest/summary contracts at the HTTP boundary", async () => {
