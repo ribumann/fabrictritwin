@@ -156,7 +156,7 @@ export class D01PlantSimulator {
   private readonly waterReturnDelay: number[];
   private lastBatch: D01SimulationBatch | null = null;
   private hopperTonnes = 780;
-  private waterVolumeM3 = 35;
+  private waterVolumeM3 = 39;
   private tailingsTonnes = 3600;
   private productSampleGrams = 0;
   private waterStage: WaterStage = "normal";
@@ -168,8 +168,8 @@ export class D01PlantSimulator {
   private sharedDisturbance = 0;
   private thickenerLevelPercent = 55;
   private readonly activeAlerts = new Set<string>();
-  private lastLineBTelemetryElapsedSeconds = 0;
-  private lastLineBTelemetryTimestamp = "";
+  private lastDmsTelemetryElapsedSeconds = 0;
+  private lastDmsTelemetryTimestamp = "";
 
   constructor(options: CreateD01SimulationOptions) {
     assertValidRunOptions(options);
@@ -262,7 +262,6 @@ export class D01PlantSimulator {
     const alertTransitions: D01AlertTransition[] = [];
     this.applyScenarioTransitions(timestamp, stateEvents);
     this.advanceProcessModel();
-    this.applyWaterStateTransition(timestamp, stateEvents);
     const numericEvents = this.createDueTelemetry(timestamp);
     alertTransitions.push(...this.evaluateAlerts(timestamp, numericEvents));
     stateEvents.push(...this.createStateEvents(timestamp));
@@ -320,12 +319,12 @@ export class D01PlantSimulator {
       } else if (tag.metric === "vibration_rms") {
         value = 1;
       } else if (tag.metric === "medium_density") {
-        value = 2900;
+        value = 2920;
       } else if (tag.metric === "level") {
         if (tag.module_id === "D01.shared.hopper") {
           value = (this.hopperTonnes / 1200) * 100;
         } else if (tag.module_id === "D01.shared.water") {
-          value = (this.waterVolumeM3 / 50) * 100;
+          value = (this.waterVolumeM3 / 60) * 100;
         } else if (tag.module_id === "D01.shared.tailings") {
           value = (this.tailingsTonnes / 8000) * 100;
         } else if (tag.module_id === "D01.shared.thickener") {
@@ -409,14 +408,6 @@ export class D01PlantSimulator {
       ) {
         scenarioFactor = 0.78;
       }
-      if (
-        line === "C" &&
-        this.scenario === "dms-c" &&
-        this.elapsedSeconds >= 300 &&
-        this.elapsedSeconds < 600
-      ) {
-        scenarioFactor = 0.72;
-      }
       const sharedNoise = (this.random(`feed-${line}`) * 2 - 1) * 0.025 + this.sharedDisturbance;
       const feedTarget = state.nominal_feed_tph * feedFactor * scenarioFactor * (1 + sharedNoise);
       state.current_feed_tph = this.advanceValue(
@@ -446,7 +437,14 @@ export class D01PlantSimulator {
       (sum, flow) => sum + flow.scrubber + flow.screen,
       40,
     );
-    const returnedWater = this.delayed(this.waterReturnDelay, demand * 0.65);
+    const restrictedReturn =
+      this.waterStage === "restricted" ||
+      this.waterStage === "ramping" ||
+      this.waterStage === "holding";
+    const returnedWater = this.delayed(
+      this.waterReturnDelay,
+      demand * (restrictedReturn ? 0.25 : 0.65),
+    );
     const desiredMakeup = Math.max(0, demand - returnedWater + (35 - this.waterVolumeM3) * 1.5);
     const makeupCapacity =
       this.waterStage === "restricted" ||
@@ -459,7 +457,7 @@ export class D01PlantSimulator {
     const deliveryFactor = demand > 0 ? Math.min(1, availableFlow / demand) : 1;
     const netWater = demand * deliveryFactor - returnedWater - makeupWater;
     this.waterVolumeM3 = Math.min(
-      50,
+      60,
       Math.max(0, this.waterVolumeM3 - (netWater * stepSeconds) / 3600),
     );
     this.totalWaterDemand = demand;
@@ -473,7 +471,7 @@ export class D01PlantSimulator {
     ) {
       this.waterStage = "restricted";
     }
-    if (this.waterStage === "restricted" && this.waterVolumeM3 <= 10) {
+    if (this.waterStage === "restricted" && this.waterVolumeM3 <= 15) {
       this.waterStage = "ramping";
       this.waterStageElapsedSeconds = 0;
     } else if (this.waterStage === "ramping") {
@@ -584,31 +582,34 @@ export class D01PlantSimulator {
         case "feed_pressure": {
           const dmsFeed = lineDmsFeeds[line as "A" | "B" | "C"] ?? 0;
           target =
-            dmsFeed <= 0 ? 0 : 80 + (300 * dmsFeed) / (nominalFeeds[line as "A" | "B" | "C"] ?? 1);
+            dmsFeed <= 0 ? 0 : 200 + (100 * dmsFeed) / (nominalFeeds[line as "A" | "B" | "C"] ?? 1);
+          break;
+        }
+        case "medium_density": {
+          const scenarioElapsed = this.elapsedSeconds - 180;
           if (
             this.scenario === "dms-c" &&
             line === "C" &&
-            this.elapsedSeconds >= 300 &&
-            this.elapsedSeconds < 600
+            scenarioElapsed >= 0 &&
+            scenarioElapsed < 540
           ) {
-            target = 38;
+            if (scenarioElapsed < 180) {
+              target = 2920 - (250 * scenarioElapsed) / 180;
+            } else if (scenarioElapsed < 420) {
+              target = 2670;
+            } else {
+              target = 2670 + 250 * Math.min(1, (scenarioElapsed - 420) / 120);
+            }
+          } else {
+            target = 2920 + this.sharedDisturbance * 20;
           }
           break;
         }
-        case "medium_density":
-          target =
-            this.scenario === "dms-c" &&
-            line === "C" &&
-            this.elapsedSeconds >= 300 &&
-            this.elapsedSeconds < 600
-              ? 2320
-              : 2900 + this.sharedDisturbance * 20;
-          break;
         case "level":
           if (tag.module_id === "D01.shared.hopper") {
             target = (this.hopperTonnes / 1200) * 100;
           } else if (tag.module_id === "D01.shared.water") {
-            target = (this.waterVolumeM3 / 50) * 100;
+            target = (this.waterVolumeM3 / 60) * 100;
           } else if (tag.module_id === "D01.shared.thickener") {
             target = this.thickenerLevelPercent;
           } else if (tag.module_id === "D01.shared.tailings") {
@@ -654,7 +655,7 @@ export class D01PlantSimulator {
       }
       if (
         this.scenario === "communication-gap" &&
-        tag.module_id.startsWith("D01.B.") &&
+        tag.module_id === "D01.B.dms" &&
         this.elapsedSeconds >= 180 &&
         this.elapsedSeconds < 360
       ) {
@@ -748,54 +749,6 @@ export class D01PlantSimulator {
         }
       }
     }
-    if (this.scenario === "bearing-b" && this.elapsedSeconds === 300) {
-      const event = this.setState("B", "fault", true, timestamp);
-      if (event) {
-        stateEvents.push(event);
-      }
-    }
-    if (this.scenario === "bearing-b" && this.elapsedSeconds === 900) {
-      const event = this.setState("B", "running", true, timestamp);
-      if (event) {
-        stateEvents.push(event);
-      }
-    }
-    if (this.scenario === "dms-c" && this.elapsedSeconds === 300) {
-      const event = this.setState("C", "fault", true, timestamp);
-      if (event) {
-        stateEvents.push(event);
-      }
-    }
-    if (this.scenario === "dms-c" && this.elapsedSeconds === 600) {
-      const event = this.setState("C", "running", true, timestamp);
-      if (event) {
-        stateEvents.push(event);
-      }
-    }
-  }
-
-  private applyWaterStateTransition(timestamp: string, stateEvents: D01PlantStateEvent[]): void {
-    if (this.scenario !== "shared-water-restriction") {
-      return;
-    }
-    if (
-      (this.waterStage === "ramping" || this.waterStage === "holding") &&
-      this.currentStates.get("shared") === "running"
-    ) {
-      const event = this.setState("shared", "fault", true, timestamp);
-      if (event) {
-        stateEvents.push(event);
-      }
-    } else if (
-      this.waterStage === "normal" &&
-      this.currentStates.get("shared") === "fault" &&
-      this.elapsedSeconds > 180
-    ) {
-      const event = this.setState("shared", "running", true, timestamp);
-      if (event) {
-        stateEvents.push(event);
-      }
-    }
   }
 
   private evaluateAlerts(
@@ -838,11 +791,11 @@ export class D01PlantSimulator {
 
     const cDensity = byTag.get("D01.C.dms.medium_density");
     if (cDensity) {
-      if (cDensity.value < 2500) {
+      if (cDensity.value < 2800) {
         this.addAlert(
           "dms-c-density-low",
           "C",
-          "high",
+          "warning",
           "raised",
           timestamp,
           {
@@ -850,11 +803,11 @@ export class D01PlantSimulator {
           },
           output,
         );
-      } else if (cDensity.value >= 2800) {
+      } else if (cDensity.value >= 2850) {
         this.addAlert(
           "dms-c-density-low",
           "C",
-          "high",
+          "warning",
           "cleared",
           timestamp,
           {
@@ -894,14 +847,14 @@ export class D01PlantSimulator {
       }
     }
 
-    const lineBTelemetry = measurements.find((event) => event.module_id.startsWith("D01.B."));
-    if (lineBTelemetry) {
+    const dmsTelemetry = measurements.find((event) => event.module_id === "D01.B.dms");
+    if (dmsTelemetry) {
       const gapSeconds =
-        this.lastLineBTelemetryElapsedSeconds > 0
-          ? this.elapsedSeconds - this.lastLineBTelemetryElapsedSeconds
+        this.lastDmsTelemetryElapsedSeconds > 0
+          ? this.elapsedSeconds - this.lastDmsTelemetryElapsedSeconds
           : 0;
-      this.lastLineBTelemetryElapsedSeconds = this.elapsedSeconds;
-      this.lastLineBTelemetryTimestamp = lineBTelemetry.timestamp;
+      this.lastDmsTelemetryElapsedSeconds = this.elapsedSeconds;
+      this.lastDmsTelemetryTimestamp = dmsTelemetry.timestamp;
       this.addAlert(
         "line-b-telemetry-gap",
         "B",
@@ -909,14 +862,14 @@ export class D01PlantSimulator {
         "cleared",
         timestamp,
         {
-          last_observed_timestamp: lineBTelemetry.timestamp,
+          last_observed_timestamp: dmsTelemetry.timestamp,
           gap_seconds: gapSeconds,
         },
         output,
       );
     } else if (
-      this.lastLineBTelemetryElapsedSeconds > 0 &&
-      this.elapsedSeconds - this.lastLineBTelemetryElapsedSeconds >= 60
+      this.lastDmsTelemetryElapsedSeconds > 0 &&
+      this.elapsedSeconds - this.lastDmsTelemetryElapsedSeconds >= 60
     ) {
       this.addAlert(
         "line-b-telemetry-gap",
@@ -925,8 +878,8 @@ export class D01PlantSimulator {
         "raised",
         timestamp,
         {
-          last_observed_timestamp: this.lastLineBTelemetryTimestamp,
-          gap_seconds: this.elapsedSeconds - this.lastLineBTelemetryElapsedSeconds,
+          last_observed_timestamp: this.lastDmsTelemetryTimestamp,
+          gap_seconds: this.elapsedSeconds - this.lastDmsTelemetryElapsedSeconds,
         },
         output,
       );

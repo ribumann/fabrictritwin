@@ -65,7 +65,7 @@ function runSimulation(
   }
 
   expect(simulator.inventory.water_m3).toBeGreaterThanOrEqual(0);
-  expect(simulator.inventory.water_m3).toBeLessThanOrEqual(50);
+  expect(simulator.inventory.water_m3).toBeLessThanOrEqual(60);
   return { events, alerts, batches, waterAtEnd: simulator.inventory.water_m3 };
 }
 
@@ -363,12 +363,17 @@ describe("D01 deterministic bounded simulator", () => {
       bearing_temperature_c: expect.any(Number),
       vibration_rms_mm_s: expect.any(Number),
     });
+    const bearingStates = bearing.events.filter((event) => event.entityType === "PlantStateEvent");
+    expect(bearingStates.some((event) => event.scope_id === "B" && event.state === "fault")).toBe(
+      false,
+    );
     expect(
-      bearing.events.some(
+      bearingStates.some(
         (event) =>
-          event.entityType === "PlantStateEvent" &&
           event.scope_id === "B" &&
-          event.state === "fault",
+          event.state === "running" &&
+          event.timestamp === "2024-01-01T00:05:00.000Z" &&
+          event.scheduled_running,
       ),
     ).toBe(true);
     expect(
@@ -381,42 +386,104 @@ describe("D01 deterministic bounded simulator", () => {
     ).toBe(true);
 
     const dms = runSimulation("dms-c", 900);
+    const dmsDensity = dms.events.filter(
+      (event) =>
+        event.entityType === "PlantTelemetry" && event.tag_id === "D01.C.dms.medium_density",
+    );
+    const minimumDensity = Math.min(...dmsDensity.map((event) => event.value));
+    expect(minimumDensity).toBeGreaterThan(2600);
+    expect(minimumDensity).toBeLessThan(2800);
+    const densityAt = (timestamp: string) =>
+      dmsDensity.find((event) => event.timestamp === `2024-01-01T00:${timestamp}:00.000Z`)?.value;
+    expect(densityAt("06")).toBeLessThan(2800);
+    expect(densityAt("10")).toBeLessThan(2800);
+    expect(densityAt("12")).toBeGreaterThan(2800);
+    expect(densityAt("13")).toBeGreaterThan(2850);
+    expect(dmsDensity.at(-1)?.value).toBeGreaterThan(2850);
     expect(dms.alerts.map((alert) => alert.transition)).toEqual(["raised", "cleared"]);
+    expect(dms.alerts.map((alert) => alert.severity)).toEqual(["warning", "warning"]);
+    expect(dms.alerts[0]?.evidence.medium_density_kg_m3).toBeLessThan(2800);
+    expect(dms.alerts[0]?.evidence.medium_density_kg_m3).toBeGreaterThan(2600);
+    expect(dms.alerts[1]?.evidence.medium_density_kg_m3).toBeGreaterThanOrEqual(2850);
     expect(dms.alerts.every((alert) => !("scenario" in alert.evidence))).toBe(true);
+    const dmsFeed = dms.events.filter(
+      (event) =>
+        event.entityType === "PlantTelemetry" &&
+        event.tag_id === "D01.C.crusher.ore_flow" &&
+        event.timestamp >= "2024-01-01T00:03:00.000Z",
+    );
+    expect(Math.min(...dmsFeed.map((event) => event.value))).toBeGreaterThan(35);
+    const dmsPressure = dms.events.filter(
+      (event) =>
+        event.entityType === "PlantTelemetry" &&
+        event.tag_id === "D01.C.dms.feed_pressure" &&
+        event.timestamp >= "2024-01-01T00:03:00.000Z",
+    );
+    expect(dmsPressure.every((event) => event.value >= 200 && event.value <= 400)).toBe(true);
+    const dmsStates = dms.events.filter((event) => event.entityType === "PlantStateEvent");
+    expect(dmsStates.some((event) => event.scope_id === "C" && event.state === "fault")).toBe(
+      false,
+    );
     expect(
-      dms.events.some(
+      dmsStates.some(
         (event) =>
-          event.entityType === "PlantTelemetry" &&
-          event.tag_id === "D01.C.dms.medium_density" &&
-          event.value < 2600,
+          event.scope_id === "C" &&
+          event.state === "running" &&
+          event.timestamp === "2024-01-01T00:05:00.000Z" &&
+          event.scheduled_running,
       ),
     ).toBe(true);
 
     const water = runSimulation("shared-water-restriction", 1200);
     expect(water.waterAtEnd).toBeLessThan(35);
+    const firstLowWater = water.events.find(
+      (event) =>
+        event.entityType === "PlantTelemetry" &&
+        event.tag_id === "D01.shared.water.level" &&
+        event.value < 25,
+    );
+    expect(firstLowWater).toBeDefined();
+    expect(Date.parse(firstLowWater?.timestamp ?? "") - start.valueOf()).toBeLessThanOrEqual(
+      12 * 60 * 1000,
+    );
     expect(water.alerts[0]?.rule_id).toBe("shared-water-low-level");
     expect(water.alerts.every((alert) => !("scenario" in alert.evidence))).toBe(true);
+    const waterStates = water.events.filter((event) => event.entityType === "PlantStateEvent");
     expect(
-      water.events.some(
+      waterStates.some((event) => event.scope_id === "shared" && event.state === "fault"),
+    ).toBe(false);
+    expect(
+      waterStates.some(
         (event) =>
-          event.entityType === "PlantStateEvent" &&
           event.scope_id === "shared" &&
-          event.state === "fault",
+          event.state === "running" &&
+          event.timestamp === "2024-01-01T00:15:00.000Z" &&
+          event.scheduled_running,
       ),
     ).toBe(true);
 
     const gap = runSimulation("communication-gap", 360);
-    const lineBTimestamps = gap.events
-      .filter(
-        (event) => event.entityType === "PlantTelemetry" && event.module_id.startsWith("D01.B."),
-      )
-      .map((event) => event.timestamp);
-    expect(lineBTimestamps.some((timestamp) => timestamp === "2024-01-01T00:03:00.000Z")).toBe(
-      false,
+    const dmsTags = D01_PLANT_CATALOG.telemetry_tags.filter((tag) => tag.module_id === "D01.B.dms");
+    expect(dmsTags).toHaveLength(3);
+    const gapTelemetry = gap.events.filter((event) => event.entityType === "PlantTelemetry");
+    const gapWindow = gapTelemetry.filter(
+      (event) =>
+        event.module_id === "D01.B.dms" &&
+        event.timestamp >= "2024-01-01T00:03:00.000Z" &&
+        event.timestamp < "2024-01-01T00:06:00.000Z",
     );
-    expect(lineBTimestamps.some((timestamp) => timestamp === "2024-01-01T00:06:00.000Z")).toBe(
-      true,
-    );
+    expect(gapWindow).toHaveLength(0);
+    expect(
+      dmsTags.every((tag) => gapTelemetry.filter((event) => event.tag_id === tag.id).length === 6),
+    ).toBe(true);
+    expect(
+      gapTelemetry.some(
+        (event) =>
+          event.tag_id === "D01.B.crusher.motor_current" &&
+          event.timestamp === "2024-01-01T00:03:00.000Z",
+      ),
+    ).toBe(true);
+    expect(gapTelemetry).toHaveLength(588);
     expect(gap.alerts.map((alert) => alert.transition)).toEqual(["raised", "cleared"]);
     expect(gap.alerts.every((alert) => !("scenario" in alert.evidence))).toBe(true);
   });
