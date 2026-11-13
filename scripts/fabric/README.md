@@ -250,7 +250,11 @@ processed tonnes, three running lines, full common coverage, 1/21 m3/t water
 and 50/21 kWh/t energy; AssetTrend returns the A-crusher ore-flow series at
 12 t/h; ActiveIncidents returns one unacknowledged warning; CompareLines
 returns the A/B/C feed series at 12/14/16 t/h. These are deterministic
-query-local expectations, not hosted results.
+query-local expectations, not hosted results. The emitted assertions check
+each summary line's feed and exactly one matching CompareLines row per
+expected line; repeated copies of one line cannot substitute for another.
+Focused offline predicate-model regressions reject duplicate/missing lines
+and swapped summary feeds, but do not execute or compile KQL.
 
 The adjacent manifest also records a **requirements-only, unissued** proof
 contract. For each raw canary table, allow duplicate copies but require exactly

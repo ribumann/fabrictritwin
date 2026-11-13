@@ -21,8 +21,8 @@ Describe 'Synthetic mining KQL engine self-test' {
         $script:Manifest.schemaVersion | Should -Be 1
         $script:Manifest.status | Should -Be 'synthetic-engine-self-test-only'
         $script:Manifest.sourceCommit | Should -Be '324d73496913b4a2944713eb8861f2b7fdba4c02'
-        $script:Manifest.querySha256 | Should -Be 'a4d60703bd6423bc252e3578aedaf90229345f89825ced8b0586784d6dcdfabc'
-        $script:Manifest.queryBytes | Should -Be 108183
+        $script:Manifest.querySha256 | Should -Be 'a1a05bf82f28989d32b8c7190e7fc3a341038b90f4e28a5c9d1edae4f15034b4'
+        $script:Manifest.queryBytes | Should -Be 108379
         $script:Manifest.fixtureSha256 | Should -Be '5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1'
         (Get-FileHash -LiteralPath $script:QueryPath -Algorithm SHA256).Hash.ToLowerInvariant() |
             Should -Be $script:Manifest.querySha256
@@ -125,5 +125,81 @@ Describe 'Synthetic mining KQL engine self-test' {
         $proof.nativeReadback.status | Should -Be 'unavailable-unverified'
         $proof.nativeReadback.requiredOnEveryUse | Should -BeTrue
         $proof.selfTestContribution | Should -Be 'informational-only; never grants deployment or source readiness'
+    }
+
+    It 'requires one correct row per line in the emitted comparison predicate (offline model only)' {
+        $expression = [regex]::Match(
+            $script:Query, '(?s)let _selftest_CompareMatch =\s*(.*?)\s*;'
+        ).Groups[1].Value
+        $pattern = 'toscalar\(_selftest_CompareRows \| where line_id == "(?<line>[ABC])" and tag_id == "(?<tag>[^"]+)" and value == (?<value>\d+\.0) and unit == "(?<unit>[^"]+)" and good_count == (?<good>\d+) and coverage == (?<coverage>\d+\.0) \| count\) == 1'
+        $predicates = [regex]::Matches($expression, $pattern)
+        $predicates.Count | Should -Be 3
+        ([regex]::Replace($expression, $pattern, 'MATCH') -replace '\s+', ' ').Trim() |
+            Should -Be 'MATCH and MATCH and MATCH'
+        (($predicates | ForEach-Object { $_.Groups['line'].Value }) -join ',') | Should -Be 'A,B,C'
+
+        $rows = @(
+            @{ line = 'A'; tag = 'D01.A.crusher.ore_flow'; value = 12; unit = 't/h'; good = 2; coverage = 1 }
+            @{ line = 'B'; tag = 'D01.B.crusher.ore_flow'; value = 14; unit = 't/h'; good = 2; coverage = 1 }
+            @{ line = 'C'; tag = 'D01.C.crusher.ore_flow'; value = 16; unit = 't/h'; good = 2; coverage = 1 }
+        )
+        $matchesContract = {
+            param($observed)
+            if (@($observed).Count -ne 3) { return $false }
+            foreach ($predicate in $predicates) {
+                $matching = @($observed | Where-Object {
+                    $_.line -ceq $predicate.Groups['line'].Value -and
+                    $_.tag -ceq $predicate.Groups['tag'].Value -and
+                    $_.value -eq [double]::Parse($predicate.Groups['value'].Value, [cultureinfo]::InvariantCulture) -and
+                    $_.unit -ceq $predicate.Groups['unit'].Value -and
+                    $_.good -eq [int]$predicate.Groups['good'].Value -and
+                    $_.coverage -eq [double]::Parse($predicate.Groups['coverage'].Value, [cultureinfo]::InvariantCulture)
+                })
+                if ($matching.Count -ne 1) { return $false }
+            }
+            return $true
+        }
+        (& $matchesContract $rows) | Should -BeTrue
+        (& $matchesContract @($rows[0], $rows[0], $rows[0])) | Should -BeFalse
+        foreach ($missing in 0..2) {
+            $remaining = @($rows | Where-Object { $_.line -ne $rows[$missing].line })
+            (& $matchesContract $remaining) | Should -BeFalse
+            (& $matchesContract @($remaining + $remaining[0])) | Should -BeFalse
+        }
+        foreach ($field in @('tag', 'value', 'unit', 'good', 'coverage')) {
+            $invalid = $rows[1].Clone()
+            $invalid[$field] = if ($field -in @('tag', 'unit')) { 'wrong' } else { -1 }
+            (& $matchesContract @($rows[0], $invalid, $rows[2])) | Should -BeFalse
+        }
+        $script:Query | Should -Match 'toscalar\(_selftest_CompareRows \| count\) == 3'
+    }
+
+    It 'checks each summary line feed rather than only the plant total (offline model only)' {
+        $expression = [regex]::Match(
+            $script:Query, '(?m)^let _selftest_SummaryMatch = (.*);$'
+        ).Groups[1].Value
+        $pattern = 'abs\(line_(?<line>[abc])_feed_tph - (?<value>\d+\.0)\) < 0\.000001'
+        $predicates = [regex]::Matches($expression, $pattern)
+        $predicates.Count | Should -Be 3
+        $expression | Should -Not -Match '\bor\b'
+        $expected = @{ a = 12; b = 14; c = 16 }
+        foreach ($predicate in $predicates) {
+            $line = $predicate.Groups['line'].Value
+            [double]::Parse($predicate.Groups['value'].Value, [cultureinfo]::InvariantCulture) |
+                Should -Be $expected[$line]
+        }
+        foreach ($observed in @(
+            @{ a = 12; b = 14; c = 16 }
+            @{ a = 14; b = 12; c = 16 }
+            @{ a = 12; b = 16; c = 14 }
+            @{ a = 16; b = 14; c = 12 }
+        )) {
+            ($observed.a + $observed.b + $observed.c) | Should -Be 42
+            $matches = @($predicates | Where-Object {
+                $value = [double]::Parse($_.Groups['value'].Value, [cultureinfo]::InvariantCulture)
+                [math]::Abs($observed[$_.Groups['line'].Value] - $value) -lt 0.000001
+            }).Count -eq 3
+            $matches | Should -Be ($observed.a -eq 12 -and $observed.b -eq 14 -and $observed.c -eq 16)
+        }
     }
 }
