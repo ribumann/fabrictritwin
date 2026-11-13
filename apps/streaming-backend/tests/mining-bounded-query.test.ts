@@ -61,40 +61,49 @@ function frames(rows: unknown[][] = [["ok"]]) {
     complete,
   ];
 }
-function fixture(result: unknown = frames()) {
+function fixture(result: unknown = frames(), targetUri = uri) {
   const request = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => {
     const number = request.mock.calls.length % 3;
     return Response.json(number === 1 ? metadata : number === 2 ? token : result);
   });
-  return { request, query: createBoundedMiningQuery(env, { fetch: request, now }) };
+  return {
+    request,
+    query: createBoundedMiningQuery(
+      { ...env, EVENTHOUSE_QUERY_URI: targetUri, MINING_EVENTHOUSE_QUERY_URI: targetUri },
+      { fetch: request, now },
+    ),
+  };
 }
 
 describe("bounded mining query transport", () => {
-  it("uses the verified resource and fixed parameterized comparison query", async () => {
-    const { request, query } = fixture();
-    expect(await query(input)).toEqual([{ value: "ok" }]);
-    expect(request).toHaveBeenCalledTimes(3);
-    expect(request.mock.calls[0][0]).toBe(`${uri}/v1/rest/auth/metadata`);
-    const identity = new URL(String(request.mock.calls[1][0]));
-    expect(identity.searchParams.get("resource")).toBe(resource);
-    expect(identity.searchParams.get("client_id")).toBe(clientId);
-    expect(identity.searchParams.get("api-version")).toBe("2019-08-01");
-    const queryInit = request.mock.calls[2][1]!;
-    expect(request.mock.calls[2][0]).toBe(`${uri}/v2/rest/query`);
-    expect(queryInit.headers).toMatchObject({
-      Authorization: "Bearer test-token",
-      "x-ms-readonly": "true",
-    });
-    const body = JSON.parse(String(queryInit.body));
-    expect(body.db).toBe("ExistingDatabase");
-    expect(body.csl).toContain("mining_CompareLines(plant, run, metric, start, end, bin)");
-    expect(body.csl).not.toContain(input.runId);
-    expect(body.properties.Parameters.run).toBe(`'${input.runId}'`);
-    expect(body.properties.Options.truncationmaxrecords).toBe(1001);
-    expect(body.properties.Options.truncationmaxsize).toBe(1_048_576);
-    expect(request.mock.calls.every((call) => call[1]?.redirect === "error")).toBe(true);
-    expect(request.mock.calls[0][1]?.signal).toBe(request.mock.calls[2][1]?.signal);
-  });
+  it.each([uri, "https://example.z6.kusto.fabric.microsoft.com"])(
+    "uses the verified resource and fixed parameterized comparison query on %s",
+    async (targetUri) => {
+      const { request, query } = fixture(frames(), targetUri);
+      expect(await query(input)).toEqual([{ value: "ok" }]);
+      expect(request).toHaveBeenCalledTimes(3);
+      expect(request.mock.calls[0][0]).toBe(`${targetUri}/v1/rest/auth/metadata`);
+      const identity = new URL(String(request.mock.calls[1][0]));
+      expect(identity.searchParams.get("resource")).toBe(resource);
+      expect(identity.searchParams.get("client_id")).toBe(clientId);
+      expect(identity.searchParams.get("api-version")).toBe("2019-08-01");
+      const queryInit = request.mock.calls[2][1]!;
+      expect(request.mock.calls[2][0]).toBe(`${targetUri}/v2/rest/query`);
+      expect(queryInit.headers).toMatchObject({
+        Authorization: "Bearer test-token",
+        "x-ms-readonly": "true",
+      });
+      const body = JSON.parse(String(queryInit.body));
+      expect(body.db).toBe("ExistingDatabase");
+      expect(body.csl).toContain("mining_CompareLines(plant, run, metric, start, end, bin)");
+      expect(body.csl).not.toContain(input.runId);
+      expect(body.properties.Parameters.run).toBe(`'${input.runId}'`);
+      expect(body.properties.Options.truncationmaxrecords).toBe(1001);
+      expect(body.properties.Options.truncationmaxsize).toBe(1_048_576);
+      expect(request.mock.calls.every((call) => call[1]?.redirect === "error")).toBe(true);
+      expect(request.mock.calls[0][1]?.signal).toBe(request.mock.calls[2][1]?.signal);
+    },
+  );
 
   it("uses only the other four allowlisted function signatures", async () => {
     const f = fixture();
@@ -134,6 +143,16 @@ describe("bounded mining query transport", () => {
       { IDENTITY_ENDPOINT: "http://example.com/identity" },
       { IDENTITY_ENDPOINT: "http://127.0.0.1/identity?other=x" },
       { MINING_MANAGED_IDENTITY_CLIENT_ID: "" },
+      { MINING_EVENTHOUSE_QUERY_URI: "https://example.z6.kusto.fabric.microsoft.com" },
+      ...[
+        "https://ingest-example.z6.kusto.fabric.microsoft.com",
+        "https://example.z6.kusto.fabric.microsoft.com.evil.test",
+        "https://example.z6.kusto.fabric.microsoft.com:1234",
+        "https://example.z6.kusto.fabric.microsoft.com/v2/rest/query",
+      ].map((targetUri) => ({
+        EVENTHOUSE_QUERY_URI: targetUri,
+        MINING_EVENTHOUSE_QUERY_URI: targetUri,
+      })),
     ];
     for (const change of unsafe) {
       await expect(

@@ -192,7 +192,7 @@ function configuration(env: NodeJS.ProcessEnv): { uri: string; database: string 
     url.search ||
     url.hash ||
     url.pathname !== "/" ||
-    !/^[a-z0-9][a-z0-9.-]*\.kusto\.windows\.net$/.test(url.hostname) ||
+    !/^[a-z0-9][a-z0-9.-]*\.kusto\.(?:windows\.net|fabric\.microsoft\.com)$/.test(url.hostname) ||
     url.hostname.split(".").some((label) => /^ingest(?:-|$)/.test(label)) ||
     !/^[A-Za-z0-9][A-Za-z0-9 _.-]{0,127}$/.test(database)
   )
