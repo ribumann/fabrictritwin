@@ -19,6 +19,8 @@ and `MINING_APPROVED_PROFILE_VERSION` to `d01-publish-profile-v1`. These setting
 record operator approval; they do not prove that the publisher used those versions.
 The approved run must also have a matching durable admission in the configured
 mining-state store below. No Easy Auth header or athlete mapping grants access.
+Invalid bearer tokens are rejected with 401; identity-provider verification
+failures are logged and returned as 503 instead of being reported as invalid tokens.
 Status and context perform read-only durable reads; publisher completion does not
 prove ingestion. Queries, incident persistence and the assistant are not connected:
 context reports `readAvailable: false`, while data routes return explicit 503.
