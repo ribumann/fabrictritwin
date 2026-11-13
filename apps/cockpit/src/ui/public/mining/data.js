@@ -37,8 +37,13 @@ export function formatTimestamp(value) {
 export function validIncidentWindows(incident) {
   const hasHoldStart = typeof incident?.holdWindowStart === "string";
   const hasHoldEnd = typeof incident?.holdWindowEnd === "string";
-  const evidenceStart = Date.parse(incident?.evidenceWindowStart);
-  const evidenceEnd = Date.parse(incident?.evidenceWindowEnd);
+  if (
+    typeof incident?.evidenceWindowStart !== "string" ||
+    typeof incident?.evidenceWindowEnd !== "string"
+  )
+    return false;
+  const evidenceStart = Date.parse(incident.evidenceWindowStart);
+  const evidenceEnd = Date.parse(incident.evidenceWindowEnd);
   if (
     hasHoldStart !== hasHoldEnd ||
     !Number.isFinite(evidenceStart) ||
@@ -75,6 +80,7 @@ export function currentIncidentQuery(mode, params) {
 }
 
 export function validCurrentAssessmentAsOf(value, now = Date.now()) {
+  if (typeof value !== "string") return false;
   const assessedAt = Date.parse(value);
   return Number.isFinite(assessedAt) && assessedAt >= now - 90_000 && assessedAt <= now + 15_000;
 }

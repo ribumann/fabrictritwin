@@ -121,6 +121,16 @@ describe("unknown and catalog selection semantics", () => {
       }),
     ).toBe(false);
   });
+  it("rejects non-string evidence-window bounds before parsing", () => {
+    const incident = {
+      holdWindowStart: null,
+      holdWindowEnd: null,
+      evidenceWindowStart: "2026-01-01T00:00:00Z",
+      evidenceWindowEnd: "2026-01-01T00:05:00Z",
+    };
+    expect(validIncidentWindows({ ...incident, evidenceWindowStart: 2026 })).toBe(false);
+    expect(validIncidentWindows({ ...incident, evidenceWindowEnd: 2026 })).toBe(false);
+  });
   it("keeps incident assessments current-only and separates measurement time from replay time", () => {
     const now = Date.parse("2026-01-01T12:00:00Z");
     const replayParams = {
@@ -136,6 +146,7 @@ describe("unknown and catalog selection semantics", () => {
     expect(validCurrentAssessmentAsOf(replayParams.asOf, now)).toBe(true);
     expect(validCurrentAssessmentAsOf("2026-01-01T11:58:00Z", now)).toBe(false);
     expect(validCurrentAssessmentAsOf("not-a-timestamp", now)).toBe(false);
+    expect(validCurrentAssessmentAsOf(2026, Date.parse("2026-01-01T00:00:00Z"))).toBe(false);
   });
   it("allows only canonical module associations and does not invent a metric for state-only incidents", () => {
     const catalog = { modules: [{ id: "D01.A.crusher" }] };
