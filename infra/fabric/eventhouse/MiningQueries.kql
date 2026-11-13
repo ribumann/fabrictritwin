@@ -95,7 +95,7 @@
         | project status, plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "tag",
             module_id, equipment_id, scope_id = "", tagId = tag_id, seriesId = tag_id, metric,
             value = iff(event_conflict, real(null), value), unit,
-            quality = iff(event_conflict, string(null), quality), event_time = timestamp,
+            quality = iff(event_conflict, "", quality), event_time = timestamp,
             received_at, age_seconds, state = "", scheduled_running = bool(null),
             coverage = real(null);
     let states =
@@ -119,7 +119,7 @@
         | project status, plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "state",
             module_id = "", equipment_id = "", scope_id, tagId = "", seriesId = "", metric = "",
             value = real(null), unit = "", quality = "", event_time = timestamp,
-            received_at, age_seconds, state = iff(event_conflict, string(null), state),
+            received_at, age_seconds, state = iff(event_conflict, "", state),
             scheduled_running = iff(event_conflict, bool(null), scheduled_running), coverage = real(null);
     let blocked =
         print status = iff(not(request_ok), "INVALID_REQUEST", source_status),

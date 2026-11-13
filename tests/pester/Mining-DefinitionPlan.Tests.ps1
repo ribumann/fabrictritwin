@@ -194,7 +194,7 @@ Describe 'Offline mining source and query contracts (static checks only)' {
 
     It 'retains v2 quality categories without converting uncertain to bad' {
         $script:ValidationText | Should -Match 'quality in \("good", "uncertain", "bad"\)'
-        $script:QueriesText | Should -Match 'quality = iff\(event_conflict, string\(null\), quality\)'
+        $script:QueriesText | Should -Match 'quality = iff\(event_conflict, "", quality\)'
         $script:QueriesText | Should -Match 'uncertain_count = countif\(quality == "uncertain"\)'
         $script:QueriesText | Should -Match 'bad_count = countif\(quality == "bad"\)'
         $script:QueriesText | Should -Match '"UNCERTAIN_QUALITY"'

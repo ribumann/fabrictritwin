@@ -9,7 +9,7 @@ BeforeAll {
     $script:Manifest = Get-Content -LiteralPath $script:ManifestPath -Raw | ConvertFrom-Json
     $script:ExpectedSourceHashes = @{
         'infra/fabric/eventhouse/MiningValidation.kql' = 'e733da5365075ea850588f1bf57ff3bc3ff7a2055fa3217149c5f4d26b94e0df'
-        'infra/fabric/eventhouse/MiningQueries.kql' = '68e69067deb7f898196ce2c64a95cd98e92652fd81b4e64866657d8acc037105'
+        'infra/fabric/eventhouse/MiningQueries.kql' = '9658f006440604d87b4211007dbd6e4990043ed6b80780e1808040dc343f91b8'
         'apps/simulator/src/mining/plant-catalog.json' = '0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce'
         'apps/simulator/src/mining/catalog.ts' = 'ae699fe26beaad2f245a317ecb96e9dbfdecdf0414a34e1eb26a31f5f1930a66'
         'infra/fabric/eventhouse/MiningSchema.kql' = 'd8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1'
@@ -20,14 +20,18 @@ Describe 'Synthetic mining KQL engine self-test' {
     It 'pins the exact generated payload and frozen source files' {
         $script:Manifest.schemaVersion | Should -Be 2
         $script:Manifest.status | Should -Be 'synthetic-engine-self-test-only'
-        $script:Manifest.sourceRevision | Should -Be 'd01-kql-reserved-identifier-v2'
+        $script:Manifest.sourceRevision | Should -Be 'd01-kql-string-conflict-v3'
         $script:Manifest.sourceBaseCommit | Should -Be '4d1f93b6d1cc7e940d24f73621742329c112197d'
         $script:Manifest.historicalSource.sourceCommit | Should -Be '324d73496913b4a2944713eb8861f2b7fdba4c02'
         $script:Manifest.historicalSource.sourceFiles[1].sha256 | Should -Be 'aa2e41fa8d370f77e217da5304cd0ad7c5c4c1cce2b22b8ca541fa9b38f19c05'
         $script:Manifest.historicalSource.querySha256 | Should -Be 'a1a05bf82f28989d32b8c7190e7fc3a341038b90f4e28a5c9d1edae4f15034b4'
         $script:Manifest.historicalSource.queryBytes | Should -Be 108379
-        $script:Manifest.querySha256 | Should -Be 'c90677d2dbba05d300b4550f35601a56b0d8a32a7c219ee461253325e08e0677'
-        $script:Manifest.queryBytes | Should -Be 108399
+        $script:Manifest.previousCandidate.sourceCommit | Should -Be '40d13ed257b0eeba7323d89710bc364872c23956'
+        $script:Manifest.previousCandidate.miningQueriesSha256 | Should -Be '68e69067deb7f898196ce2c64a95cd98e92652fd81b4e64866657d8acc037105'
+        $script:Manifest.previousCandidate.querySha256 | Should -Be 'c90677d2dbba05d300b4550f35601a56b0d8a32a7c219ee461253325e08e0677'
+        $script:Manifest.previousCandidate.queryBytes | Should -Be 108399
+        $script:Manifest.querySha256 | Should -Be '0b3e3027612fab95ce513d2dafcfbfabc01cda0fdf34773c135e85713bd8a9cb'
+        $script:Manifest.queryBytes | Should -Be 108379
         $script:Manifest.fixtureSha256 | Should -Be '5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1'
         (Get-FileHash -LiteralPath $script:QueryPath -Algorithm SHA256).Hash.ToLowerInvariant() |
             Should -Be $script:Manifest.querySha256
@@ -74,6 +78,16 @@ Describe 'Synthetic mining KQL engine self-test' {
             $text | Should -Not -Match '\bjoin\s+kind=leftouter\s+latest\s+on\b'
             $text | Should -Match '\blet\s+latest_telemetry\s*='
             $text | Should -Match '\bjoin\s+kind=leftouter\s+latest_telemetry\s+on\s+tag_id\b'
+        }
+    }
+
+    It 'masks conflicted strings with supported empty literals without hiding the conflict status' {
+        $source = Get-Content -LiteralPath (Join-Path $script:Root 'infra\fabric\eventhouse\MiningQueries.kql') -Raw
+        foreach ($text in @($source, $script:Query)) {
+            $text | Should -Not -Match '\bstring\s*\(\s*null\s*\)'
+            $text | Should -Match 'quality = iff\(event_conflict, "", quality\)'
+            $text | Should -Match 'state = iff\(event_conflict, "", state\)'
+            ([regex]::Matches($text, 'event_conflict, "DUPLICATE_CONFLICT"')).Count | Should -BeGreaterOrEqual 2
         }
     }
 
