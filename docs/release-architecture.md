@@ -210,10 +210,10 @@ flowchart LR
     PR["Pull request"]
     CI["Credential-free CI / image tests"]
     Main["Reviewed protected main"]
-    BuildGate["azure-build approval / enable gate"]
+    BuildGate["azure-build main-only / enable gate"]
     Publish["Build / smoke-test / OIDC publish"]
     ACR["Existing ACR: immutable digest"]
-    DeployGate["azure-deploy approval / enable gate"]
+    DeployGate["azure-deploy main-only / enable gate"]
     Update["OIDC image-only updater"]
     Workload["One existing app or simulator job"]
 
@@ -232,18 +232,28 @@ PR CI builds/tests without Azure login, registry push, deployment or provisionin
 its local image config ID is not a pushed manifest digest. Publication is trusted
 main only, with a separate `azure-build` OIDC identity and protected environment.
 `publish: false` performs identity/registry-metadata preflight only.
-`publish: true` additionally needs exact `PUBLISH_ENABLED=true`, approval and
-authorized registry write access. Publication rebuilds/tests the chosen app;
-it does not promote the PR's local image or deploy it.
+`publish: true` additionally needs exact `PUBLISH_ENABLED=true`, satisfaction of
+configured environment protection rules and authorized registry write access.
+Publication rebuilds/tests the chosen app; it does not promote the PR's local
+image or deploy it.
 
 The separate main-only `azure-deploy` lane requires exact
-`DEPLOYMENT_ENABLED=true`, environment approval, a reviewed existing digest and
-`deploy: true` for a write. It updates one existing Cockpit, backend, MCP app or
+`DEPLOYMENT_ENABLED=true`, satisfaction of configured environment protection
+rules, a reviewed existing digest and `deploy: true` for a write. It updates one
+existing Cockpit, backend, MCP app or
 simulator job per dispatch; the retired Console is absent from build,
 publication, and deployment targets. There is no infrastructure
 provisioning, secret/identity/scale/domain overlay change, capacity resume or job
 start. Tags are not immutable; review app, source revision, publication run and
 digest together. Environment names alone do not enforce protection.
+
+For this personal sample, the owner has authorized unattended app image releases:
+`azure-build` and `azure-deploy` retain `main`-only branch policies without manual
+reviewer gates. Dispatch, CI/image tests, OIDC, scoped permissions and digest
+checks remain unchanged. Production/shared environments retain independent
+reviewer gates. This exception does not authorize Fabric data, ontology, identity
+or private-state bootstrap changes; mining bootstrap remains disabled until its
+separate protection and authorization prerequisites are satisfied.
 
 Publication and deployment are separate actions. The MCP readable formatter and
 Console retirement are present in the source baseline, but their presence here

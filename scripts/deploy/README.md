@@ -16,10 +16,10 @@ separate `azure-build` environment. `publish: false` verifies the actual OIDC
 subject, exchanges the token and reads ACR metadata, without building, logging
 into the registry or requiring push permission. It works while `PUBLISH_ENABLED`
 is unset or `false`. `publish: true` additionally requires `PUBLISH_ENABLED` to be
-exactly `true` and environment approval for each job. The selected image is built
-and smoke-tested before Azure login, then pushed to its matching repository with
-the full main commit SHA as its tag. The retired Console is not a build or
-publication target.
+exactly `true` and satisfaction of the environment's configured protection rules.
+The selected image is built and smoke-tested before Azure login, then pushed to
+its matching repository with the full main commit SHA as its tag. The retired
+Console is not a build or publication target.
 
 The summary records the source revision, app and digest returned by Docker's
 push. Supply that digest, not the tag or local image ID, to the deployment
@@ -28,11 +28,27 @@ review the run, source and digest together. Never assume a rebuild is
 byte-identical. If a push succeeds but digest capture fails, inspect the registry
 before retrying; failure is not proof that no manifest was written.
 
+## Personal sample: unattended app releases
+
+The repository owner has authorized app image publication and deployment without
+per-run manual approval for this sample. `azure-build` and `azure-deploy` have no
+required reviewers; both retain their existing `main`-only deployment branch
+policies. CI, image smoke tests, environment-bound OIDC identities, scoped Azure
+permissions and immutable-digest checks remain unchanged. Workflows still require
+dispatch; this does not enable deployment on every push.
+
+This exception covers app image releases only, not Fabric data, ontology,
+identity or private-state bootstrap changes. Keep `MINING_STATE_BOOTSTRAP_ENABLED`
+unset or `false`; establish an independently protected bootstrap lane before
+enabling that separate operation. For production or shared environments, use
+the independent-reviewer policy below instead of this sample exception.
+
 ### Build environment prerequisites
 
-Before any dispatch, create `azure-build` with required independent reviewers,
-no self-approval or administrator bypass where available, and protected `main`
-as its only allowed deployment branch. Protect main with required checks and
+Before any dispatch, create `azure-build`. Outside the personal sample exception,
+configure required independent reviewers, no self-approval or administrator bypass
+where available, and protected `main` as its only allowed deployment branch.
+Protect main with required checks and
 independent review. If the repository plan cannot enforce these controls, do
 not enable publication. Environment naming alone is not protection.
 
@@ -66,8 +82,9 @@ the preflight still performs only reads but its token is no longer read-only.
 
 `Deploy one existing app image` is a **manual, main-only** workflow. Its default
 `deploy: false` performs read-only preflight; an update also requires
-`deploy: true`, an enabled environment and environment approval. It updates one
-existing `cockpit`, `streaming-backend`, `mcp-tools` app or `simulator` job. Supply
+`deploy: true`, an enabled environment and satisfaction of its configured
+protection rules. It updates one existing `cockpit`, `streaming-backend`,
+`mcp-tools` app or `simulator` job. Supply
 an existing, reviewed `sha256:<64 lowercase hex>` digest from
 that app's repository in the configured ACR. There is no tag fallback, Docker
 build, image push, resource creation/deletion, job start or capacity resume.
@@ -76,9 +93,10 @@ or authorization state; that exact-scope cleanup is separate and review-gated.
 
 ## Administrator prerequisites (not provisioned by this change)
 
-Create the `azure-deploy` GitHub environment **before enabling it**. Configure
-required reviewers, prevent self-review, disable administrator bypass where
-available, and allow only the protected `main` deployment branch. Protect main
+Create the `azure-deploy` GitHub environment **before enabling it**. Outside the
+personal sample exception, configure required reviewers, prevent self-review,
+disable administrator bypass where available, and allow only the protected
+`main` deployment branch. Protect main
 with required CI and independent review; do not enable this workflow if the
 repository's plan cannot enforce these controls. Environment naming in YAML
 alone is not protection.
@@ -172,9 +190,9 @@ operator approval requirements; a digest pins content but does not certify it.
 does not authorize a dispatch or any cloud write.** Keep
 `MINING_STATE_BOOTSTRAP_ENABLED` unset or `false` until native environment
 protection, private target review and explicit write authorization are complete.
-Require independent reviewers, no self-approval/bypass and main-only deployment
-branches as described above; do not enable this on a repository plan that cannot
-enforce those controls.
+The unattended app-release exception does not apply here. Require independent
+reviewers, no self-approval/bypass and main-only deployment branches as described
+above; do not enable this on a repository plan that cannot enforce those controls.
 The reusable script also rejects non-WhatIf apply outside the expected main
 workflow context. Local use is preview-only. Context checks prevent accidental
 misuse; native GitHub protections and narrowly federated Azure authorization,
