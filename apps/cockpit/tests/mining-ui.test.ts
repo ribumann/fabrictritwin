@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { createHash, webcrypto } from "node:crypto";
+import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MiningReads,
@@ -18,7 +21,32 @@ import {
   validCurrentAssessmentAsOf,
   validSeries,
 } from "../src/ui/public/mining/data.js";
-import { connections, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
+import { connections, createPlant3D, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
+import {
+  APPEARANCE_RELEASE,
+  fitModelToNode,
+  fitSplatToNode,
+  localSplatPath,
+  readBoundedBytes,
+  splatFit,
+  validateAppearanceBundle,
+} from "../src/ui/public/mining/appearance.js";
+
+const reconstructedSource = new URL("../src/ui/public/mining/plant/reconstructed/source/", import.meta.url);
+const readJson = (path: string) =>
+  JSON.parse(readFileSync(new URL(path, reconstructedSource), "utf8"));
+const readCatalog = () =>
+  JSON.parse(
+    readFileSync(new URL("../../simulator/src/mining/plant-catalog.json", import.meta.url), "utf8"),
+  );
+const loadAppearanceBundle = () =>
+  validateAppearanceBundle(
+    readCatalog(),
+    readJson("metadata.json"),
+    readJson("D01.json"),
+    readJson("files.json"),
+    readJson("quality.json"),
+  );
 
 afterEach(() => vi.useRealTimers());
 describe("mining request lifecycle", () => {
@@ -352,5 +380,224 @@ describe("unknown and catalog selection semantics", () => {
     expect(relevantTags(catalog, "D01.shared.lab")).toEqual([]);
     expect(connections(catalog, "D01.shared.lab", "upstream")).toEqual(["D01.A.dms"]);
     expect(visibleModules(catalog, new Set(["shared"]))).toEqual([catalog.modules[1]]);
+  });
+});
+
+describe("pinned reconstructed appearance", () => {
+  it("rebuilds screened placements on 20 → 24 → 20 and cancels superseded loads", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const bundle = loadAppearanceBundle();
+    for (const asset of bundle.assetsById.values())
+      asset.sha256 = createHash("sha256").update(bytes).digest("hex");
+    const catalog = readCatalog();
+    const renders: { scene: THREE.Scene; camera: THREE.Camera }[] = [];
+    const disposeSplat = vi.fn();
+    class Renderer {
+      domElement = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+      setPixelRatio() {}
+      setClearColor() {}
+      setSize() {}
+      setAnimationLoop() {}
+      render(scene: THREE.Scene, camera: THREE.Camera) { renders.push({ scene, camera }); }
+      dispose() {}
+    }
+    class Controls {
+      target = new THREE.Vector3();
+      enabled = true;
+      addEventListener() {}
+      removeEventListener() {}
+      dispose() {}
+    }
+    class Loader {
+      async loadAsync() {
+        return { scene: new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()) };
+      }
+    }
+    class SplatMesh extends THREE.Group {
+      initialized = Promise.resolve();
+      splats = {};
+      dispose() { disposeSplat(); }
+    }
+    class SparkRenderer extends THREE.Group {
+      dispose() {}
+    }
+    class Observer {
+      observe() {}
+      disconnect() {}
+    }
+    let pauseFetch = false;
+    const fetchImpl = vi.fn((_url: string, init: RequestInit) => {
+      if (!pauseFetch) return Promise.resolve(new Response(bytes));
+      return new Promise<Response>((_resolve, reject) =>
+        init.signal?.addEventListener("abort", () =>
+          reject(new DOMException("Appearance change was canceled.", "AbortError")),
+        ),
+      );
+    });
+    vi.doMock("three", async () => ({
+      ...await vi.importActual<typeof import("three")>("three"),
+      WebGLRenderer: Renderer,
+    }));
+    vi.doMock("three/addons/loaders/GLTFLoader.js", () => ({ GLTFLoader: Loader }));
+    vi.doMock("three/addons/controls/OrbitControls.js", () => ({ OrbitControls: Controls }));
+    vi.doMock("@sparkjsdev/spark", () => ({ SparkRenderer, SplatMesh }));
+    vi.stubGlobal("window", { devicePixelRatio: 1 });
+    vi.stubGlobal("ResizeObserver", Observer);
+    vi.stubGlobal("fetch", fetchImpl);
+    vi.stubGlobal("crypto", webcrypto);
+    try {
+      const container = { clientWidth: 800, clientHeight: 420, replaceChildren: vi.fn() };
+      const viewer = await createPlant3D(container, catalog, vi.fn());
+      const lines = new Set(["A", "B", "C", "shared"]);
+      viewer.update(lines, false, "D01.A.dms");
+      const camera = renders.at(-1)?.camera;
+      const selectedBox = renders.at(-1)?.scene.children.find(
+        (child) => child instanceof THREE.BoxHelper && child.visible,
+      );
+      expect(selectedBox).toBeDefined();
+      await viewer.setVisualMode("reconstructed", bundle, false);
+      expect(viewer.renderedModuleCount).toBe(20);
+      await viewer.setVisualMode("reconstructed", bundle, true);
+      expect(viewer.renderedModuleCount).toBe(24);
+      const loaded = fetchImpl.mock.calls.length;
+      await viewer.setVisualMode("reconstructed", bundle, true);
+      expect(fetchImpl).toHaveBeenCalledTimes(loaded);
+      await viewer.setVisualMode("reconstructed", bundle, false);
+      expect(viewer.renderedModuleCount).toBe(20);
+      expect(renders.at(-1)?.camera).toBe(camera);
+      expect(selectedBox?.visible).toBe(true);
+      expect(disposeSplat).toHaveBeenCalled();
+
+      pauseFetch = true;
+      const beforePending = fetchImpl.mock.calls.length;
+      const pending = viewer.setVisualMode("reconstructed", bundle, true);
+      const pendingResult = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(beforePending + 1));
+      pauseFetch = false;
+      await viewer.setVisualMode("reconstructed", bundle, false);
+      await pendingResult;
+      expect(viewer.renderedModuleCount).toBe(20);
+      viewer.dispose();
+    } finally {
+      vi.doUnmock("three");
+      vi.doUnmock("three/addons/loaders/GLTFLoader.js");
+      vi.doUnmock("three/addons/controls/OrbitControls.js");
+      vi.doUnmock("@sparkjsdev/spark");
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("binds the published splats to the same 24 catalog modules and keeps screened placements selectable", () => {
+    const bundle = loadAppearanceBundle();
+    const bindings = [...bundle.moduleBindings.values()];
+    const accepted = bindings.filter(({ asset }) => asset.quality.status === "accepted");
+    const excluded = bindings.filter(({ asset }) => asset.quality.status === "excluded");
+    expect(bindings).toHaveLength(24);
+    expect(accepted).toHaveLength(20);
+    expect(excluded).toHaveLength(4);
+    expect(new Set(excluded.map(({ asset }) => asset.id)).size).toBe(2);
+    for (const { asset, module } of excluded) {
+      expect(splatFit(asset, module)).toBeNull();
+      expect(splatFit(asset, module, true)).not.toBeNull();
+    }
+  });
+
+  it("rejects unapproved, encoded and traversing asset paths", () => {
+    expect(localSplatPath("/api/assets/plant/splats/object-000.ply")).toBe(
+      "/mining/plant/reconstructed/splats/object-000.ply",
+    );
+    for (const uri of [
+      "https://example.invalid/object-000.ply",
+      "/api/assets/plant/splats/../object-000.ply",
+      "/api/assets/plant/splats/%2e%2e/object-000.ply",
+      "/api/assets/plant/splats/object-000.ply?redirect=https://example.invalid",
+    ])
+      expect(() => localSplatPath(uri)).toThrow();
+  });
+
+  it("rejects altered source receipts and invalid render bounds", () => {
+    const catalog = readCatalog();
+    const metadata = readJson("metadata.json");
+    const scene = readJson("D01.json");
+    const files = readJson("files.json");
+    const quality = readJson("quality.json");
+    const appearanceAssets = Array.isArray(metadata.appearance_assets)
+      ? metadata.appearance_assets
+      : Object.values(metadata.appearance_assets);
+    const source = appearanceAssets[0] as { uri: string; sha256: string };
+    const fileName = source.uri.split("/").at(-1);
+    const tamperedFiles = { ...files, [`splats/${fileName}`]: "0".repeat(64) };
+    expect(() =>
+      validateAppearanceBundle(catalog, metadata, scene, tamperedFiles, quality),
+    ).toThrow(/receipt mismatch/);
+
+    const invalidMetadata = structuredClone(metadata);
+    const invalidAssets = Array.isArray(invalidMetadata.appearance_assets)
+      ? invalidMetadata.appearance_assets
+      : Object.values(invalidMetadata.appearance_assets);
+    (invalidAssets[0] as { uri: string }).uri = "/api/assets/plant/splats/../object-000.ply";
+    expect(() =>
+      validateAppearanceBundle(catalog, invalidMetadata, scene, files, quality),
+    ).toThrow(/outside the pinned plant path/);
+    expect(source.sha256).toMatch(/^[a-f0-9]{64}$/);
+
+    const invalidQuality = structuredClone(quality);
+    invalidQuality.assets[source.sha256].render_bounds.max[0] =
+      invalidQuality.assets[source.sha256].render_bounds.min[0];
+    expect(() =>
+      validateAppearanceBundle(catalog, metadata, scene, files, invalidQuality),
+    ).toThrow(/quality record/);
+  });
+
+  it("bounds response reads and requires review-only display for screened assets", async () => {
+    await expect(readBoundedBytes(new Response(new Uint8Array(5)), 4)).rejects.toThrow(
+      /size limit/,
+    );
+    await expect(
+      readBoundedBytes(new Response(new Uint8Array([1, 2, 3])), 3),
+    ).resolves.toEqual(new Uint8Array([1, 2, 3]));
+    const distorted = {
+      quality: {
+        status: "accepted",
+        render_bounds: { min: [0, 0, 0], max: [10, 1, 10] },
+      },
+    };
+    expect(splatFit(distorted, { size: [1, 10, 1] }, true)).toBeNull();
+  });
+
+  it("fits Clean and Reconstructed geometry into the same authored module envelope", () => {
+    const module = {
+      position: [10, 5, 20],
+      rotation: [0, 0, 0],
+      size: [4, 2, 6],
+    };
+    const clean = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 2, 3),
+      new THREE.MeshBasicMaterial(),
+    );
+    const fittedClean = fitModelToNode(THREE, clean, module);
+    const cleanSize = new THREE.Box3().setFromObject(fittedClean).getSize(new THREE.Vector3());
+    expect(cleanSize.x).toBeCloseTo(module.size[0]);
+    expect(cleanSize.y).toBeCloseTo(module.size[1]);
+    expect(cleanSize.z).toBeCloseTo(module.size[2]);
+
+    const reconstructed = new THREE.Group();
+    const asset = {
+      quality: {
+        status: "accepted",
+        render_bounds: { min: [-1, 0, -2], max: [1, 4, 2] },
+      },
+      provenance: {
+        model: APPEARANCE_RELEASE.sdk,
+        sdk_revision: APPEARANCE_RELEASE.sdkRevision,
+      },
+    };
+    fitSplatToNode(THREE, reconstructed, asset, module);
+    expect(reconstructed.scale.x).toBe(reconstructed.scale.y);
+    expect(reconstructed.scale.y).toBe(reconstructed.scale.z);
+    expect(reconstructed.rotation.x).toBeCloseTo(Math.PI);
+    expect(reconstructed.position.toArray().every(Number.isFinite)).toBe(true);
+    clean.geometry.dispose();
+    clean.material.dispose();
   });
 });

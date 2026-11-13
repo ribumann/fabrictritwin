@@ -10,7 +10,8 @@
       {
         "imports": {
           "three": "/vendor/three/build/three.module.js",
-          "three/addons/": "/vendor/three/examples/jsm/"
+          "three/addons/": "/vendor/three/examples/jsm/",
+          "@sparkjsdev/spark": "/vendor/spark/spark.module.js"
         }
       }
     </script>
@@ -87,6 +88,19 @@
               </select></label
             >
           </div>
+          <fieldset class="mining-appearance">
+            <legend>Visual appearance</legend>
+            <label
+              >Appearance<select id="appearance-mode" disabled>
+                <option value="clean" selected>Clean</option>
+                <option value="reconstructed">Reconstructed</option>
+              </select></label
+            >
+            <label
+              ><input id="include-screened" type="checkbox" disabled />Show screened assets
+              (review only)</label
+            >
+          </fieldset>
           <fieldset class="mining-toggles">
             <legend>Visible topology</legend>
             <label><input type="checkbox" name="line" value="A" checked />Line A</label>

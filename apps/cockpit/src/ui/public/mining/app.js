@@ -17,6 +17,13 @@ import {
   validSeries,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
+import {
+  APPEARANCE_RELEASE,
+  readBoundedBytes,
+  sha256Hex,
+  splatIssue,
+  validateAppearanceBundle,
+} from "./appearance.js";
 
 const $ = (id) => document.getElementById(id);
 const text = (id, value) => {
@@ -47,6 +54,12 @@ let incidents = [];
 let incidentAsOf = null;
 let mode = "live";
 let replayTime = null;
+let appearanceMode = "clean";
+let showScreenedOut = false;
+let appearanceBundle = null;
+let appearanceBundlePromise = null;
+let appearanceController = null;
+let appearanceGeneration = 0;
 const lines = new Set(["A", "B", "C", "shared"]);
 const polling = new MiningPolling((scope) => refresh(scope));
 const kpis = ["throughput", "runningLines", "grossProcessWaterIntensity", "energyIntensity"];
@@ -102,10 +115,19 @@ function drawPlant() {
   const list = $("object-list");
   list.replaceChildren();
   for (const module of visibleModules(catalog, lines)) {
+    const binding = appearanceBundle?.moduleBindings.get(module.id);
+    const issue = appearanceMode === "reconstructed"
+      ? binding
+        ? splatIssue(binding.asset, module)
+        : "Reconstructed appearance unavailable."
+      : null;
+    const appearanceNote = issue
+      ? ` · ${issue}${showScreenedOut && binding?.asset.quality.status === "excluded" ? " Review only." : ""}`
+      : "";
     const item = node("li"),
       button = node(
         "button",
-        `${module.label} · ${moduleStatus(overview, module.id)}${topology.has(module.id) ? " · topology context (not proven cause)" : ""}`,
+        `${module.label} · ${moduleStatus(overview, module.id)}${topology.has(module.id) ? " · topology context (not proven cause)" : ""}${appearanceNote}`,
       );
     button.dataset.status = moduleStatus(overview, module.id);
     button.type = "button";
@@ -115,6 +137,94 @@ function drawPlant() {
     list.append(item);
   }
   plant3d?.update(lines, utilities, selected, statuses, topology);
+}
+async function loadAppearanceBundle() {
+  const sourceRoot = "/mining/plant/reconstructed/source/";
+  const sources = {
+    files: ["files.json", APPEARANCE_RELEASE.sourceHashes.files],
+    metadata: ["metadata.json", APPEARANCE_RELEASE.sourceHashes.metadata],
+    scene: ["D01.json", APPEARANCE_RELEASE.sourceHashes.scene],
+    quality: ["quality.json", APPEARANCE_RELEASE.sourceHashes.quality],
+  };
+  const documents = {};
+  for (const [key, [file, expectedHash]] of Object.entries(sources)) {
+    const response = await fetch(`${sourceRoot}${file}`, {
+      credentials: "same-origin",
+      cache: "force-cache",
+      redirect: "error",
+    });
+    if (!response.ok) throw new Error(`Pinned appearance manifest request failed (${response.status}).`);
+    const bytes = await readBoundedBytes(response, 1_048_576);
+    if (await sha256Hex(bytes) !== expectedHash)
+      throw new Error(`Pinned appearance manifest integrity check failed: ${file}.`);
+    documents[key] = JSON.parse(new TextDecoder().decode(bytes));
+  }
+  return validateAppearanceBundle(
+    catalog,
+    documents.metadata,
+    documents.scene,
+    documents.files,
+    documents.quality,
+  );
+}
+function getAppearanceBundle() {
+  if (!appearanceBundlePromise) {
+    appearanceBundlePromise = loadAppearanceBundle()
+      .then((bundle) => {
+        appearanceBundle = bundle;
+        return bundle;
+      })
+      .catch((error) => {
+        appearanceBundlePromise = null;
+        throw error;
+      });
+  }
+  return appearanceBundlePromise;
+}
+async function applyAppearance() {
+  const generation = ++appearanceGeneration;
+  appearanceController?.abort();
+  appearanceController = null;
+  if (!plant3d) return;
+  if (appearanceMode === "clean") {
+    text("geometry-status", "Loading Clean authored geometry…");
+    try {
+      await plant3d.setVisualMode("clean");
+      if (generation !== appearanceGeneration) return;
+      text(
+        "geometry-status",
+        "Clean · 24 authored module instances in metres. Equipment, selection, filters and operating state are unchanged by appearance.",
+      );
+      drawPlant();
+    } catch (error) {
+      if (generation === appearanceGeneration)
+        text("geometry-status", `Clean appearance unavailable: ${error.message}`);
+    }
+    return;
+  }
+  const controller = new AbortController();
+  appearanceController = controller;
+  text("geometry-status", "Loading pinned reconstructed appearance; operational data is unchanged…");
+  try {
+    const bundle = appearanceBundle ?? await getAppearanceBundle();
+    if (generation !== appearanceGeneration || controller.signal.aborted) return;
+    await plant3d.setVisualMode("reconstructed", bundle, showScreenedOut, controller.signal);
+    if (generation !== appearanceGeneration || controller.signal.aborted) return;
+    const screenedPlacements = [...bundle.moduleBindings.values()].filter(
+      ({ asset }) => asset.quality.status === "excluded",
+    ).length;
+    text(
+      "geometry-status",
+      `Reconstructed · verified local PLY bytes for ${plant3d.renderedModuleCount} placements. ${screenedPlacements} screened catalog modules remain selectable; screened assets are ${showScreenedOut ? "shown for review only" : "hidden by default"}.`,
+    );
+    drawPlant();
+  } catch (error) {
+    if (generation !== appearanceGeneration || controller.signal.aborted) return;
+    text(
+      "geometry-status",
+      `Reconstructed appearance unavailable: ${error.message} Select Clean to recover; the top view and object list remain available.`,
+    );
+  }
 }
 function drawOverview() {
   const valid = overview?.quality === "good";
@@ -736,6 +846,15 @@ $("view").addEventListener("change", () => {
   $("plant-3d").hidden = $("view").value !== "3d";
   configurePolling();
 });
+$("appearance-mode").addEventListener("change", () => {
+  appearanceMode = $("appearance-mode").value;
+  $("include-screened").disabled = appearanceMode !== "reconstructed";
+  void applyAppearance();
+});
+$("include-screened").addEventListener("change", () => {
+  showScreenedOut = $("include-screened").checked;
+  void applyAppearance();
+});
 document.querySelectorAll('input[name="line"]').forEach((input) =>
   input.addEventListener("change", () => {
     if (input.checked) lines.add(input.value);
@@ -755,6 +874,8 @@ document.addEventListener("visibilitychange", () => {
 });
 addEventListener("pagehide", () => {
   invalidate();
+  appearanceGeneration++;
+  appearanceController?.abort();
   plant3d?.dispose();
 });
 
@@ -781,6 +902,7 @@ try {
   await loadContext();
   try {
     plant3d = await createPlant3D($("plant-3d"), catalog, select);
+    $("appearance-mode").disabled = false;
     text(
       "geometry-status",
       "24 authored module instances · metres · right-handed Y-up. Status labels are available in the object list.",
@@ -791,6 +913,8 @@ try {
     $("view").value = "top";
     $("plant-3d").hidden = true;
     $("plant-top").removeAttribute("hidden");
+    $("appearance-mode").disabled = true;
+    $("include-screened").disabled = true;
     text(
       "geometry-status",
       `3D unavailable: ${error.message} Top view and object list remain available.`,

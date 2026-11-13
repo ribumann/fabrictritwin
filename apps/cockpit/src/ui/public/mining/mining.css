@@ -69,6 +69,30 @@
   padding: 0;
   margin-bottom: 1rem;
 }
+.mining-appearance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 1rem;
+  border: 0;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+.mining-appearance legend {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+.mining-appearance label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.mining-appearance select {
+  min-width: 10rem;
+  background: var(--surface);
+  color: var(--text);
+}
 .mining-toggles legend {
   font-weight: 600;
   margin-bottom: 0.5rem;
@@ -153,7 +177,9 @@
 }
 .mining-objects button {
   width: 100%;
+  min-width: 0;
   text-align: left;
+  overflow-wrap: anywhere;
   background: var(--surface-muted);
   color: var(--text);
   border-color: var(--border);
@@ -165,6 +191,7 @@
 .mining .muted,
 #geometry-status {
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 .mining-readings {
   display: grid;

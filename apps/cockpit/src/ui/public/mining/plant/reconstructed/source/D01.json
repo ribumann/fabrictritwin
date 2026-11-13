@@ -1,0 +1,3192 @@
+{
+  "schema_version": "1.0",
+  "id": "D01",
+  "case_id": "D01",
+  "name": "Diamond recovery / three-line plant",
+  "description": "Single-image SAM2/Idol component Gaussian reconstruction from the original synthetic plant photograph. Repeated modules share reconstructed appearances; metric placement, connectivity and telemetry remain authored assumptions. Unreconstructed modules retain explicitly authored mesh models. Gaussian screening is not semantic accuracy certification.",
+  "revision": 1,
+  "units": "meters",
+  "coordinates": "right-handed-y-up",
+  "nodes": [
+    {
+      "id": "D01.A.crusher",
+      "label": "A / Crushing / feed preparation",
+      "category": "plant-crusher",
+      "shape": "box",
+      "position": [
+        -27.0,
+        3.5,
+        -16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        8.0,
+        7.0,
+        7.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-000"
+    },
+    {
+      "id": "D01.A.scrubber",
+      "label": "A / Rotary scrubber",
+      "category": "plant-scrubber",
+      "shape": "box",
+      "position": [
+        -13.0,
+        2.5,
+        -16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        12.0,
+        5.0,
+        7.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-001"
+    },
+    {
+      "id": "D01.A.screen",
+      "label": "A / Wet sizing screen",
+      "category": "plant-screen",
+      "shape": "box",
+      "position": [
+        0.0,
+        2.5,
+        -16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        10.0,
+        5.0,
+        7.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-002"
+    },
+    {
+      "id": "D01.A.dms",
+      "label": "A / Dense-medium separation",
+      "category": "plant-dms",
+      "shape": "box",
+      "position": [
+        12.0,
+        6.0,
+        -16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        8.0,
+        12.0,
+        8.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-003"
+    },
+    {
+      "id": "D01.A.medium",
+      "label": "A / Drain / rinse / medium recovery",
+      "category": "plant-medium",
+      "shape": "box",
+      "position": [
+        25.0,
+        3.0,
+        -16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        12.0,
+        6.0,
+        8.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-004"
+    },
+    {
+      "id": "D01.A.sorter",
+      "label": "A / Enclosed X-ray sorting",
+      "category": "plant-sorter",
+      "shape": "box",
+      "position": [
+        37.0,
+        2.0,
+        -16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        6.0,
+        4.0,
+        5.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-005"
+    },
+    {
+      "id": "D01.B.crusher",
+      "label": "B / Crushing / feed preparation",
+      "category": "plant-crusher",
+      "shape": "box",
+      "position": [
+        -27.0,
+        3.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        8.0,
+        7.0,
+        7.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-000"
+    },
+    {
+      "id": "D01.B.scrubber",
+      "label": "B / Rotary scrubber",
+      "category": "plant-scrubber",
+      "shape": "box",
+      "position": [
+        -13.0,
+        2.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        12.0,
+        5.0,
+        7.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-001"
+    },
+    {
+      "id": "D01.B.screen",
+      "label": "B / Wet sizing screen",
+      "category": "plant-screen",
+      "shape": "box",
+      "position": [
+        0.0,
+        2.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        10.0,
+        5.0,
+        7.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-002"
+    },
+    {
+      "id": "D01.B.dms",
+      "label": "B / Dense-medium separation",
+      "category": "plant-dms",
+      "shape": "box",
+      "position": [
+        12.0,
+        6.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        8.0,
+        12.0,
+        8.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-003"
+    },
+    {
+      "id": "D01.B.medium",
+      "label": "B / Drain / rinse / medium recovery",
+      "category": "plant-medium",
+      "shape": "box",
+      "position": [
+        25.0,
+        3.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        12.0,
+        6.0,
+        8.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-004"
+    },
+    {
+      "id": "D01.B.sorter",
+      "label": "B / Enclosed X-ray sorting",
+      "category": "plant-sorter",
+      "shape": "box",
+      "position": [
+        37.0,
+        2.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        6.0,
+        4.0,
+        5.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-005"
+    },
+    {
+      "id": "D01.C.crusher",
+      "label": "C / Crushing / feed preparation",
+      "category": "plant-crusher",
+      "shape": "box",
+      "position": [
+        -27.0,
+        3.5,
+        16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        8.0,
+        7.0,
+        7.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-000"
+    },
+    {
+      "id": "D01.C.scrubber",
+      "label": "C / Rotary scrubber",
+      "category": "plant-scrubber",
+      "shape": "box",
+      "position": [
+        -13.0,
+        2.5,
+        16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        12.0,
+        5.0,
+        7.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-001"
+    },
+    {
+      "id": "D01.C.screen",
+      "label": "C / Wet sizing screen",
+      "category": "plant-screen",
+      "shape": "box",
+      "position": [
+        0.0,
+        2.5,
+        16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        10.0,
+        5.0,
+        7.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-002"
+    },
+    {
+      "id": "D01.C.dms",
+      "label": "C / Dense-medium separation",
+      "category": "plant-dms",
+      "shape": "box",
+      "position": [
+        12.0,
+        6.0,
+        16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        8.0,
+        12.0,
+        8.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-003"
+    },
+    {
+      "id": "D01.C.medium",
+      "label": "C / Drain / rinse / medium recovery",
+      "category": "plant-medium",
+      "shape": "box",
+      "position": [
+        25.0,
+        3.0,
+        16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        12.0,
+        6.0,
+        8.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-004"
+    },
+    {
+      "id": "D01.C.sorter",
+      "label": "C / Enclosed X-ray sorting",
+      "category": "plant-sorter",
+      "shape": "box",
+      "position": [
+        37.0,
+        2.0,
+        16.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        6.0,
+        4.0,
+        5.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-005"
+    },
+    {
+      "id": "D01.shared.hopper",
+      "label": "Shared raw-feed hopper",
+      "category": "plant-hopper",
+      "shape": "box",
+      "position": [
+        -44.0,
+        3.8,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        8.0,
+        7.6,
+        8.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-006"
+    },
+    {
+      "id": "D01.shared.thickener",
+      "label": "Water-recovery thickener",
+      "category": "plant-thickener",
+      "shape": "box",
+      "position": [
+        -7.0,
+        3.0,
+        -29.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        16.0,
+        6.0,
+        16.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-007"
+    },
+    {
+      "id": "D01.shared.water",
+      "label": "Process-water tank",
+      "category": "plant-water",
+      "shape": "box",
+      "position": [
+        8.0,
+        3.5,
+        -28.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        6.0,
+        7.0,
+        6.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-008"
+    },
+    {
+      "id": "D01.shared.lab",
+      "label": "Secure recovery / inspection lab",
+      "category": "plant-lab",
+      "shape": "box",
+      "position": [
+        47.0,
+        3.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        6.0,
+        6.0,
+        11.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-009"
+    },
+    {
+      "id": "D01.shared.control",
+      "label": "Electrical / control hut",
+      "category": "plant-control",
+      "shape": "box",
+      "position": [
+        -5.0,
+        2.2,
+        31.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        8.0,
+        4.4,
+        5.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-010"
+    },
+    {
+      "id": "D01.shared.tailings",
+      "label": "Tailings handling zone",
+      "category": "plant-tailings",
+      "shape": "box",
+      "position": [
+        39.0,
+        2.0,
+        -29.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        14.0,
+        4.0,
+        12.0
+      ],
+      "color": "#437697",
+      "visible": true,
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      },
+      "asset_id": "D01-splat-object-011"
+    }
+  ],
+  "edges": [
+    {
+      "id": "process-A-feed",
+      "source": "D01.shared.hopper",
+      "target": "D01.A.crusher",
+      "kind": "conveyor",
+      "points": [
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.5,
+          -16.0
+        ]
+      ],
+      "label": "ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-A-crush",
+      "source": "D01.A.crusher",
+      "target": "D01.A.scrubber",
+      "kind": "conveyor",
+      "points": [
+        [
+          -23.0,
+          3.5,
+          -16.0
+        ],
+        [
+          -23.0,
+          3.5,
+          -16.0
+        ],
+        [
+          -19.0,
+          3.5,
+          -16.0
+        ],
+        [
+          -19.0,
+          2.5,
+          -16.0
+        ]
+      ],
+      "label": "crushed-ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-A-wash",
+      "source": "D01.A.scrubber",
+      "target": "D01.A.screen",
+      "kind": "process",
+      "points": [
+        [
+          -7.0,
+          2.5,
+          -16.0
+        ],
+        [
+          -7.0,
+          2.5,
+          -16.0
+        ],
+        [
+          -5.0,
+          2.5,
+          -16.0
+        ],
+        [
+          -5.0,
+          2.5,
+          -16.0
+        ]
+      ],
+      "label": "washed-ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-A-size",
+      "source": "D01.A.screen",
+      "target": "D01.A.dms",
+      "kind": "process",
+      "points": [
+        [
+          5.0,
+          2.5,
+          -16.0
+        ],
+        [
+          5.0,
+          6.0,
+          -16.0
+        ],
+        [
+          8.0,
+          6.0,
+          -16.0
+        ],
+        [
+          8.0,
+          6.0,
+          -16.0
+        ]
+      ],
+      "label": "sized-ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-A-sinks",
+      "source": "D01.A.dms",
+      "target": "D01.A.medium",
+      "kind": "process",
+      "points": [
+        [
+          16.0,
+          6.0,
+          -16.0
+        ],
+        [
+          16.0,
+          6.0,
+          -16.0
+        ],
+        [
+          19.0,
+          6.0,
+          -16.0
+        ],
+        [
+          19.0,
+          3.0,
+          -16.0
+        ]
+      ],
+      "label": "sinks",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-A-floats",
+      "source": "D01.A.dms",
+      "target": "D01.A.medium",
+      "kind": "process",
+      "points": [
+        [
+          16.0,
+          6.0,
+          -16.0
+        ],
+        [
+          16.0,
+          6.0,
+          -16.0
+        ],
+        [
+          19.0,
+          6.0,
+          -16.0
+        ],
+        [
+          19.0,
+          3.0,
+          -16.0
+        ]
+      ],
+      "label": "floats",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-A-concentrate",
+      "source": "D01.A.medium",
+      "target": "D01.A.sorter",
+      "kind": "conveyor",
+      "points": [
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          34.0,
+          3.0,
+          -16.0
+        ],
+        [
+          34.0,
+          2.0,
+          -16.0
+        ]
+      ],
+      "label": "concentrate",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-A-reject",
+      "source": "D01.A.medium",
+      "target": "D01.shared.tailings",
+      "kind": "conveyor",
+      "points": [
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          32.0,
+          3.0,
+          -16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ],
+      "label": "washed-tailings",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-A-sorter-reject",
+      "source": "D01.A.sorter",
+      "target": "D01.shared.tailings",
+      "kind": "conveyor",
+      "points": [
+        [
+          40.0,
+          2.0,
+          -16.0
+        ],
+        [
+          40.0,
+          2.0,
+          -16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ],
+      "label": "sorter-rejects",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-A-product",
+      "source": "D01.A.sorter",
+      "target": "D01.shared.lab",
+      "kind": "process",
+      "points": [
+        [
+          40.0,
+          2.0,
+          -16.0
+        ],
+        [
+          40.0,
+          3.0,
+          -16.0
+        ],
+        [
+          44.0,
+          3.0,
+          -16.0
+        ],
+        [
+          44.0,
+          3.0,
+          0.0
+        ]
+      ],
+      "label": "recovered-product",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-A-fines",
+      "source": "D01.A.screen",
+      "target": "D01.shared.thickener",
+      "kind": "process",
+      "points": [
+        [
+          5.0,
+          2.5,
+          -16.0
+        ],
+        [
+          5.0,
+          0.6,
+          -16.0
+        ],
+        [
+          -15.0,
+          0.6,
+          -16.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ],
+      "label": "screen-fines-slurry",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-A-effluent",
+      "source": "D01.A.medium",
+      "target": "D01.shared.thickener",
+      "kind": "process",
+      "points": [
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          31.0,
+          0.6,
+          -16.0
+        ],
+        [
+          -15.0,
+          0.6,
+          -16.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ],
+      "label": "wash-effluent",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-A-medium-recycle",
+      "source": "D01.A.medium",
+      "target": "D01.A.dms",
+      "kind": "process",
+      "points": [
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          31.0,
+          0.6,
+          -16.0
+        ],
+        [
+          8.0,
+          0.6,
+          -16.0
+        ],
+        [
+          8.0,
+          6.0,
+          -16.0
+        ]
+      ],
+      "label": "ferrosilicon-medium",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-A-scrubber-water",
+      "source": "D01.shared.water",
+      "target": "D01.A.scrubber",
+      "kind": "process",
+      "points": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          2.5,
+          -16.0
+        ]
+      ],
+      "label": "process-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-A-screen-water",
+      "source": "D01.shared.water",
+      "target": "D01.A.screen",
+      "kind": "process",
+      "points": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          2.5,
+          -16.0
+        ]
+      ],
+      "label": "process-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-A-medium-water",
+      "source": "D01.shared.water",
+      "target": "D01.A.medium",
+      "kind": "process",
+      "points": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          3.0,
+          -16.0
+        ]
+      ],
+      "label": "process-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-feed",
+      "source": "D01.shared.hopper",
+      "target": "D01.B.crusher",
+      "kind": "conveyor",
+      "points": [
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.5,
+          0.0
+        ]
+      ],
+      "label": "ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-crush",
+      "source": "D01.B.crusher",
+      "target": "D01.B.scrubber",
+      "kind": "conveyor",
+      "points": [
+        [
+          -23.0,
+          3.5,
+          0.0
+        ],
+        [
+          -23.0,
+          3.5,
+          0.0
+        ],
+        [
+          -19.0,
+          3.5,
+          0.0
+        ],
+        [
+          -19.0,
+          2.5,
+          0.0
+        ]
+      ],
+      "label": "crushed-ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-wash",
+      "source": "D01.B.scrubber",
+      "target": "D01.B.screen",
+      "kind": "process",
+      "points": [
+        [
+          -7.0,
+          2.5,
+          0.0
+        ],
+        [
+          -7.0,
+          2.5,
+          0.0
+        ],
+        [
+          -5.0,
+          2.5,
+          0.0
+        ],
+        [
+          -5.0,
+          2.5,
+          0.0
+        ]
+      ],
+      "label": "washed-ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-size",
+      "source": "D01.B.screen",
+      "target": "D01.B.dms",
+      "kind": "process",
+      "points": [
+        [
+          5.0,
+          2.5,
+          0.0
+        ],
+        [
+          5.0,
+          6.0,
+          0.0
+        ],
+        [
+          8.0,
+          6.0,
+          0.0
+        ],
+        [
+          8.0,
+          6.0,
+          0.0
+        ]
+      ],
+      "label": "sized-ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-sinks",
+      "source": "D01.B.dms",
+      "target": "D01.B.medium",
+      "kind": "process",
+      "points": [
+        [
+          16.0,
+          6.0,
+          0.0
+        ],
+        [
+          16.0,
+          6.0,
+          0.0
+        ],
+        [
+          19.0,
+          6.0,
+          0.0
+        ],
+        [
+          19.0,
+          3.0,
+          0.0
+        ]
+      ],
+      "label": "sinks",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-floats",
+      "source": "D01.B.dms",
+      "target": "D01.B.medium",
+      "kind": "process",
+      "points": [
+        [
+          16.0,
+          6.0,
+          0.0
+        ],
+        [
+          16.0,
+          6.0,
+          0.0
+        ],
+        [
+          19.0,
+          6.0,
+          0.0
+        ],
+        [
+          19.0,
+          3.0,
+          0.0
+        ]
+      ],
+      "label": "floats",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-concentrate",
+      "source": "D01.B.medium",
+      "target": "D01.B.sorter",
+      "kind": "conveyor",
+      "points": [
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          34.0,
+          3.0,
+          0.0
+        ],
+        [
+          34.0,
+          2.0,
+          0.0
+        ]
+      ],
+      "label": "concentrate",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-reject",
+      "source": "D01.B.medium",
+      "target": "D01.shared.tailings",
+      "kind": "conveyor",
+      "points": [
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          32.0,
+          3.0,
+          0.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ],
+      "label": "washed-tailings",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-sorter-reject",
+      "source": "D01.B.sorter",
+      "target": "D01.shared.tailings",
+      "kind": "conveyor",
+      "points": [
+        [
+          40.0,
+          2.0,
+          0.0
+        ],
+        [
+          40.0,
+          2.0,
+          0.0
+        ],
+        [
+          32.0,
+          2.0,
+          0.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ],
+      "label": "sorter-rejects",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-B-product",
+      "source": "D01.B.sorter",
+      "target": "D01.shared.lab",
+      "kind": "process",
+      "points": [
+        [
+          40.0,
+          2.0,
+          0.0
+        ],
+        [
+          40.0,
+          3.0,
+          0.0
+        ],
+        [
+          44.0,
+          3.0,
+          0.0
+        ],
+        [
+          44.0,
+          3.0,
+          0.0
+        ]
+      ],
+      "label": "recovered-product",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-B-fines",
+      "source": "D01.B.screen",
+      "target": "D01.shared.thickener",
+      "kind": "process",
+      "points": [
+        [
+          5.0,
+          2.5,
+          0.0
+        ],
+        [
+          5.0,
+          0.6,
+          0.0
+        ],
+        [
+          -15.0,
+          0.6,
+          0.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ],
+      "label": "screen-fines-slurry",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-B-effluent",
+      "source": "D01.B.medium",
+      "target": "D01.shared.thickener",
+      "kind": "process",
+      "points": [
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          31.0,
+          0.6,
+          0.0
+        ],
+        [
+          -15.0,
+          0.6,
+          0.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ],
+      "label": "wash-effluent",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-B-medium-recycle",
+      "source": "D01.B.medium",
+      "target": "D01.B.dms",
+      "kind": "process",
+      "points": [
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          31.0,
+          0.6,
+          0.0
+        ],
+        [
+          8.0,
+          0.6,
+          0.0
+        ],
+        [
+          8.0,
+          6.0,
+          0.0
+        ]
+      ],
+      "label": "ferrosilicon-medium",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-B-scrubber-water",
+      "source": "D01.shared.water",
+      "target": "D01.B.scrubber",
+      "kind": "process",
+      "points": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          2.5,
+          0.0
+        ]
+      ],
+      "label": "process-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-B-screen-water",
+      "source": "D01.shared.water",
+      "target": "D01.B.screen",
+      "kind": "process",
+      "points": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          2.5,
+          0.0
+        ]
+      ],
+      "label": "process-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-B-medium-water",
+      "source": "D01.shared.water",
+      "target": "D01.B.medium",
+      "kind": "process",
+      "points": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          3.0,
+          0.0
+        ]
+      ],
+      "label": "process-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-feed",
+      "source": "D01.shared.hopper",
+      "target": "D01.C.crusher",
+      "kind": "conveyor",
+      "points": [
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.5,
+          16.0
+        ]
+      ],
+      "label": "ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-crush",
+      "source": "D01.C.crusher",
+      "target": "D01.C.scrubber",
+      "kind": "conveyor",
+      "points": [
+        [
+          -23.0,
+          3.5,
+          16.0
+        ],
+        [
+          -23.0,
+          3.5,
+          16.0
+        ],
+        [
+          -19.0,
+          3.5,
+          16.0
+        ],
+        [
+          -19.0,
+          2.5,
+          16.0
+        ]
+      ],
+      "label": "crushed-ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-wash",
+      "source": "D01.C.scrubber",
+      "target": "D01.C.screen",
+      "kind": "process",
+      "points": [
+        [
+          -7.0,
+          2.5,
+          16.0
+        ],
+        [
+          -7.0,
+          2.5,
+          16.0
+        ],
+        [
+          -5.0,
+          2.5,
+          16.0
+        ],
+        [
+          -5.0,
+          2.5,
+          16.0
+        ]
+      ],
+      "label": "washed-ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-size",
+      "source": "D01.C.screen",
+      "target": "D01.C.dms",
+      "kind": "process",
+      "points": [
+        [
+          5.0,
+          2.5,
+          16.0
+        ],
+        [
+          5.0,
+          6.0,
+          16.0
+        ],
+        [
+          8.0,
+          6.0,
+          16.0
+        ],
+        [
+          8.0,
+          6.0,
+          16.0
+        ]
+      ],
+      "label": "sized-ore",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-sinks",
+      "source": "D01.C.dms",
+      "target": "D01.C.medium",
+      "kind": "process",
+      "points": [
+        [
+          16.0,
+          6.0,
+          16.0
+        ],
+        [
+          16.0,
+          6.0,
+          16.0
+        ],
+        [
+          19.0,
+          6.0,
+          16.0
+        ],
+        [
+          19.0,
+          3.0,
+          16.0
+        ]
+      ],
+      "label": "sinks",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-floats",
+      "source": "D01.C.dms",
+      "target": "D01.C.medium",
+      "kind": "process",
+      "points": [
+        [
+          16.0,
+          6.0,
+          16.0
+        ],
+        [
+          16.0,
+          6.0,
+          16.0
+        ],
+        [
+          19.0,
+          6.0,
+          16.0
+        ],
+        [
+          19.0,
+          3.0,
+          16.0
+        ]
+      ],
+      "label": "floats",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-concentrate",
+      "source": "D01.C.medium",
+      "target": "D01.C.sorter",
+      "kind": "conveyor",
+      "points": [
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          34.0,
+          3.0,
+          16.0
+        ],
+        [
+          34.0,
+          2.0,
+          16.0
+        ]
+      ],
+      "label": "concentrate",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-reject",
+      "source": "D01.C.medium",
+      "target": "D01.shared.tailings",
+      "kind": "conveyor",
+      "points": [
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          32.0,
+          3.0,
+          16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ],
+      "label": "washed-tailings",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-sorter-reject",
+      "source": "D01.C.sorter",
+      "target": "D01.shared.tailings",
+      "kind": "conveyor",
+      "points": [
+        [
+          40.0,
+          2.0,
+          16.0
+        ],
+        [
+          40.0,
+          2.0,
+          16.0
+        ],
+        [
+          32.0,
+          2.0,
+          16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ],
+      "label": "sorter-rejects",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "process-C-product",
+      "source": "D01.C.sorter",
+      "target": "D01.shared.lab",
+      "kind": "process",
+      "points": [
+        [
+          40.0,
+          2.0,
+          16.0
+        ],
+        [
+          40.0,
+          3.0,
+          16.0
+        ],
+        [
+          44.0,
+          3.0,
+          16.0
+        ],
+        [
+          44.0,
+          3.0,
+          0.0
+        ]
+      ],
+      "label": "recovered-product",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-C-fines",
+      "source": "D01.C.screen",
+      "target": "D01.shared.thickener",
+      "kind": "process",
+      "points": [
+        [
+          5.0,
+          2.5,
+          16.0
+        ],
+        [
+          5.0,
+          0.6,
+          16.0
+        ],
+        [
+          -15.0,
+          0.6,
+          16.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ],
+      "label": "screen-fines-slurry",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-C-effluent",
+      "source": "D01.C.medium",
+      "target": "D01.shared.thickener",
+      "kind": "process",
+      "points": [
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          31.0,
+          0.6,
+          16.0
+        ],
+        [
+          -15.0,
+          0.6,
+          16.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ],
+      "label": "wash-effluent",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-C-medium-recycle",
+      "source": "D01.C.medium",
+      "target": "D01.C.dms",
+      "kind": "process",
+      "points": [
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          31.0,
+          0.6,
+          16.0
+        ],
+        [
+          8.0,
+          0.6,
+          16.0
+        ],
+        [
+          8.0,
+          6.0,
+          16.0
+        ]
+      ],
+      "label": "ferrosilicon-medium",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-C-scrubber-water",
+      "source": "D01.shared.water",
+      "target": "D01.C.scrubber",
+      "kind": "process",
+      "points": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          2.5,
+          16.0
+        ]
+      ],
+      "label": "process-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-C-screen-water",
+      "source": "D01.shared.water",
+      "target": "D01.C.screen",
+      "kind": "process",
+      "points": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          2.5,
+          16.0
+        ]
+      ],
+      "label": "process-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-C-medium-water",
+      "source": "D01.shared.water",
+      "target": "D01.C.medium",
+      "kind": "process",
+      "points": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          3.0,
+          16.0
+        ]
+      ],
+      "label": "process-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-water-return",
+      "source": "D01.shared.thickener",
+      "target": "D01.shared.water",
+      "kind": "process",
+      "points": [
+        [
+          1.0,
+          3.0,
+          -29.0
+        ],
+        [
+          1.0,
+          0.6,
+          -29.0
+        ],
+        [
+          5.0,
+          0.6,
+          -29.0
+        ],
+        [
+          5.0,
+          3.5,
+          -28.0
+        ]
+      ],
+      "label": "recovered-water",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    },
+    {
+      "id": "utility-thickener-underflow",
+      "source": "D01.shared.thickener",
+      "target": "D01.shared.tailings",
+      "kind": "process",
+      "points": [
+        [
+          1.0,
+          3.0,
+          -29.0
+        ],
+        [
+          1.0,
+          0.6,
+          -29.0
+        ],
+        [
+          32.0,
+          0.6,
+          -29.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ],
+      "label": "thickener-underflow",
+      "evidence": {
+        "origin": "assumed",
+        "confidence": 0.5,
+        "reviewed": true,
+        "source_id": "D01-source",
+        "note": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment."
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "D01-splat-object-000",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-000.ply",
+      "sha256": "488a5a43c53e18f995fa11a087139850bf7f9ac66b5fa3c4b59692e32c68585c",
+      "node_id": null,
+      "provenance": {
+        "sha256": "488a5a43c53e18f995fa11a087139850bf7f9ac66b5fa3c4b59692e32c68585c",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.26603829860687256,
+            -0.14059823751449585,
+            -0.21310675144195557
+          ],
+          "max": [
+            0.2423419952392578,
+            0.13523352146148682,
+            0.21503591537475586
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-000",
+        "crop_sha256": "fe55f5501e9de681837ea44fdd6cf5b57156d90185e765da13b84c0223e6e78d",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          291,
+          634,
+          166,
+          178
+        ],
+        "cache_key": "da323eefdbb7cc8d8b8522a22e1bdfbd75f227cd60ccee17989a89aead5c6304",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-crusher",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-001",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-001.ply",
+      "sha256": "1258bd8d75f6185f6b1e845efe322d94b6ad7f2da98abcfa37c60d26ec041101",
+      "node_id": null,
+      "provenance": {
+        "sha256": "1258bd8d75f6185f6b1e845efe322d94b6ad7f2da98abcfa37c60d26ec041101",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.06569662690162659,
+            -0.09367460012435913,
+            -0.18105986714363098
+          ],
+          "max": [
+            0.13379234075546265,
+            0.09548398852348328,
+            0.1862439513206482
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-001",
+        "crop_sha256": "bdf7d79b8cebd2b162da2c0d1f33c98b28f5cac803937c846ae0b6d506281da2",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          453,
+          663,
+          196,
+          129
+        ],
+        "cache_key": "34745d7cf03a08a3b9d326ca82daf2ffbdf54bca25cb370c15c80f3bf41568b8",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-scrubber",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-002",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-002.ply",
+      "sha256": "858169e89f6e3f338f0dfab7887b90a93bb6f68062fdcf7a23ac2e591a753fd7",
+      "node_id": null,
+      "provenance": {
+        "sha256": "858169e89f6e3f338f0dfab7887b90a93bb6f68062fdcf7a23ac2e591a753fd7",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.18035027384757996,
+            -0.08622562885284424,
+            -0.16249388456344604
+          ],
+          "max": [
+            0.1790543794631958,
+            0.09394568204879761,
+            0.15910977125167847
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-002",
+        "crop_sha256": "390c7ddaca783672296484ee8594644ad2dfa032ab2619d5b84e8d9533475ad8",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          665,
+          691,
+          162,
+          127
+        ],
+        "cache_key": "3bd59d1b23932534011ea95802fec7e28c47a6357e7cda97d86fb8603de963a7",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-screen",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-003",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-003.ply",
+      "sha256": "4bbe4c40cbd24d9cb0f4d9271a2ae42458ccaa48d5d6f38f08325efdd37aa8c3",
+      "node_id": null,
+      "provenance": {
+        "sha256": "4bbe4c40cbd24d9cb0f4d9271a2ae42458ccaa48d5d6f38f08325efdd37aa8c3",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.4393696188926697,
+            -0.12670111656188965,
+            -0.3146076500415802
+          ],
+          "max": [
+            0.4968118667602539,
+            0.1327163577079773,
+            0.33540087938308716
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-003",
+        "crop_sha256": "b5232c169742fc213c54649683a8eac74e85fa188516c261dc0bdf37b38fa16f",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          823,
+          613,
+          123,
+          222
+        ],
+        "cache_key": "d956d4070651d1a0ef1ac0b5ebc736df059cadb0d1856dda54b026a36a278c1a",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-dms",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-004",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-004.ply",
+      "sha256": "198d1319f3e4ca046079c64031e8fb5a36567b42568c57662df1e1a508733463",
+      "node_id": null,
+      "provenance": {
+        "sha256": "198d1319f3e4ca046079c64031e8fb5a36567b42568c57662df1e1a508733463",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.2766459584236145,
+            -0.12036091089248657,
+            -0.22008493542671204
+          ],
+          "max": [
+            0.22663837671279907,
+            0.10926246643066406,
+            0.2410457730293274
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-004",
+        "crop_sha256": "b3710e156fe1b386b41185b7e5e1d8f58730cf97989be74773e1cc0e9fd12de2",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          956,
+          646,
+          225,
+          178
+        ],
+        "cache_key": "73d722ef351d3faf3cf921b782ed1ad60920302f9837ca67f5eec0b4e52bf4aa",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-medium",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-005",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-005.ply",
+      "sha256": "b910ef24a5b757c191e9e40f8fe3630a19ea7c8a505263e652c535ac876d5d10",
+      "node_id": null,
+      "provenance": {
+        "sha256": "b910ef24a5b757c191e9e40f8fe3630a19ea7c8a505263e652c535ac876d5d10",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.5001978278160095,
+            -0.06954294443130493,
+            -0.10786283016204834
+          ],
+          "max": [
+            0.5004653930664062,
+            0.0725145936012268,
+            0.11288201808929443
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-005",
+        "crop_sha256": "14c2e079888562e27250a57255336cb724b32b3d4bdea700c95065e6c142ed52",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          1259,
+          701,
+          111,
+          110
+        ],
+        "cache_key": "732217d9dad8dfc34eeff86cb86bca30c3106c9bc0699ecc5b5130cfa4e15e62",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-sorter",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-006",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-006.ply",
+      "sha256": "0fcbd35f7fb398aded84520a0a50384aacdf7a0b788c714c398d7fec70987bae",
+      "node_id": null,
+      "provenance": {
+        "sha256": "0fcbd35f7fb398aded84520a0a50384aacdf7a0b788c714c398d7fec70987bae",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.5030264854431152,
+            -0.15961945056915283,
+            -0.15511339902877808
+          ],
+          "max": [
+            0.4991917610168457,
+            0.17176109552383423,
+            0.15551525354385376
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-006",
+        "crop_sha256": "d8a7887102abf2ef90fb29aee93e6fff206dc43cbd6192f856597d677e6506e5",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          23,
+          391,
+          169,
+          210
+        ],
+        "cache_key": "8edf9f97f92491420cd6682c9d04b0c91d352948b2c0132242eb38685bdb8251",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-hopper",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-007",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-007.ply",
+      "sha256": "86851fda505ef1ef38a9b57e8030eeeafecabe096430d0696d728de80f8efcdf",
+      "node_id": null,
+      "provenance": {
+        "sha256": "86851fda505ef1ef38a9b57e8030eeeafecabe096430d0696d728de80f8efcdf",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.4007062315940857,
+            -0.07545351982116699,
+            -0.2602199912071228
+          ],
+          "max": [
+            0.39497655630111694,
+            0.06772002577781677,
+            0.25495004653930664
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-007",
+        "crop_sha256": "0b27d362ec1b876be78c783d8a26872470a49f7dd5145e4cb71dac3a9ef6ef20",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          520,
+          27,
+          278,
+          158
+        ],
+        "cache_key": "d9f40e1bf7b14007886ab47d5b56262d21d543b423a2fe9720d9825ffb56967d",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-thickener",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-008",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-008.ply",
+      "sha256": "e579f7c18f21cd121780c8b4a1764f07a80916f533e462033173866d133ddce2",
+      "node_id": null,
+      "provenance": {
+        "sha256": "e579f7c18f21cd121780c8b4a1764f07a80916f533e462033173866d133ddce2",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.039684563875198364,
+            -0.093547523021698,
+            -0.07726410031318665
+          ],
+          "max": [
+            0.11838304996490479,
+            0.10045799612998962,
+            0.07513374090194702
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-008",
+        "crop_sha256": "e564ef85c6e605c4ba407e6b54b282700721837da270242411a382dad9603b90",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          818,
+          36,
+          106,
+          135
+        ],
+        "cache_key": "db33792f456994ea4deab7ed2c564a30621369a280c43f69dbc41e5e775c31e5",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-water",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-009",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-009.ply",
+      "sha256": "32072973982f18db4b049e4dd1614fa96dcefd4114a9d40246a1f18facb7d142",
+      "node_id": null,
+      "provenance": {
+        "sha256": "32072973982f18db4b049e4dd1614fa96dcefd4114a9d40246a1f18facb7d142",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.3390966057777405,
+            -0.06942129135131836,
+            -0.28089189529418945
+          ],
+          "max": [
+            0.38236451148986816,
+            0.06734892725944519,
+            0.27551788091659546
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-009",
+        "crop_sha256": "d0c358e4b488e72236366ce872f436fdd096a02c377b37ff3d136e96868ef582",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          1377,
+          357,
+          148,
+          182
+        ],
+        "cache_key": "86f83f5c36657c1a8cc11be05d7c8dfc19db67f9ca77f79d7ff0933a0463aa00",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-lab",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-010",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-010.ply",
+      "sha256": "a59d628bca6e5d7839366b0a917d4a2162e42171916bd2dd8d21801d20736749",
+      "node_id": null,
+      "provenance": {
+        "sha256": "a59d628bca6e5d7839366b0a917d4a2162e42171916bd2dd8d21801d20736749",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.0838228166103363,
+            -0.07636314630508423,
+            -0.12397277355194092
+          ],
+          "max": [
+            0.13788717985153198,
+            0.07326659560203552,
+            0.11750316619873047
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-010",
+        "crop_sha256": "bba1f9bdbab3d0b0cbd83fe4fd714ba2cfdf83b19614f40c76526e7d7c22894d",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          548,
+          844,
+          126,
+          82
+        ],
+        "cache_key": "d304079fb0f3e0e728eee2895406446005dae158329aac1ba3d8d26d38f09900",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-control",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-011",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-011.ply",
+      "sha256": "6a082110f1b66ca15cb86b73c232fa48a212b5f9418512ecdbe74bddc6cca6d5",
+      "node_id": null,
+      "provenance": {
+        "sha256": "6a082110f1b66ca15cb86b73c232fa48a212b5f9418512ecdbe74bddc6cca6d5",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.49872881174087524,
+            -0.035005033016204834,
+            -0.2312130331993103
+          ],
+          "max": [
+            0.49106061458587646,
+            0.035698920488357544,
+            0.2350757122039795
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-011",
+        "crop_sha256": "0a2a5e895b9ee8decbe0a0b74831787bad162e37cf179f28ca4798bad94a3650",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          1224,
+          81,
+          210,
+          185
+        ],
+        "cache_key": "8420baf6203ebe6f61cab94551866c4bcbf9ca34bb489da2a2506e9bfc1ff5f4",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-tailings",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    }
+  ],
+  "sources": [
+    {
+      "id": "D01-source",
+      "kind": "generated-photographic-scene",
+      "filename": "D01.png",
+      "sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628"
+    }
+  ]
+}
