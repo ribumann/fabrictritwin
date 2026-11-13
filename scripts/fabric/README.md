@@ -243,6 +243,16 @@ Git-blob checkout. It then normalizes source text to LF for extraction.
 Source pins remain unchanged; the output hash identifies the normalized
 successor payload and is reproducible across Windows and Linux.
 
+Manifest v2 identifies successor `d01-kql-reserved-identifier-v2` relative to
+`sourceBaseCommit`; `sourceFiles` pins its effective inputs, not unchanged
+inputs from the original commit. `historicalSource` preserves the original
+source pins and the reviewed v1 payload identity. The deployable PlantLatest
+binding and extracted payload use `latest_telemetry` instead of reserved
+`latest`, which native parsing rejected. This successor does not refresh any
+trusted receipt expectations, authorize deployment, or prove native execution.
+Existing independently protected receipt identities still require exact
+comparison and fresh authorized readback; none are supplied by this manifest.
+
 The manifest freezes the input arguments and independent expected results for
 all five G5 functions. In brief: PlantLatest returns 56 catalog tags and four
 states (11 observed tags, 45 unknown); PlantSummary expects 42 t/h, 0.7

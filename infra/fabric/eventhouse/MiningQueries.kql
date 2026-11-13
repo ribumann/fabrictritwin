@@ -75,12 +75,12 @@
             | project profile_tag_id = tag_id, cadence = interval_seconds
         ) on $left.tag_id == $right.profile_tag_id
         | project tag_id, module_id, equipment_id, metric, unit, cadence;
-    let latest =
+    let latest_telemetry =
         mining_DeduplicatedTelemetry(plant_id, requested_run_id, as_of_utc - 7d, as_of_utc)
         | summarize arg_max(timestamp, *) by tag_id;
     let tag_rows =
         tags
-        | join kind=leftouter latest on tag_id
+        | join kind=leftouter latest_telemetry on tag_id
         | where request_ok and source_status == "READY"
         | extend age_seconds = iff(isnull(timestamp), long(null), datetime_diff("second", as_of_utc, timestamp))
         | extend status = case(

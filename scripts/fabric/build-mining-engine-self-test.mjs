@@ -8,7 +8,7 @@ const outputDirectory = path.join(root, 'scripts', 'fabric', 'fixtures');
 const queryPath = path.join(outputDirectory, 'mining-engine-self-test.kql');
 const manifestPath = path.join(outputDirectory, 'mining-engine-self-test.manifest.json');
 const catalogPath = path.join(root, 'apps', 'simulator', 'src', 'mining', 'plant-catalog.json');
-const sourceFiles = [
+const historicalSourceFiles = [
   {
     path: 'infra/fabric/eventhouse/MiningValidation.kql',
     sha256: 'e733da5365075ea850588f1bf57ff3bc3ff7a2055fa3217149c5f4d26b94e0df',
@@ -30,6 +30,14 @@ const sourceFiles = [
     sha256: 'd8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1',
   },
 ];
+const sourceRevision = 'd01-kql-reserved-identifier-v2';
+const sourceBaseCommit = '4d1f93b6d1cc7e940d24f73621742329c112197d';
+const sourceFiles = historicalSourceFiles.map((source) => ({
+  ...source,
+  sha256: source.path === 'infra/fabric/eventhouse/MiningQueries.kql'
+    ? '68e69067deb7f898196ce2c64a95cd98e92652fd81b4e64866657d8acc037105'
+    : source.sha256,
+}));
 const catalogVersion = `sha256:${sourceFiles[2].sha256}`;
 const runId = 'd0100000-0000-4000-8000-000000000001';
 const incidentId = 'd0100000-0000-4000-8000-000000000002';
@@ -724,9 +732,17 @@ function main() {
     fail('Generated payload contains a management command or an unmapped mining symbol');
   }
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     status: 'synthetic-engine-self-test-only',
-    sourceCommit: '324d73496913b4a2944713eb8861f2b7fdba4c02',
+    sourceRevision,
+    sourceBaseCommit,
+    historicalSource: {
+      sourceCommit: '324d73496913b4a2944713eb8861f2b7fdba4c02',
+      sourceFiles: historicalSourceFiles,
+      payloadCommit: '94e90886629b07ee4100223077f0a6747636dfd6',
+      querySha256: 'a1a05bf82f28989d32b8c7190e7fc3a341038b90f4e28a5c9d1edae4f15034b4',
+      queryBytes: 108379,
+    },
     queryPath: 'scripts/fabric/fixtures/mining-engine-self-test.kql',
     querySha256: sha256(queryBytes),
     queryBytes: queryBytes.length,
@@ -742,7 +758,8 @@ function main() {
         profileVersion: 'd01-publish-profile-v1',
         sourceContractVersion: 'd01-validated-source-v1',
         incidentSourceVersion: 'd01-incident-ledger-v1',
-        sourceCommit: '324d73496913b4a2944713eb8861f2b7fdba4c02',
+        sourceRevision,
+        sourceBaseCommit,
         selfTestRunId: runId,
         selfTestFixtureSha256: sha256(Buffer.from(JSON.stringify(fixture), 'utf8')),
       },
