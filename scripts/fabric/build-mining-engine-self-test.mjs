@@ -30,12 +30,12 @@ const historicalSourceFiles = [
     sha256: 'd8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1',
   },
 ];
-const sourceRevision = 'd01-kql-string-conflict-v3';
+const sourceRevision = 'd01-kql-column-bindings-v4';
 const sourceBaseCommit = '4d1f93b6d1cc7e940d24f73621742329c112197d';
 const sourceFiles = historicalSourceFiles.map((source) => ({
   ...source,
   sha256: source.path === 'infra/fabric/eventhouse/MiningQueries.kql'
-    ? '9658f006440604d87b4211007dbd6e4990043ed6b80780e1808040dc343f91b8'
+    ? '63f84951b34cf27722fb74f58234dac659af058d50dc2cb1430b58409fe48b4c'
     : source.sha256,
 }));
 const catalogVersion = `sha256:${sourceFiles[2].sha256}`;
@@ -459,8 +459,8 @@ function buildFixture(catalog) {
       telemetryRows,
     ).replace(/\n\];$/, `
 ]
-| extend timestamp = _selftest_WindowEnd - age_seconds * 1s,
-    received_at = timestamp + receive_delay_seconds * 1s,
+| extend timestamp = _selftest_WindowEnd - age_seconds * 1s
+| extend received_at = timestamp + receive_delay_seconds * 1s,
     catalog_version = ${kqlString(catalogVersion)},
     profile_version = "d01-publish-profile-v1",
     source_contract_version = "d01-validated-source-v1"
@@ -474,8 +474,8 @@ function buildFixture(catalog) {
       stateRows,
     ).replace(/\n\];$/, `
 ]
-| extend timestamp = _selftest_WindowEnd - 10s,
-    received_at = timestamp + 1s,
+| extend timestamp = _selftest_WindowEnd - 10s
+| extend received_at = timestamp + 1s,
     catalog_version = ${kqlString(catalogVersion)},
     source_contract_version = "d01-validated-source-v1"
 | project plant_id, run_id, event_id, sequence, timestamp, received_at,
@@ -487,8 +487,8 @@ function buildFixture(catalog) {
       incidentRows,
     ).replace(/\n\];$/, `
 ]
-| extend occurred_at = _selftest_WindowEnd - age_seconds * 1s,
-    received_at = occurred_at + receive_delay_seconds * 1s
+| extend occurred_at = _selftest_WindowEnd - age_seconds * 1s
+| extend received_at = occurred_at + receive_delay_seconds * 1s
 | project plant_id, run_id, incident_id, event_id, event_sequence,
     occurred_at, received_at, rule_id, scope_id, event_type, severity,
     evidence, source_contract_version;`),
@@ -743,13 +743,19 @@ function main() {
       querySha256: 'a1a05bf82f28989d32b8c7190e7fc3a341038b90f4e28a5c9d1edae4f15034b4',
       queryBytes: 108379,
     },
-    previousCandidate: {
+    previousCandidates: [{
       sourceRevision: 'd01-kql-reserved-identifier-v2',
       sourceCommit: '40d13ed257b0eeba7323d89710bc364872c23956',
       miningQueriesSha256: '68e69067deb7f898196ce2c64a95cd98e92652fd81b4e64866657d8acc037105',
       querySha256: 'c90677d2dbba05d300b4550f35601a56b0d8a32a7c219ee461253325e08e0677',
       queryBytes: 108399,
-    },
+    }, {
+      sourceRevision: 'd01-kql-string-conflict-v3',
+      sourceCommit: '73e4e428128d5dffd527074feca90d3a103231c9',
+      miningQueriesSha256: '9658f006440604d87b4211007dbd6e4990043ed6b80780e1808040dc343f91b8',
+      querySha256: '0b3e3027612fab95ce513d2dafcfbfabc01cda0fdf34773c135e85713bd8a9cb',
+      queryBytes: 108379,
+    }],
     queryPath: 'scripts/fabric/fixtures/mining-engine-self-test.kql',
     querySha256: sha256(queryBytes),
     queryBytes: queryBytes.length,

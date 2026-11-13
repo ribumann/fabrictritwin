@@ -370,8 +370,8 @@
             common_coverage = common_seconds / duration_seconds
         | extend coverage_valid = feed_a_coverage <= 1.0 and feed_b_coverage <= 1.0 and
             feed_c_coverage <= 1.0 and water_coverage <= 1.0 and power_coverage <= 1.0 and
-            invalid_common_bins == 0,
-            ratio_ok = coverage_valid and conflict_event_count == 0 and state_conflict_count == 0 and
+            invalid_common_bins == 0
+        | extend ratio_ok = coverage_valid and conflict_event_count == 0 and state_conflict_count == 0 and
                 common_coverage >= 0.90 and common_feed >= 10.0
         | project status = case(
             source_status != "READY", source_status,
