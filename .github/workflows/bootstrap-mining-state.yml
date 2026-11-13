@@ -46,6 +46,8 @@ jobs:
       EXPECTED_ACTOR_ID: ${{ vars.MINING_STATE_ACTOR_ID }}
       BOOTSTRAP_ENABLED: ${{ vars.MINING_STATE_BOOTSTRAP_ENABLED }}
       ENVIRONMENT_DIGEST: ${{ vars.MINING_STATE_APPROVED_DIGEST }}
+      WRITE_WINDOW_ID: ${{ vars.MINING_STATE_EXCLUSIVE_WRITER_WINDOW_ID }}
+      ACKNOWLEDGE_NON_ATOMIC_UPDATE: ${{ vars.MINING_STATE_ACKNOWLEDGE_NON_ATOMIC_UPDATE }}
       INPUT_DIGEST: ${{ inputs.approved_digest }}
       APPLY: ${{ inputs.apply }}
       SOURCE_REVISION: ${{ github.sha }}
@@ -64,14 +66,22 @@ jobs:
             }
             Write-Output "::add-mask::$value"
           }
+          if ($env:WRITE_WINDOW_ID -match '[\x00-\x1f\x7f]' -or $env:WRITE_WINDOW_ID.Length -gt 1024) {
+            throw 'Invalid protected writer-window reference.'
+          }
+          if ($env:WRITE_WINDOW_ID) { Write-Output "::add-mask::$env:WRITE_WINDOW_ID" }
+          if ([string]$env:ACKNOWLEDGE_NON_ATOMIC_UPDATE -cnotin @('', 'false', 'true')) {
+            throw 'Non-atomic acknowledgement must be exact true, false or unset.'
+          }
           if ($env:ACTOR_ID -cne $env:EXPECTED_ACTOR_ID -or $env:EXPECTED_ACTOR_ID -notmatch '^[0-9]+$' -or
               $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:SOURCE_REVISION -cnotmatch '^[a-f0-9]{40}$') {
             throw 'Caller/source mismatch or rerun; use a new reviewed dispatch.'
           }
           if ($env:APPLY -cnotin @('true', 'false')) { throw 'Invalid apply input.' }
           if ($env:APPLY -ceq 'true' -and ($env:BOOTSTRAP_ENABLED -cne 'true' -or
-              $env:INPUT_DIGEST -cnotmatch '^[a-f0-9]{64}$' -or $env:INPUT_DIGEST -cne $env:ENVIRONMENT_DIGEST)) {
-            throw 'Apply requires enabled bootstrap and the exact privately approved environment digest.'
+              $env:INPUT_DIGEST -cnotmatch '^[a-f0-9]{64}$' -or $env:INPUT_DIGEST -cne $env:ENVIRONMENT_DIGEST -or
+              [string]::IsNullOrWhiteSpace($env:WRITE_WINDOW_ID) -or $env:ACKNOWLEDGE_NON_ATOMIC_UPDATE -cne 'true')) {
+            throw 'Apply requires enabled bootstrap, reviewed digest, external writer-window reference and non-atomic acknowledgement.'
           }
       - name: Verify actual environment OIDC claims
         shell: pwsh
@@ -114,6 +124,8 @@ jobs:
             IdentityName = $env:IDENTITY_NAME; IdentityClientId = $env:IDENTITY_CLIENT_ID
             IdentityPrincipalId = $env:IDENTITY_PRINCIPAL_ID; SourceRevision = $env:SOURCE_REVISION
             Apply = ($env:APPLY -ceq 'true')
+            ExclusiveWriterWindowId = $env:WRITE_WINDOW_ID
+            AcknowledgeNonAtomicUpdate = ($env:ACKNOWLEDGE_NON_ATOMIC_UPDATE -ceq 'true')
           }
           if ($parameters.Apply) { $parameters.ApprovedDigest = $env:INPUT_DIGEST }
           try { $result = ./scripts/deploy/bootstrap-mining-state.ps1 @parameters }

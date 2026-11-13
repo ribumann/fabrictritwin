@@ -11,6 +11,7 @@ BeforeAll {
         IdentityClientId = '55555555-5555-5555-5555-555555555555'
         IdentityPrincipalId = '66666666-6666-6666-6666-666666666666'
         SourceRevision = 'a' * 40
+        ExclusiveWriterWindowId = 'test-external-window-001'; AcknowledgeNonAtomicUpdate = $true
     }
     function New-MiningFixture {
         $rg = "/subscriptions/$($script:Parameters.SubscriptionId)/resourceGroups/rg-example"
@@ -167,6 +168,42 @@ Describe 'Protected mining-state bootstrap' {
         Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -notin @('GET','HEAD') }
     }
 
+    It 'rejects missing window or non-atomic acknowledgement before preflight or any write' -ForEach @(
+        @{ Window = ''; Acknowledge = $true },
+        @{ Window = '   '; Acknowledge = $true },
+        @{ Window = 'test-external-window-001'; Acknowledge = $false }
+    ) {
+        $parameters = $script:Parameters.Clone()
+        $parameters.ExclusiveWriterWindowId = $Window
+        $parameters.AcknowledgeNonAtomicUpdate = $Acknowledge
+        { & $script:Bootstrap @parameters -Apply -ApprovedDigest ('b' * 64) } | Should -Throw '*externally recorded exclusive-writer window*'
+        Should -Invoke az -Times 0 -Exactly
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly
+    }
+
+    It 'binds changed window and acknowledgement into the digest and refuses apply under the old review' -ForEach @(
+        @{ Change = 'window' }, @{ Change = 'acknowledgement' }
+    ) {
+        $parameters = $script:Parameters.Clone()
+        $original = (& $script:Bootstrap @parameters).Digest
+        if ($Change -eq 'window') { $parameters.ExclusiveWriterWindowId = 'test-external-window-002' }
+        else { $parameters.AcknowledgeNonAtomicUpdate = $false }
+        $changed = (& $script:Bootstrap @parameters).Digest
+        $changed | Should -Not -BeExactly $original
+        { & $script:Bootstrap @parameters -Apply -ApprovedDigest $original } | Should -Throw
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -notin @('GET','HEAD') }
+    }
+
+    It 'allows a read-only preview with no window or acknowledgement without implying an apply authority' {
+        $parameters = $script:Parameters.Clone()
+        $parameters.Remove('ExclusiveWriterWindowId')
+        $parameters.Remove('AcknowledgeNonAtomicUpdate')
+        $result = & $script:Bootstrap @parameters
+        $result.Status | Should -Be 'Preview'
+        ($result | ConvertTo-Json) | Should -Not -Match 'test-external-window|RemoteLock'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -notin @('GET','HEAD') }
+    }
+
     It 'rejects local or wrong-ref apply before acquiring credentials' -ForEach @(
         @{ Name = 'GITHUB_ACTIONS'; Value = 'false' }, @{ Name = 'GITHUB_REF'; Value = 'refs/heads/feature' },
         @{ Name = 'GITHUB_RUN_ATTEMPT'; Value = '2' }, @{ Name = 'GITHUB_WORKFLOW_REF'; Value = 'different-workflow' }
@@ -258,7 +295,12 @@ Describe 'Protected mining-state bootstrap' {
             $env:GITHUB_ACTIONS = 'false'
             $path = Join-Path $TestDrive 'private-plan.json'
             $result = & $script:Bootstrap @script:Parameters -PrivatePlanPath $path
-            (Get-Content $path -Raw | ConvertFrom-Json).digest | Should -BeExactly $result.Digest
+            $private = Get-Content $path -Raw | ConvertFrom-Json
+            $private.digest | Should -BeExactly $result.Digest
+            $private.plan.writeSafety.exclusiveWriterWindowId | Should -BeExactly $script:Parameters.ExclusiveWriterWindowId
+            $private.plan.writeSafety.acknowledgeNonAtomicUpdate | Should -BeTrue
+            $private.plan.writeSafety.enforcement | Should -BeExactly 'ExternalOperatorWindowNotRemoteLock'
+            ($result | ConvertTo-Json) | Should -Not -Match 'test-external-window'
             { & $script:Bootstrap @script:Parameters -PrivatePlanPath $path } | Should -Throw
             { & $script:Bootstrap @script:Parameters -Apply -ApprovedDigest $result.Digest -PrivatePlanPath $path } | Should -Throw '*local preview only*'
             $env:GITHUB_ACTIONS = 'true'
@@ -300,6 +342,8 @@ Describe 'Protected mining-state bootstrap' {
 Describe 'Mining bootstrap workflow boundary' {
     BeforeAll {
         $script:Workflow = Get-Content (Join-Path $PSScriptRoot '..' '..' '.github' 'workflows' 'bootstrap-mining-state.yml') -Raw
+        $validation = [regex]::Match($script:Workflow, '(?ms)^        run: \|\r?\n(.*?)(?=^      -|\z)').Groups[1].Value
+        $script:WorkflowValidation = [scriptblock]::Create($validation)
     }
     It 'uses a manual, main-only protected OIDC job and no public plan artifacts' {
         $script:Workflow | Should -Match "github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'"
@@ -307,12 +351,47 @@ Describe 'Mining bootstrap workflow boundary' {
         $script:Workflow | Should -Match 'default: false'
         $script:Workflow | Should -Match 'MINING_STATE_APPROVED_DIGEST'
         $script:Workflow | Should -Match 'MINING_STATE_BOOTSTRAP_ENABLED'
+        $script:Workflow | Should -Match 'WRITE_WINDOW_ID: \$\{\{ vars.MINING_STATE_EXCLUSIVE_WRITER_WINDOW_ID \}\}'
+        $script:Workflow | Should -Match 'ACKNOWLEDGE_NON_ATOMIC_UPDATE: \$\{\{ vars.MINING_STATE_ACKNOWLEDGE_NON_ATOMIC_UPDATE \}\}'
+        $script:Workflow | Should -Match "IsNullOrWhiteSpace\(\`$env:WRITE_WINDOW_ID\)"
+        $script:Workflow | Should -Match "ACKNOWLEDGE_NON_ATOMIC_UPDATE -cne 'true'"
+        $script:Workflow | Should -Match 'ExclusiveWriterWindowId = \$env:WRITE_WINDOW_ID'
+        $script:Workflow | Should -Match 'AcknowledgeNonAtomicUpdate = \(\$env:ACKNOWLEDGE_NON_ATOMIC_UPDATE'
         $script:Workflow | Should -Match 'claims.workflow_ref'
         $script:Workflow | Should -Match 'claims.actor_id'
         $script:Workflow | Should -Not -Match 'upload-artifact|PrivatePlanPath|secrets\.|deploy-container-apps|--set-env-vars'
         $script:Workflow | Should -Not -Match '(?m)^\s+(push|pull_request|pull_request_target|schedule|workflow_run):'
         foreach ($block in [regex]::Matches($script:Workflow, '(?ms)^        run: \|\r?\n(.*?)(?=^      -|\z)')) {
             $block.Groups[1].Value | Should -Not -Match '\$\{\{'
+        }
+    }
+
+    It 'executes the protected config gate before login and requires both window and acknowledgement for apply' -ForEach @(
+        @{ Apply = 'true'; Window = ''; Acknowledge = 'true'; Allowed = $false },
+        @{ Apply = 'true'; Window = 'test-external-window-001'; Acknowledge = ''; Allowed = $false },
+        @{ Apply = 'true'; Window = 'test-external-window-001'; Acknowledge = 'false'; Allowed = $false },
+        @{ Apply = 'true'; Window = 'test-external-window-001'; Acknowledge = 'true'; Allowed = $true },
+        @{ Apply = 'false'; Window = ''; Acknowledge = ''; Allowed = $true }
+    ) {
+        $values = @{
+            CLIENT_ID = 'example-client'; TENANT_ID = 'example-tenant'; SUBSCRIPTION_ID = 'example-subscription'
+            CALLER_PRINCIPAL_ID = 'example-caller'; RESOURCE_GROUP = 'rg-example'; STORAGE_ACCOUNT = 'examplestate'
+            CONTAINER = 'mining-private'; BACKEND_APP = 'example-backend'; IDENTITY_NAME = 'example-uami'
+            IDENTITY_CLIENT_ID = 'example-uami-client'; IDENTITY_PRINCIPAL_ID = 'example-uami-principal'
+            EXPECTED_ACTOR_ID = '123'; ACTOR_ID = '123'; GITHUB_RUN_ATTEMPT = '1'; SOURCE_REVISION = 'a' * 40
+            APPLY = $Apply; INPUT_DIGEST = 'b' * 64; ENVIRONMENT_DIGEST = 'b' * 64; BOOTSTRAP_ENABLED = 'true'
+            WRITE_WINDOW_ID = $Window; ACKNOWLEDGE_NON_ATOMIC_UPDATE = $Acknowledge
+        }
+        $original = @{}
+        try {
+            foreach ($name in $values.Keys) {
+                $original[$name] = [Environment]::GetEnvironmentVariable($name)
+                [Environment]::SetEnvironmentVariable($name, $values[$name])
+            }
+            if ($Allowed) { { & $script:WorkflowValidation | Out-Null } | Should -Not -Throw }
+            else { { & $script:WorkflowValidation | Out-Null } | Should -Throw '*writer-window reference and non-atomic acknowledgement*' }
+        } finally {
+            foreach ($name in $original.Keys) { [Environment]::SetEnvironmentVariable($name, $original[$name]) }
         }
     }
 }

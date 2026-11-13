@@ -220,6 +220,8 @@ issues, PRs or Actions artifacts. Additional **environment-level** variables:
 | `MINING_STATE_IDENTITY_PRINCIPAL_ID` | That UAMI's expected principal ID |
 | `MINING_STATE_APPROVED_DIGEST` | Lowercase 64-hex digest of the privately reviewed exact plan; apply only |
 | `MINING_STATE_BOOTSTRAP_ENABLED` | Exact `true` only after separate authorization; apply only |
+| `MINING_STATE_EXCLUSIVE_WRITER_WINDOW_ID` | Private reference to the externally recorded, approved exclusive-writer window; not a lock |
+| `MINING_STATE_ACKNOWLEDGE_NON_ATOMIC_UPDATE` | Exact `true` acknowledges non-atomic writes and the operator's external exclusion responsibility |
 
 Both preview and apply require environment approval. The workflow verifies the
 actual immutable-ID OIDC subject for `azure-deploy`, issuer, audience, repository
@@ -258,6 +260,9 @@ Existing OIDC and write capabilities are **untested**, not deployment-ready.
    flags off. Dispatch with `apply: false` only after authorization for reads.
    The public summary contains only digest, fixed scope and status, never a raw
    plan or runtime configuration. Approval of a preview is not write approval.
+   Before the final reviewed preview, record the external exclusive-writer window
+   and non-atomic acknowledgement in the protected variables. Preview works
+   without them, but its different digest cannot authorize a later window.
 2. In an independently secured operator session, run
    `bootstrap-mining-state.ps1` (PowerShell 7.2+) with those exact values
    and `-SourceRevision (git rev-parse HEAD) -PrivatePlanPath <private-new-file>`.
@@ -275,6 +280,9 @@ Existing OIDC and write capabilities are **untested**, not deployment-ready.
    The plan still pins the approved deployment caller, so independent private
    review does not require exporting a GitHub OIDC token or adding local
    credentials to an OIDC-only deployment identity.
+   Also supply the same `-ExclusiveWriterWindowId` and
+   `-AcknowledgeNonAtomicUpdate` values as the protected environment; both are
+   inside the reviewed state/digest, not a digest-exempt approval overlay.
 3. Independently review that file's exact targets, proposed create/no-op
    operations, caller, source and digest. Its digest must match the Actions
    preview. Store that digest in `MINING_STATE_APPROVED_DIGEST`, then authorize
@@ -295,7 +303,30 @@ download, artifact upload, digest override or blind retry path.
 
 Container creation and RBAC assignment are **not atomic** across resources.
 Fresh reads detect drift but cannot lock the backend, UAMI, account or other
-operators. Coordinate external configuration changes during the approved window.
+operators. In particular, role assignment PUT is **create-or-update, not
+create-only or CAS**. A conditional assignment with the same deterministic ID,
+principal and role could appear between the last read and PUT; the unconditional
+write could remove its condition, and post-read verification cannot prevent or
+prove the absence of that race.
+
+Therefore every non-WhatIf apply requires an externally recorded
+`ExclusiveWriterWindowId` and explicit `AcknowledgeNonAtomicUpdate`, checked
+before fresh apply preflight or any write. The record must identify the exact
+targets, principal/role, responsible operators and approved interval, covering
+fresh apply preflight, **both** container and RBAC writes and all reconciliation.
+The operator must actually coordinate and maintain exclusion of portal, scripts,
+automation and any other identity able to mutate these resources/assignments.
+Required independent environment approval must review that private record and
+its coverage of the proposed run. If that exclusion cannot be established or is
+lost/expired, do not approve/start or continue apply; inspect any submitted write.
+The script does not contact the external window system, verify its validity,
+acquire a remote lock or enforce exclusion. A nonempty reference, digest,
+acknowledgement, Actions concurrency or approval alone **does not establish an
+exclusive window**. No actual window is supplied or implied by this source.
+Changing the window or acknowledgement invalidates the reviewed digest and
+requires another private preview/review. Neither value appears in public logs
+or summaries; the reference remains in the private plan and protected config.
+
 Between writes, only the newly created private container is accepted as expected
 drift; other changes stop before RBAC. After RBAC, verify the exact assignment and
 unchanged remaining metadata. Propagation delay can cause verification to fail

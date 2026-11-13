@@ -5,6 +5,8 @@ Plans or creates only a private mining-state container and its exact UAMI role.
 .DESCRIPTION
 No app writes, SAS, keys, account configuration, queries or runtime activation.
 Default and WhatIf are read-only. Apply requires a reviewed digest of fresh state.
+Apply also requires an externally coordinated writer-window reference and explicit
+non-atomic acknowledgement; these inputs do not establish or verify a remote lock.
 PrivatePlanPath is for an operator-controlled private filesystem, never Actions.
 #>
 [CmdletBinding(SupportsShouldProcess)]
@@ -25,6 +27,8 @@ param(
     [string]$PrivatePlanPath,
     [guid]$PrivateReviewReaderClientId = [guid]::Empty,
     [guid]$PrivateReviewReaderPrincipalId = [guid]::Empty,
+    [ValidateLength(0,1024)][string]$ExclusiveWriterWindowId,
+    [switch]$AcknowledgeNonAtomicUpdate,
     [switch]$Apply
 )
 
@@ -38,6 +42,11 @@ if ($PrivatePlanPath -and ($Apply -or $env:GITHUB_ACTIONS -eq 'true')) {
     throw 'Private plans are local preview only; never export raw state in Actions.'
 }
 if ($Apply -and -not $ApprovedDigest) { throw 'Apply requires a privately reviewed plan digest.' }
+if ($ExclusiveWriterWindowId -match '[\x00-\x1f\x7f]') { throw 'Writer-window reference cannot contain control characters.' }
+if ($Apply -and -not $WhatIfPreference -and (
+    [string]::IsNullOrWhiteSpace($ExclusiveWriterWindowId) -or -not $AcknowledgeNonAtomicUpdate)) {
+    throw 'Apply requires an externally recorded exclusive-writer window reference and explicit non-atomic acknowledgement; no lock is inferred.'
+}
 if ($Apply -and -not $WhatIfPreference -and (
     $env:GITHUB_ACTIONS -cne 'true' -or $env:GITHUB_REPOSITORY -cne 'ribumann/fabrictritwin' -or
     $env:GITHUB_REF -cne 'refs/heads/main' -or $env:GITHUB_SHA -cne $SourceRevision -or
@@ -180,6 +189,11 @@ function Get-State {
     @{
         source = $SourceRevision
         caller = @{ clientId = "$CallerClientId"; principalId = "$CallerPrincipalId"; tenantId = "$TenantId" }
+        writeSafety = @{
+            exclusiveWriterWindowId = $ExclusiveWriterWindowId
+            acknowledgeNonAtomicUpdate = [bool]$AcknowledgeNonAtomicUpdate
+            enforcement = 'ExternalOperatorWindowNotRemoteLock'
+        }
         account = $account; backend = $app; identity = $identity; container = $container; blob = $blobState
         roles = @($roles | Sort-Object id); deterministicRole = $deterministic
         proposed = @{
@@ -236,6 +250,7 @@ if ($state.proposed.createContainer) {
 }
 if ($state.proposed.createRole) {
     if ((Get-Digest (Get-State)) -cne (Get-Digest $state)) { throw 'State drift before role write; partial outcome, stop and inspect.' }
+    # RBAC PUT is create-or-update, not CAS. The recorded external writer window is required.
     Write-Information 'Mining bootstrap: exact role submitting; outcome not yet verified.' -InformationAction Continue
     try {
         Invoke-RuntimeArm -Context $context -Method PUT -ResourceId $assignmentId -ApiVersion '2022-04-01' -Body @{
