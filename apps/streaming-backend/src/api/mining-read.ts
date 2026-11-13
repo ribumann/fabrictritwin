@@ -22,7 +22,7 @@ type Route = (typeof routes)[number];
 interface ReadOptions {
   synthetic: boolean;
   env?: NodeJS.ProcessEnv;
-  verifyPrincipal?: (req: Request) => Promise<string | undefined>;
+  verifyPrincipal?: (req: Request, signal?: AbortSignal) => Promise<string | undefined>;
   status?: (runId: string, signal?: AbortSignal) => Promise<MiningRunStatus | undefined>;
   now?: () => number;
 }
@@ -179,7 +179,7 @@ export function createMiningReadRouter(options: ReadOptions): Router {
       }
       let principal: string | undefined;
       try {
-        principal = await verify(req);
+        principal = await verify(req, controllers.get(res)?.signal);
       } catch (cause) {
         console.error("[mining-read] Bearer verification failed", cause);
         if (!res.headersSent && !res.destroyed) {

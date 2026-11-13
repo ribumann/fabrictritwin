@@ -19,6 +19,8 @@ The approval must explicitly bind `MINING_APPROVED_CATALOG_VERSION` to
 `sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce`
 and `MINING_APPROVED_PROFILE_VERSION` to `d01-publish-profile-v1`. These settings
 record operator approval; they do not prove that the publisher used those versions.
+`catalogVersion` in status and context is this approved expected contract scope,
+not verified provenance of the publisher or run.
 The approved run must also have a matching durable admission in the configured
 mining-state store below. No Easy Auth header or athlete mapping grants access.
 Invalid bearer tokens are rejected with 401; identity-provider verification
@@ -26,7 +28,7 @@ failures are logged and returned as 503 instead of being reported as invalid tok
 Status and context perform read-only durable reads; publisher completion does not
 prove ingestion. Rejected durable admissions return a distinct 409 rather than
 being reported as absent. A single request deadline or client disconnect cancels ongoing
-Blob status reads and prevents subsequent reads. Queries, incident persistence and
+JWKS and Blob status reads and prevents subsequent reads. Queries, incident persistence and
 the assistant are not connected: context reports `readAvailable: false`, while data
 routes return explicit 503.
 Start, cancel and acknowledgement remain unavailable without delegated authorization.

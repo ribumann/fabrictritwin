@@ -1,6 +1,12 @@
 import { CredentialUnavailableError, ManagedIdentityCredential } from "@azure/identity";
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
-import { MiningCoordinationError, type MiningStore, type StoredDocument } from "./store.js";
+import {
+  MiningCoordinationError,
+  type MiningByteStore,
+  type MiningStore,
+  type StoredBytes,
+  type StoredDocument,
+} from "./store.js";
 
 function storageCode(error: unknown): string | undefined {
   return typeof error === "object" && error !== null && "code" in error
@@ -54,10 +60,25 @@ function failure(error: unknown, operation: string): MiningCoordinationError {
   );
 }
 
-export class BlobMiningStore implements MiningStore {
+export class BlobMiningStore implements MiningStore, MiningByteStore {
   constructor(private readonly container: ContainerClient) {}
 
   async read(path: string, signal?: AbortSignal): Promise<StoredDocument | undefined> {
+    const document = await this.readBytes(path, signal);
+    if (signal?.aborted) throw new MiningCoordinationError("cancelled", "Mining read cancelled.");
+    if (!document) return undefined;
+    try {
+      return {
+        value: JSON.parse(document.bytes.toString("utf8")),
+        etag: document.etag,
+        leased: document.leased,
+      };
+    } catch (error) {
+      throw failure(error, "read");
+    }
+  }
+
+  async readBytes(path: string, signal?: AbortSignal): Promise<StoredBytes | undefined> {
     try {
       if (signal?.aborted) throw new MiningCoordinationError("cancelled", "Mining read cancelled.");
       const response = await this.container
@@ -90,7 +111,7 @@ export class BlobMiningStore implements MiningStore {
         signal?.removeEventListener("abort", cancel);
       }
       return {
-        value: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+        bytes: Buffer.concat(chunks),
         etag: response.etag,
         leased: response.leaseState === "leased",
       };

@@ -53,6 +53,7 @@ describe("mining Blob adapter", () => {
       leaseState: "leased",
       readableStreamBody: Readable.from(['{"version":1}']),
     });
+
     expect(await store.read("test.json")).toEqual({
       value: { version: 1 },
       etag: '"one"',
@@ -64,6 +65,28 @@ describe("mining Blob adapter", () => {
     await expect(store.read("test.json")).rejects.toMatchObject({ code: "prerequisite" });
     download.mockRejectedValueOnce({ statusCode: 404 });
     await expect(store.read("test.json")).rejects.toMatchObject({ code: "storage" });
+  });
+
+  it("returns exact bounded bytes and the ETag from the same download", async () => {
+    const { store, blob } = fixture();
+    const bytes = Buffer.from('{"version":1}\n');
+    const download = vi.spyOn(blob, "download").mockResolvedValue({
+      ...transport,
+      etag: '"proof"',
+      readableStreamBody: Readable.from([bytes.subarray(0, 3), bytes.subarray(3)]),
+    });
+    expect(await store.readBytes("private/fabric/mining/d01-proof-receipt-v1.json")).toEqual({
+      bytes,
+      etag: '"proof"',
+      leased: false,
+    });
+    expect(download).toHaveBeenCalledOnce();
+    download.mockResolvedValueOnce({
+      ...transport,
+      etag: '"large"',
+      readableStreamBody: Readable.from([Buffer.alloc(16_385)]),
+    });
+    await expect(store.readBytes("proof")).rejects.toMatchObject({ code: "storage" });
   });
 
   it("aborts an in-progress status body and never starts subsequent reads", async () => {

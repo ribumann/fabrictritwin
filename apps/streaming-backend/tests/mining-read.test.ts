@@ -1,5 +1,5 @@
 import express from "express";
-import { get } from "node:http";
+import { createServer, get } from "node:http";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
@@ -479,6 +479,83 @@ describe("approved mining read boundary", () => {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
       );
+    }
+  });
+
+  it("cancels an in-flight identity provider fetch on disconnect before status reads", async () => {
+    const tenant = "44444444-4444-4444-8444-444444444444";
+    const clientId = "55555555-5555-4555-8555-555555555555";
+    const { privateKey } = await generateKeyPair("RS256");
+    const token = await new SignJWT({ oid: viewer })
+      .setProtectedHeader({ alg: "RS256", kid: "test" })
+      .setIssuer(`https://login.microsoftonline.com/${tenant}/v2.0`)
+      .setAudience(clientId)
+      .setExpirationTime("1h")
+      .sign(privateKey);
+    vi.stubEnv("ASSISTANT_AUTH_TENANT_ID", tenant);
+    vi.stubEnv("ASSISTANT_AUTH_CLIENT_ID", clientId);
+    resetMcpCallerJwksCacheForTests();
+    let started: (() => void) | undefined;
+    let cancelled: (() => void) | undefined;
+    const fetching = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const stopped = new Promise<void>((resolve) => {
+      cancelled = resolve;
+    });
+    const provider = createServer((_req, res) => {
+      res.on("close", () => cancelled?.());
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write('{"keys":[');
+      started?.();
+    });
+    provider.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => provider.once("listening", resolve));
+    const providerAddress = provider.address();
+    if (!providerAddress || typeof providerAddress === "string") {
+      throw new Error("Missing test identity provider address.");
+    }
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, options: RequestInit) =>
+        realFetch(`http://127.0.0.1:${providerAddress.port}/keys`, options),
+      ),
+    );
+    const status = vi.fn();
+    const app = express();
+    app.use(
+      "/api/mining",
+      createMiningReadRouter({
+        synthetic: false,
+        env: { ...env, ASSISTANT_AUTH_TENANT_ID: tenant, ASSISTANT_AUTH_CLIENT_ID: clientId },
+        status,
+      }),
+    );
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing test server address.");
+    const client = get(`http://127.0.0.1:${address.port}/api/mining/runs/status`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    client.on("error", () => {});
+    try {
+      await fetching;
+      client.destroy();
+      await stopped;
+      expect(status).not.toHaveBeenCalled();
+    } finally {
+      client.destroy();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+      await new Promise<void>((resolve, reject) =>
+        provider.close((error) => (error ? reject(error) : resolve())),
+      );
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      resetMcpCallerJwksCacheForTests();
     }
   });
 });
