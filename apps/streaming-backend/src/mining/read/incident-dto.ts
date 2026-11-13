@@ -97,8 +97,13 @@ export function mapCurrentIncidentAssessments(input: {
   asOf: string;
   assessments: readonly MiningIncidentAssessment[];
 }) {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.runId) ||
-      !/^[0-9a-f]{64}$/.test(input.catalogHash)) return invalid();
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      input.runId,
+    ) ||
+    !/^[0-9a-f]{64}$/.test(input.catalogHash)
+  )
+    return invalid();
   const asOf = instant(input.asOf);
   const ids = new Set<string>();
   let rowCount = 0;
@@ -115,16 +120,23 @@ export function mapCurrentIncidentAssessments(input: {
       !["warning", "high"].includes(incident.severity) ||
       !["verified", "unverified"].includes(incident.verification) ||
       instant(incident.raisedAt) > asOf
-    ) return invalid();
+    )
+      return invalid();
     ids.add(incident.incidentId);
-    if (incident.acknowledgedAt !== null && instant(incident.acknowledgedAt) < instant(incident.raisedAt)) {
+    if (
+      incident.acknowledgedAt !== null &&
+      instant(incident.acknowledgedAt) < instant(incident.raisedAt)
+    ) {
       return invalid();
     }
     const start = instant(assessment.evidenceWindow.start);
     const end = instant(assessment.evidenceWindow.end);
     if (start > end || end !== asOf) return invalid();
-    if (![null, "breach", "recovery"].includes(assessment.holdKind) ||
-        (assessment.holdKind === null) !== (assessment.holdWindow === null)) return invalid();
+    if (
+      ![null, "breach", "recovery"].includes(assessment.holdKind) ||
+      (assessment.holdKind === null) !== (assessment.holdWindow === null)
+    )
+      return invalid();
     if (assessment.holdWindow) {
       const holdStart = instant(assessment.holdWindow.start);
       const holdEnd = instant(assessment.holdWindow.end);
@@ -142,7 +154,8 @@ export function mapCurrentIncidentAssessments(input: {
         !["good", "uncertain", "bad"].includes(item.quality) ||
         sample < start ||
         sample > end
-      ) return invalid();
+      )
+        return invalid();
       if (item.ingestionTime !== null) instant(item.ingestionTime);
       return {
         tagId: tag.id,
@@ -158,7 +171,8 @@ export function mapCurrentIncidentAssessments(input: {
       };
     });
     rowCount += 1 + evidence.length;
-    if (rowCount > 1000) throw new MiningQueryError("overflow", "Mining incident response exceeds row limit.");
+    if (rowCount > 1000)
+      throw new MiningQueryError("overflow", "Mining incident response exceeds row limit.");
     return {
       incidentId: incident.incidentId,
       ruleId: incident.ruleId,
@@ -201,12 +215,14 @@ export function mapCurrentIncidentJournal(input: {
   journal: NonNullable<Awaited<ReturnType<typeof readMiningIncidentJournal>>>;
 }) {
   const run = createD01IncidentRun(input.run);
-  const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const digest = (value: unknown) =>
+    createHash("sha256").update(JSON.stringify(value)).digest("hex");
   if (
     input.journal.runId !== run.runId ||
     input.journal.binding !== digest(run) ||
     input.journal.asOf === null
-  ) return invalid();
+  )
+    return invalid();
   return mapCurrentIncidentAssessments({
     runId: run.runId,
     catalogHash: digest(run.tags),
