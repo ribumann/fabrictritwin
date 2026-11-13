@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import { verifyMcpCallerPrincipalIdWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningRunCoordinator, type MiningRunStatus } from "../mining/run-coordinator.js";
@@ -23,7 +23,7 @@ interface ReadOptions {
   synthetic: boolean;
   env?: NodeJS.ProcessEnv;
   verifyPrincipal?: (req: Request) => Promise<string | undefined>;
-  status?: (runId: string) => Promise<MiningRunStatus | undefined>;
+  status?: (runId: string, signal?: AbortSignal) => Promise<MiningRunStatus | undefined>;
   now?: () => number;
 }
 
@@ -117,35 +117,27 @@ function runDto(status: MiningRunStatus, catalogVersion: string) {
   };
 }
 
-async function boundedStatus(
-  operation: Promise<MiningRunStatus | undefined>,
-): Promise<MiningRunStatus | undefined> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Mining status read timed out.")), 10_000);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
 /** Read-only, opt-in and lazy: no sender, lease, or evaluator is started here. */
 export function createMiningReadRouter(options: ReadOptions): Router {
   const router = Router();
   const env = options.env ?? process.env;
   const verify = options.verifyPrincipal ?? verifyMcpCallerPrincipalIdWithErrors;
+  const controllers = new WeakMap<Response, AbortController>();
   router.use((_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
+    const controller = new AbortController();
+    controllers.set(res, controller);
     const timer = setTimeout(() => {
-      if (!res.headersSent) {
+      controller.abort();
+      if (!res.headersSent && !res.destroyed) {
         error(res, 503, "mining_read_timeout", "The mining read exceeded its 10-second deadline.");
       }
     }, 9_900);
-    res.once("close", () => clearTimeout(timer));
+    res.once("finish", () => clearTimeout(timer));
+    res.once("close", () => {
+      clearTimeout(timer);
+      controller.abort();
+    });
     next();
   });
   router.post(
@@ -190,7 +182,7 @@ export function createMiningReadRouter(options: ReadOptions): Router {
         principal = await verify(req);
       } catch (cause) {
         console.error("[mining-read] Bearer verification failed", cause);
-        if (!res.headersSent) {
+        if (!res.headersSent && !res.destroyed) {
           error(
             res,
             503,
@@ -200,7 +192,7 @@ export function createMiningReadRouter(options: ReadOptions): Router {
         }
         return;
       }
-      if (res.headersSent) return;
+      if (res.headersSent || res.destroyed) return;
       if (!principal) {
         error(res, 401, "mining_authentication_required", "A verified bearer token is required.");
         return;
@@ -214,12 +206,12 @@ export function createMiningReadRouter(options: ReadOptions): Router {
         catalog = await import("@triathlon-twin/simulator/mining");
       } catch (cause) {
         console.error("[mining-read] Failed to load the mining catalog", cause);
-        if (!res.headersSent) {
+        if (!res.headersSent && !res.destroyed) {
           error(res, 503, "mining_catalog_unavailable", "The mining catalog is unavailable.");
         }
         return;
       }
-      if (res.headersSent) return;
+      if (res.headersSent || res.destroyed) return;
       if (
         env.MINING_APPROVED_CATALOG_VERSION !== catalog.D01_CATALOG_VERSION ||
         env.MINING_APPROVED_PROFILE_VERSION !== catalog.D01_PUBLISH_PROFILE_VERSION
@@ -259,13 +251,13 @@ export function createMiningReadRouter(options: ReadOptions): Router {
       try {
         const statusReader =
           options.status ??
-          ((id: string) => {
+          ((id: string, signal?: AbortSignal) => {
             const store = configuredMiningStore(env);
             if (!store) throw new Error("Mining durable status store is not configured.");
-            return new MiningRunCoordinator(store).status(id);
+            return new MiningRunCoordinator(store).status(id, signal);
           });
-        const status = await boundedStatus(statusReader(runId));
-        if (res.headersSent) return;
+        const status = await statusReader(runId, controllers.get(res)?.signal);
+        if (res.headersSent || res.destroyed) return;
         if (!status || status.runId !== runId || !runDto(status, catalog.D01_CATALOG_VERSION)) {
           error(
             res,
@@ -290,8 +282,8 @@ export function createMiningReadRouter(options: ReadOptions): Router {
           });
         }
       } catch (cause) {
+        if (res.headersSent || res.destroyed) return;
         console.error("[mining-read] Durable status read failed", cause);
-        if (res.headersSent) return;
         const code = cause instanceof MiningCoordinationError ? cause.code : "unavailable";
         error(
           res,

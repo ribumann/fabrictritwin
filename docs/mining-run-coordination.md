@@ -24,8 +24,10 @@ mining-state store below. No Easy Auth header or athlete mapping grants access.
 Invalid bearer tokens are rejected with 401; identity-provider verification
 failures are logged and returned as 503 instead of being reported as invalid tokens.
 Status and context perform read-only durable reads; publisher completion does not
-prove ingestion. Queries, incident persistence and the assistant are not connected:
-context reports `readAvailable: false`, while data routes return explicit 503.
+prove ingestion. A single request deadline or client disconnect cancels ongoing
+Blob status reads and prevents subsequent reads. Queries, incident persistence and
+the assistant are not connected: context reports `readAvailable: false`, while data
+routes return explicit 503.
 Start, cancel and acknowledgement remain unavailable without delegated authorization.
 Do not enable these settings as a substitute for approving infrastructure or data access.
 

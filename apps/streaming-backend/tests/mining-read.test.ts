@@ -1,4 +1,5 @@
 import express from "express";
+import { get } from "node:http";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
@@ -31,7 +32,7 @@ const env = {
 };
 const spec = { plantId: "D01", runId, durationSeconds: 1200, scenario: "normal", seed: 1 };
 
-function setup(principal: string | null = viewer) {
+function setup(principal: string | null = viewer, clockNow: () => number = () => now) {
   const documents = new Map<string, StoredDocument>([
     [
       `requests/${runId}.json`,
@@ -64,8 +65,8 @@ function setup(principal: string | null = viewer) {
     renew: mutate,
     release: mutate,
   };
-  const coordinator = new MiningRunCoordinator(store);
-  const status = vi.fn((id: string) => coordinator.status(id));
+  const coordinator = new MiningRunCoordinator(store, { now: clockNow, monotonic: () => 0 });
+  const status = vi.fn((id: string, signal?: AbortSignal) => coordinator.status(id, signal));
   const app = express();
   app.use(
     "/api/mining",
@@ -245,6 +246,39 @@ describe("approved mining read boundary", () => {
     expect(context.headers["cache-control"]).toBe("no-store");
   });
 
+  it("reports an opted-in final drain as running only until its durable deadline", async () => {
+    let current = now;
+    const { app, documents, mutate } = setup(viewer, () => current);
+    documents.delete(`history/${runId}.json`);
+    documents.set("plants/D01.json", {
+      value: {
+        version: 1,
+        run: {
+          ...spec,
+          phase: "running",
+          startedAt: "2026-01-01T11:39:59.000Z",
+          stopAt: "2026-01-01T11:59:59.000Z",
+          finalFlushUntil: "2026-01-01T12:00:04.000Z",
+          authorityUntil: "2026-01-01T12:00:30.000Z",
+        },
+      },
+      etag: "2",
+      leased: true,
+    });
+    const duringDrain = await request(app).get("/api/mining/runs/status");
+    expect(duringDrain.body).toMatchObject({
+      publisherStatus: "running",
+      ingestionStatus: "unknown",
+    });
+    current += 4_000;
+    const expired = await request(app).get("/api/mining/runs/status");
+    expect(expired.body).toMatchObject({
+      publisherStatus: "interrupted",
+      ingestionStatus: "unknown",
+    });
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
   it("fails closed for missing, mismatched and malformed durable admissions", async () => {
     const { app, documents } = setup();
     documents.delete(`requests/${runId}.json`);
@@ -352,10 +386,14 @@ describe("approved mining read boundary", () => {
 
   it("returns an explicit deadline error instead of late status success", async () => {
     const app = express();
+    let aborted = false;
     const status = vi.fn(
-      () =>
-        new Promise<undefined>((resolve) => {
-          setTimeout(() => resolve(undefined), 10_100);
+      (_runId: string, signal?: AbortSignal) =>
+        new Promise<undefined>((_, reject) => {
+          signal?.addEventListener("abort", () => {
+            aborted = true;
+            reject(new Error("cancelled"));
+          });
         }),
     );
     app.use(
@@ -374,9 +412,57 @@ describe("approved mining read boundary", () => {
       expect(Date.now() - start).toBeLessThan(10_500);
       expect(response.status).toBe(503);
       expect(response.body.error.code).toBe("mining_read_timeout");
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(aborted).toBe(true);
     } finally {
       log.mockRestore();
     }
   }, 15_000);
+
+  it("cancels the status operation when the client disconnects", async () => {
+    let started: (() => void) | undefined;
+    let cancelled: (() => void) | undefined;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const stopped = new Promise<void>((resolve) => {
+      cancelled = resolve;
+    });
+    const status = vi.fn(
+      (_runId: string, signal?: AbortSignal) =>
+        new Promise<undefined>((_, reject) => {
+          signal?.addEventListener("abort", () => {
+            cancelled?.();
+            reject(new Error("cancelled"));
+          });
+          started?.();
+        }),
+    );
+    const app = express();
+    app.use(
+      "/api/mining",
+      createMiningReadRouter({
+        synthetic: false,
+        env,
+        verifyPrincipal: async () => viewer,
+        status,
+      }),
+    );
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing test server address.");
+    const client = get(`http://127.0.0.1:${address.port}/api/mining/runs/status`);
+    client.on("error", () => {});
+    try {
+      await reading;
+      client.destroy();
+      await stopped;
+      expect(status).toHaveBeenCalledOnce();
+    } finally {
+      client.destroy();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
 });

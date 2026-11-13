@@ -57,19 +57,37 @@ function failure(error: unknown, operation: string): MiningCoordinationError {
 export class BlobMiningStore implements MiningStore {
   constructor(private readonly container: ContainerClient) {}
 
-  async read(path: string): Promise<StoredDocument | undefined> {
+  async read(path: string, signal?: AbortSignal): Promise<StoredDocument | undefined> {
     try {
-      const response = await this.container.getBlockBlobClient(path).download();
+      if (signal?.aborted) throw new MiningCoordinationError("cancelled", "Mining read cancelled.");
+      const response = await this.container
+        .getBlockBlobClient(path)
+        .download(0, undefined, { abortSignal: signal });
       const chunks: Buffer[] = [];
       let bytes = 0;
       if (!response.readableStreamBody || !response.etag) {
+        response.readableStreamBody?.destroy();
         throw new Error("Missing mining document body or ETag.");
       }
-      for await (const chunk of response.readableStreamBody) {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        bytes += buffer.length;
-        if (bytes > 16_384) throw new Error("Mining document exceeds 16 KiB.");
-        chunks.push(buffer);
+      const stream = response.readableStreamBody;
+      const cancel = () =>
+        stream.destroy(new MiningCoordinationError("cancelled", "Mining read cancelled."));
+      signal?.addEventListener("abort", cancel, { once: true });
+      try {
+        if (signal?.aborted) {
+          stream.destroy();
+          throw new MiningCoordinationError("cancelled", "Mining read cancelled.");
+        }
+        for await (const chunk of stream) {
+          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          bytes += buffer.length;
+          if (bytes > 16_384) throw new Error("Mining document exceeds 16 KiB.");
+          chunks.push(buffer);
+        }
+        if (signal?.aborted)
+          throw new MiningCoordinationError("cancelled", "Mining read cancelled.");
+      } finally {
+        signal?.removeEventListener("abort", cancel);
       }
       return {
         value: JSON.parse(Buffer.concat(chunks).toString("utf8")),
@@ -77,6 +95,9 @@ export class BlobMiningStore implements MiningStore {
         leased: response.leaseState === "leased",
       };
     } catch (error) {
+      if (signal?.aborted) {
+        throw new MiningCoordinationError("cancelled", "Mining read cancelled.", { cause: error });
+      }
       if (storageCode(error) === "BlobNotFound") return undefined;
       throw failure(error, "read");
     }

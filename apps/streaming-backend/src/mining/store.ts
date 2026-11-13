@@ -26,7 +26,7 @@ export interface StoredDocument {
 
 /** All paths are relative to the dedicated, already-provisioned mining container. */
 export interface MiningStore {
-  read(path: string): Promise<StoredDocument | undefined>;
+  read(path: string, signal?: AbortSignal): Promise<StoredDocument | undefined>;
   create(path: string, value: unknown): Promise<boolean>;
   write(path: string, value: unknown, etag: string, leaseId?: string): Promise<string>;
   acquire(path: string, leaseId: string): Promise<boolean>;

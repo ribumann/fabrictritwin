@@ -194,14 +194,22 @@ export class MiningRunCoordinator {
     this.finalFlushMilliseconds = budget;
   }
 
-  async status(runId: string): Promise<MiningRunStatus | undefined> {
+  async status(runId: string, signal?: AbortSignal): Promise<MiningRunStatus | undefined> {
     uuid(runId);
-    const receipt = await this.store.read(requestPath(runId));
+    const read = async (path: string) => {
+      if (signal?.aborted)
+        throw new MiningCoordinationError("cancelled", "Mining status cancelled.");
+      const document = await this.store.read(path, signal);
+      if (signal?.aborted)
+        throw new MiningCoordinationError("cancelled", "Mining status cancelled.");
+      return document;
+    };
+    const receipt = await read(requestPath(runId));
     if (!receipt) return undefined;
     const admission = parseAdmission(receipt.value);
     if (admission.spec.runId !== runId) invalid("Mining admission identity mismatch.");
-    const archived = await this.store.read(historyPath(runId));
-    const plant = archived ? undefined : await this.store.read(PLANT_PATH);
+    const archived = await read(historyPath(runId));
+    const plant = archived ? undefined : await read(PLANT_PATH);
     let run = archived ? parseRun(archived.value) : plant ? parsePlant(plant.value) : null;
     if (run?.runId !== runId) run = null;
     if (
@@ -217,7 +225,7 @@ export class MiningRunCoordinator {
       runId,
       admission: admission.admission,
       phase: run?.phase ?? (admission.admission === "rejected" ? "rejected" : "admission_unknown"),
-      stopRequested: Boolean(await this.store.read(stopPath(runId))),
+      stopRequested: Boolean(await read(stopPath(runId))),
       ...(run ? { run } : {}),
     };
   }
