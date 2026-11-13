@@ -240,11 +240,13 @@ async function loadJournal(
 function snapshot(run: MiningIncidentRun, state: Replay) {
   return {
     runId: run.runId,
+    binding: digest(run),
     asOf:
       state.lastMinute < 0
         ? null
         : new Date(utc(run.startedAt) + state.lastMinute * MINUTE).toISOString(),
     incidents: state.evaluator.active(),
+    assessments: state.evaluator.activeAssessments(),
   };
 }
 
