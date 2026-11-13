@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1280" viewBox="-10 -12 120 96" role="img" aria-labelledby="title description">
+<title id="title">Diamond recovery plant - authored site layout</title>
+<desc id="description">100 by 75 metre illustrative site. X east, Z south. Three parallel lines, shared utilities. Not surveyed or engineered.</desc>
+<rect x="-10" y="-12" width="120" height="96" fill="#f3f6f7"/>
+<text x="0" y="-6" font-family="sans-serif" font-size="2.8" fill="#23384a">D01 / Three-line diamond recovery plant</text>
+<rect width="100" height="75" fill="white" stroke="#85949c" stroke-width=".2"/>
+<path d="M 6 37.5 H 23 V 21.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 23 21.5 H 37 V 21.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 37 21.5 H 50 V 21.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 50 21.5 H 62 V 21.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 62 21.5 H 75 V 21.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 62 21.5 H 75 V 21.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 75 21.5 H 87 V 21.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 75 21.5 H 89 V 8.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 87 21.5 H 89 V 8.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 87 21.5 H 97 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 6 37.5 H 23 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 23 37.5 H 37 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 37 37.5 H 50 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 50 37.5 H 62 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 62 37.5 H 75 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 62 37.5 H 75 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 75 37.5 H 87 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 75 37.5 H 89 V 8.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 87 37.5 H 89 V 8.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 87 37.5 H 97 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 6 37.5 H 23 V 53.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 23 53.5 H 37 V 53.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 37 53.5 H 50 V 53.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 50 53.5 H 62 V 53.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 62 53.5 H 75 V 53.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 62 53.5 H 75 V 53.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 75 53.5 H 87 V 53.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 75 53.5 H 89 V 8.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 87 53.5 H 89 V 8.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<path d="M 87 53.5 H 97 V 37.5" stroke="#8aa7b8" stroke-width=".2" fill="none"/>
+<g><title>D01.A.crusher / A / Crushing / feed preparation</title><rect x="19.0" y="18.0" width="8" height="7" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="23" y="21.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">crusher</text></g>
+<g><title>D01.A.scrubber / A / Rotary scrubber</title><rect x="31.0" y="18.0" width="12" height="7" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="37" y="21.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">scrubber</text></g>
+<g><title>D01.A.screen / A / Wet sizing screen</title><rect x="45.0" y="18.0" width="10" height="7" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="50" y="21.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">screen</text></g>
+<g><title>D01.A.dms / A / Dense-medium separation</title><rect x="58.0" y="17.5" width="8" height="8" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="62" y="21.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">dms</text></g>
+<g><title>D01.A.medium / A / Drain / rinse / medium recovery</title><rect x="69.0" y="17.5" width="12" height="8" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="75" y="21.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">medium</text></g>
+<g><title>D01.A.sorter / A / Enclosed X-ray sorting</title><rect x="84.0" y="19.0" width="6" height="5" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="87" y="21.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">sorter</text></g>
+<g><title>D01.B.crusher / B / Crushing / feed preparation</title><rect x="19.0" y="34.0" width="8" height="7" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="23" y="37.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">crusher</text></g>
+<g><title>D01.B.scrubber / B / Rotary scrubber</title><rect x="31.0" y="34.0" width="12" height="7" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="37" y="37.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">scrubber</text></g>
+<g><title>D01.B.screen / B / Wet sizing screen</title><rect x="45.0" y="34.0" width="10" height="7" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="50" y="37.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">screen</text></g>
+<g><title>D01.B.dms / B / Dense-medium separation</title><rect x="58.0" y="33.5" width="8" height="8" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="62" y="37.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">dms</text></g>
+<g><title>D01.B.medium / B / Drain / rinse / medium recovery</title><rect x="69.0" y="33.5" width="12" height="8" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="75" y="37.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">medium</text></g>
+<g><title>D01.B.sorter / B / Enclosed X-ray sorting</title><rect x="84.0" y="35.0" width="6" height="5" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="87" y="37.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">sorter</text></g>
+<g><title>D01.C.crusher / C / Crushing / feed preparation</title><rect x="19.0" y="50.0" width="8" height="7" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="23" y="53.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">crusher</text></g>
+<g><title>D01.C.scrubber / C / Rotary scrubber</title><rect x="31.0" y="50.0" width="12" height="7" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="37" y="53.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">scrubber</text></g>
+<g><title>D01.C.screen / C / Wet sizing screen</title><rect x="45.0" y="50.0" width="10" height="7" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="50" y="53.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">screen</text></g>
+<g><title>D01.C.dms / C / Dense-medium separation</title><rect x="58.0" y="49.5" width="8" height="8" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="62" y="53.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">dms</text></g>
+<g><title>D01.C.medium / C / Drain / rinse / medium recovery</title><rect x="69.0" y="49.5" width="12" height="8" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="75" y="53.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">medium</text></g>
+<g><title>D01.C.sorter / C / Enclosed X-ray sorting</title><rect x="84.0" y="51.0" width="6" height="5" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="87" y="53.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">sorter</text></g>
+<g><title>D01.shared.hopper / Shared raw-feed hopper</title><rect x="2.0" y="33.5" width="8" height="8" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="6" y="37.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">hopper</text></g>
+<g><title>D01.shared.thickener / Water-recovery thickener</title><rect x="35.0" y="0.5" width="16" height="16" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="43" y="8.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">thickener</text></g>
+<g><title>D01.shared.water / Process-water tank</title><rect x="55.0" y="6.5" width="6" height="6" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="58" y="9.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">water</text></g>
+<g><title>D01.shared.lab / Secure recovery / inspection lab</title><rect x="94.0" y="32.0" width="6" height="11" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="97" y="37.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">lab</text></g>
+<g><title>D01.shared.control / Electrical / control hut</title><rect x="41.0" y="66.0" width="8" height="5" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="45" y="68.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">control</text></g>
+<g><title>D01.shared.tailings / Tailings handling zone</title><rect x="82.0" y="2.5" width="14" height="12" rx=".3" fill="#dbe9f0" stroke="#326f98" stroke-width=".2"/><text x="89" y="8.5" text-anchor="middle" font-family="sans-serif" font-size="1.15" fill="#23384a">tailings</text></g>
+<path d="M 0 79 H 10 M 0 78 V 80 M 10 78 V 80" stroke="#23384a" stroke-width=".2"/>
+<text x="12" y="80" font-family="sans-serif" font-size="1.5">10 m / authored scale, not measured / North up</text></svg>
