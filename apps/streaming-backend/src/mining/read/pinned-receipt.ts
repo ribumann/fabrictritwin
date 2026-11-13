@@ -47,7 +47,13 @@ export async function readPinnedMiningReceipt(
   if (!/^[0-9a-f]{64}$/.test(pin)) throw new MiningReceiptError("Receipt pin is invalid.");
   const document = await store.readBytes(receiptPath, signal);
   signal.throwIfAborted();
-  if (!document || !document.etag || document.bytes.length > maxBytes) {
+  if (
+    !document ||
+    !Buffer.isBuffer(document.bytes) ||
+    typeof document.etag !== "string" ||
+    !document.etag ||
+    document.bytes.length > maxBytes
+  ) {
     throw new MiningReceiptError("Pinned receipt is missing or invalid.");
   }
   const digest = createHash("sha256").update(document.bytes).digest();

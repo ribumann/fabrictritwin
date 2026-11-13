@@ -69,4 +69,21 @@ describe("pinned receipt envelope", () => {
       readPinnedMiningReceipt(store, pinFor(bytes), controller.signal),
     ).rejects.toThrow();
   });
+
+  it("rejects a malformed snapshot without hashing or parsing it", async () => {
+    const store = {
+      readBytes: vi.fn().mockResolvedValue({ etag: '"one"', leased: false }),
+    };
+    await expect(readPinnedMiningReceipt(store, "0".repeat(64), signal)).rejects.toThrow(
+      "missing or invalid",
+    );
+    store.readBytes.mockResolvedValue({ bytes: "{}", etag: '"one"', leased: false });
+    await expect(readPinnedMiningReceipt(store, "0".repeat(64), signal)).rejects.toThrow(
+      "missing or invalid",
+    );
+    store.readBytes.mockResolvedValue({ bytes: Buffer.from("{}"), etag: 42, leased: false });
+    await expect(readPinnedMiningReceipt(store, "0".repeat(64), signal)).rejects.toThrow(
+      "missing or invalid",
+    );
+  });
 });
