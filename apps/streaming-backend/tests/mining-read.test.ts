@@ -8,7 +8,11 @@ import {
 } from "@triathlon-twin/simulator/mining";
 import { createMiningReadRouter } from "../src/api/mining-read.js";
 import { MiningRunCoordinator } from "../src/mining/run-coordinator.js";
-import type { MiningStore, StoredDocument } from "../src/mining/store.js";
+import {
+  MiningCoordinationError,
+  type MiningStore,
+  type StoredDocument,
+} from "../src/mining/store.js";
 
 const runId = "11111111-1111-4111-8111-111111111111";
 const otherRun = "22222222-2222-4222-8222-222222222222";
@@ -148,7 +152,31 @@ describe("approved mining read boundary", () => {
     });
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      expect((await request(app).get("/api/mining/runs/status")).status).toBe(503);
+      const response = await request(app).get("/api/mining/runs/status");
+      expect(response.status).toBe(503);
+      expect(response.body.error.code).toBe("mining_status_invalid");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("preserves pending admission and distinguishes a durable storage failure", async () => {
+    const { app, documents, status } = setup();
+    documents.set(`requests/${runId}.json`, {
+      value: { spec, admission: "pending" },
+      etag: "3",
+      leased: false,
+    });
+    expect((await request(app).get("/api/mining/runs/status")).body).toMatchObject({
+      publisherStatus: "admission_pending",
+      ingestionStatus: "unknown",
+    });
+    status.mockRejectedValueOnce(new MiningCoordinationError("storage", "storage unavailable"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await request(app).get("/api/mining/runs/status");
+      expect(response.status).toBe(503);
+      expect(response.body.error.code).toBe("mining_status_storage");
     } finally {
       log.mockRestore();
     }

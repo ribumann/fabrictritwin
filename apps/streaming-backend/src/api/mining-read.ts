@@ -1,18 +1,13 @@
 import { Router, type Request } from "express";
-import {
-  D01_CATALOG_VERSION,
-  D01_PLANT_CATALOG,
-  D01_PLANT_ID,
-  D01_PUBLISH_PROFILE_VERSION,
-} from "@triathlon-twin/simulator/mining";
 import { verifyMcpCallerPrincipalId } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningRunCoordinator, type MiningRunStatus } from "../mining/run-coordinator.js";
+import { MiningCoordinationError } from "../mining/store.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const principalId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
-const moduleIds = new Set(D01_PLANT_CATALOG.modules.map((module) => module.id));
+const plantId = "D01";
 const metrics = new Set(["feed", "density", "vibration", "water-energy"]);
 const routes = [
   "context",
@@ -52,7 +47,12 @@ function validDate(value: string, now: number): boolean {
   return new Date(parsed).toISOString() === normalized;
 }
 
-function validateQuery(route: Route, query: Request["query"], now: number): string | undefined {
+function validateQuery(
+  route: Route,
+  query: Request["query"],
+  now: number,
+  moduleIds: ReadonlySet<string>,
+): string | undefined {
   const fields: Record<Route, string[]> = {
     context: ["plantId", "runId"],
     overview: ["plantId", "runId", "asOf"],
@@ -68,7 +68,7 @@ function validateQuery(route: Route, query: Request["query"], now: number): stri
   }
   const get = (key: string) => query[key] as string | undefined;
   if (
-    (get("plantId") !== undefined && get("plantId") !== D01_PLANT_ID) ||
+    (get("plantId") !== undefined && get("plantId") !== plantId) ||
     (get("runId") !== undefined && !uuid.test(get("runId")!))
   ) {
     return "Only D01 and canonical lowercase UUID run IDs are supported.";
@@ -96,7 +96,7 @@ function validateQuery(route: Route, query: Request["query"], now: number): stri
   return undefined;
 }
 
-function runDto(status: MiningRunStatus) {
+function runDto(status: MiningRunStatus, catalogVersion: string) {
   if (status.admission === "rejected") return undefined;
   const publisherStatus =
     status.admission === "pending"
@@ -106,9 +106,9 @@ function runDto(status: MiningRunStatus) {
         : status.phase;
   if (publisherStatus === "rejected") return undefined;
   return {
-    plantId: D01_PLANT_ID,
+    plantId,
     runId: status.runId,
-    catalogVersion: D01_CATALOG_VERSION,
+    catalogVersion,
     publisherStatus,
     ingestionStatus: "unknown" as const,
   };
@@ -171,8 +171,8 @@ export function createMiningReadRouter(options: ReadOptions): Router {
         viewers.some((id) => !principalId.test(id)) ||
         !approved ||
         !uuid.test(approved) ||
-        env.MINING_APPROVED_CATALOG_VERSION !== D01_CATALOG_VERSION ||
-        env.MINING_APPROVED_PROFILE_VERSION !== D01_PUBLISH_PROFILE_VERSION
+        !env.MINING_APPROVED_CATALOG_VERSION ||
+        !env.MINING_APPROVED_PROFILE_VERSION
       ) {
         error(
           res,
@@ -192,7 +192,35 @@ export function createMiningReadRouter(options: ReadOptions): Router {
         error(res, 403, "mining_viewer_forbidden", "The caller is not an approved mining viewer.");
         return;
       }
-      const invalid = validateQuery(route, req.query, (options.now ?? Date.now)());
+      let catalog: typeof import("@triathlon-twin/simulator/mining");
+      try {
+        catalog = await import("@triathlon-twin/simulator/mining");
+      } catch (cause) {
+        console.error("[mining-read] Failed to load the mining catalog", cause);
+        if (!res.headersSent) {
+          error(res, 503, "mining_catalog_unavailable", "The mining catalog is unavailable.");
+        }
+        return;
+      }
+      if (res.headersSent) return;
+      if (
+        env.MINING_APPROVED_CATALOG_VERSION !== catalog.D01_CATALOG_VERSION ||
+        env.MINING_APPROVED_PROFILE_VERSION !== catalog.D01_PUBLISH_PROFILE_VERSION
+      ) {
+        error(
+          res,
+          503,
+          "mining_read_configuration",
+          "The approved mining versions do not match the catalog.",
+        );
+        return;
+      }
+      const invalid = validateQuery(
+        route,
+        req.query,
+        (options.now ?? Date.now)(),
+        new Set(catalog.D01_PLANT_CATALOG.modules.map((module) => module.id)),
+      );
       if (invalid) {
         error(res, 400, "invalid_mining_query", invalid);
         return;
@@ -221,7 +249,7 @@ export function createMiningReadRouter(options: ReadOptions): Router {
           });
         const status = await boundedStatus(statusReader(runId));
         if (res.headersSent) return;
-        if (!status || status.runId !== runId || !runDto(status)) {
+        if (!status || status.runId !== runId || !runDto(status, catalog.D01_CATALOG_VERSION)) {
           error(
             res,
             404,
@@ -230,14 +258,14 @@ export function createMiningReadRouter(options: ReadOptions): Router {
           );
           return;
         }
-        const run = runDto(status)!;
+        const run = runDto(status, catalog.D01_CATALOG_VERSION)!;
         if (route === "runs/status") {
           res.json(run);
         } else {
           res.json({
-            plantId: D01_PLANT_ID,
+            plantId,
             approvedRun: run,
-            catalogVersion: D01_CATALOG_VERSION,
+            catalogVersion: catalog.D01_CATALOG_VERSION,
             readAvailable: false,
             unavailableReason:
               "Validated curated mining queries and persisted incidents are not connected.",
@@ -247,10 +275,11 @@ export function createMiningReadRouter(options: ReadOptions): Router {
       } catch (cause) {
         console.error("[mining-read] Durable status read failed", cause);
         if (res.headersSent) return;
+        const code = cause instanceof MiningCoordinationError ? cause.code : "unavailable";
         error(
           res,
           503,
-          "mining_status_unavailable",
+          `mining_status_${code}`,
           "The approved run's durable status is unavailable.",
         );
       }
