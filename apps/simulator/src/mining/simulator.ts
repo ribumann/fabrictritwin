@@ -791,11 +791,11 @@ export class D01PlantSimulator {
 
     const cDensity = byTag.get("D01.C.dms.medium_density");
     if (cDensity) {
-      if (cDensity.value < 2500) {
+      if (cDensity.value < 2800) {
         this.addAlert(
           "dms-c-density-low",
           "C",
-          "high",
+          "warning",
           "raised",
           timestamp,
           {
@@ -803,11 +803,11 @@ export class D01PlantSimulator {
           },
           output,
         );
-      } else if (cDensity.value >= 2800) {
+      } else if (cDensity.value >= 2850) {
         this.addAlert(
           "dms-c-density-low",
           "C",
-          "high",
+          "warning",
           "cleared",
           timestamp,
           {

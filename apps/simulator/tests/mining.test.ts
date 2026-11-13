@@ -400,6 +400,12 @@ describe("D01 deterministic bounded simulator", () => {
     expect(densityAt("12")).toBeGreaterThan(2800);
     expect(densityAt("13")).toBeGreaterThan(2850);
     expect(dmsDensity.at(-1)?.value).toBeGreaterThan(2850);
+    expect(dms.alerts.map((alert) => alert.transition)).toEqual(["raised", "cleared"]);
+    expect(dms.alerts.map((alert) => alert.severity)).toEqual(["warning", "warning"]);
+    expect(dms.alerts[0]?.evidence.medium_density_kg_m3).toBeLessThan(2800);
+    expect(dms.alerts[0]?.evidence.medium_density_kg_m3).toBeGreaterThan(2600);
+    expect(dms.alerts[1]?.evidence.medium_density_kg_m3).toBeGreaterThanOrEqual(2850);
+    expect(dms.alerts.every((alert) => !("scenario" in alert.evidence))).toBe(true);
     const dmsFeed = dms.events.filter(
       (event) =>
         event.entityType === "PlantTelemetry" &&
