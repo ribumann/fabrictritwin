@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "status": "synthetic-engine-self-test-only",
-  "sourceRevision": "d01-kql-column-bindings-v4",
+  "sourceRevision": "d01-kql-coverage-bins-v5",
   "sourceBaseCommit": "4d1f93b6d1cc7e940d24f73621742329c112197d",
   "historicalSource": {
     "sourceCommit": "324d73496913b4a2944713eb8861f2b7fdba4c02",
@@ -45,11 +45,18 @@
       "miningQueriesSha256": "9658f006440604d87b4211007dbd6e4990043ed6b80780e1808040dc343f91b8",
       "querySha256": "0b3e3027612fab95ce513d2dafcfbfabc01cda0fdf34773c135e85713bd8a9cb",
       "queryBytes": 108379
+    },
+    {
+      "sourceRevision": "d01-kql-column-bindings-v4",
+      "sourceCommit": "b43bfc477da75433ef9cd33bf2eed56059b527cc",
+      "miningQueriesSha256": "63f84951b34cf27722fb74f58234dac659af058d50dc2cb1430b58409fe48b4c",
+      "querySha256": "380c2234bbd86545ea52b8cc0af90e58a7671b38aa5f76c4b8974c7eae9ffd41",
+      "queryBytes": 108395
     }
   ],
   "queryPath": "scripts/fabric/fixtures/mining-engine-self-test.kql",
-  "querySha256": "380c2234bbd86545ea52b8cc0af90e58a7671b38aa5f76c4b8974c7eae9ffd41",
-  "queryBytes": 108395,
+  "querySha256": "8097f6b29dfb2d483e36088d956015796d60c6c226ccc52c69e213b165867e5f",
+  "queryBytes": 108410,
   "maxBytes": 262144,
   "fixtureSha256": "5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1",
   "sourceFiles": [
@@ -59,7 +66,7 @@
     },
     {
       "path": "infra/fabric/eventhouse/MiningQueries.kql",
-      "sha256": "63f84951b34cf27722fb74f58234dac659af058d50dc2cb1430b58409fe48b4c"
+      "sha256": "818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a"
     },
     {
       "path": "apps/simulator/src/mining/plant-catalog.json",
@@ -246,7 +253,7 @@
       "profileVersion": "d01-publish-profile-v1",
       "sourceContractVersion": "d01-validated-source-v1",
       "incidentSourceVersion": "d01-incident-ledger-v1",
-      "sourceRevision": "d01-kql-column-bindings-v4",
+      "sourceRevision": "d01-kql-coverage-bins-v5",
       "sourceBaseCommit": "4d1f93b6d1cc7e940d24f73621742329c112197d",
       "selfTestRunId": "d0100000-0000-4000-8000-000000000001",
       "selfTestFixtureSha256": "5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1"

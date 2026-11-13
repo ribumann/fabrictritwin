@@ -361,11 +361,11 @@
         | join kind=inner (common_stats | extend join_key = 1) on join_key
         | extend join_key = 1
         | join kind=inner (conflicting_events | extend join_key = 1) on join_key
-        | extend feed_a_coverage = todouble(feed_a_good) / floor(todouble(duration_seconds) / todouble(feed_a_cadence)),
-            feed_b_coverage = todouble(feed_b_good) / floor(todouble(duration_seconds) / todouble(feed_b_cadence)),
-            feed_c_coverage = todouble(feed_c_good) / floor(todouble(duration_seconds) / todouble(feed_c_cadence)),
-            water_coverage = todouble(water_good) / floor(todouble(duration_seconds) / todouble(water_cadence)),
-            power_coverage = todouble(power_good) / floor(todouble(duration_seconds) / todouble(power_cadence))
+        | extend feed_a_coverage = todouble(feed_a_good) / bin(todouble(duration_seconds) / todouble(feed_a_cadence), 1.0),
+            feed_b_coverage = todouble(feed_b_good) / bin(todouble(duration_seconds) / todouble(feed_b_cadence), 1.0),
+            feed_c_coverage = todouble(feed_c_good) / bin(todouble(duration_seconds) / todouble(feed_c_cadence), 1.0),
+            water_coverage = todouble(water_good) / bin(todouble(duration_seconds) / todouble(water_cadence), 1.0),
+            power_coverage = todouble(power_good) / bin(todouble(duration_seconds) / todouble(power_cadence), 1.0)
         | extend feed_coverage = min_of(feed_a_coverage, feed_b_coverage, feed_c_coverage),
             common_coverage = common_seconds / duration_seconds
         | extend coverage_valid = feed_a_coverage <= 1.0 and feed_b_coverage <= 1.0 and

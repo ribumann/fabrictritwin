@@ -243,7 +243,7 @@ Git-blob checkout. It then normalizes source text to LF for extraction.
 Source pins remain unchanged; the output hash identifies the normalized
 successor payload and is reproducible across Windows and Linux.
 
-Manifest v2 identifies successor `d01-kql-column-bindings-v4` relative to
+Manifest v2 identifies successor `d01-kql-coverage-bins-v5` relative to
 `sourceBaseCommit`; `sourceFiles` pins its effective inputs, not unchanged
 inputs from the original commit. `historicalSource` preserves the original
 source pins and the reviewed v1 payload identity. The deployable PlantLatest
@@ -264,6 +264,12 @@ before the dependent `received_at` expression, rather than in the same
 `ratio_ok`. The v3 candidate identity is retained, and offline regressions
 compare all three fixture projections to the real curated-table schemas.
 This is column-contract checking, not an offline KQL compiler or native pass.
+The v5 source uses `bin(duration / cadence, 1.0)` for all five summary
+expected-sample denominators. Kusto's `floor()` is an alias of `bin()` and
+[requires the rounding size](https://learn.microsoft.com/kusto/query/bin-function?view=microsoft-fabric);
+the v4 single-argument calls failed native semantic analysis. The exact v4
+identity remains in `previousCandidates`. Neither an isolated diagnostic
+success nor this source correction certifies deployment or live readiness.
 
 The manifest freezes the input arguments and independent expected results for
 all five G5 functions. In brief: PlantLatest returns 56 catalog tags and four

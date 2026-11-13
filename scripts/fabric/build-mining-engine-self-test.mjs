@@ -30,12 +30,12 @@ const historicalSourceFiles = [
     sha256: 'd8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1',
   },
 ];
-const sourceRevision = 'd01-kql-column-bindings-v4';
+const sourceRevision = 'd01-kql-coverage-bins-v5';
 const sourceBaseCommit = '4d1f93b6d1cc7e940d24f73621742329c112197d';
 const sourceFiles = historicalSourceFiles.map((source) => ({
   ...source,
   sha256: source.path === 'infra/fabric/eventhouse/MiningQueries.kql'
-    ? '63f84951b34cf27722fb74f58234dac659af058d50dc2cb1430b58409fe48b4c'
+    ? '818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a'
     : source.sha256,
 }));
 const catalogVersion = `sha256:${sourceFiles[2].sha256}`;
@@ -755,6 +755,12 @@ function main() {
       miningQueriesSha256: '9658f006440604d87b4211007dbd6e4990043ed6b80780e1808040dc343f91b8',
       querySha256: '0b3e3027612fab95ce513d2dafcfbfabc01cda0fdf34773c135e85713bd8a9cb',
       queryBytes: 108379,
+    }, {
+      sourceRevision: 'd01-kql-column-bindings-v4',
+      sourceCommit: 'b43bfc477da75433ef9cd33bf2eed56059b527cc',
+      miningQueriesSha256: '63f84951b34cf27722fb74f58234dac659af058d50dc2cb1430b58409fe48b4c',
+      querySha256: '380c2234bbd86545ea52b8cc0af90e58a7671b38aa5f76c4b8974c7eae9ffd41',
+      queryBytes: 108395,
     }],
     queryPath: 'scripts/fabric/fixtures/mining-engine-self-test.kql',
     querySha256: sha256(queryBytes),
