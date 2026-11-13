@@ -104,15 +104,17 @@ export interface MiningIncident {
   incidentId: string;
   ruleId: string;
   scopeId: string;
-  moduleId: string;
+  moduleId: string | null;
   affectedModuleIds: string[];
-  metric: MiningMetric;
+  metric: MiningMetric | null;
   severity: "warning" | "high";
   title: string;
   raisedAt: string;
   clearedAt: string | null;
+  /** Source acknowledgment time; independent of the current assessment time. */
   acknowledgedAt: string | null;
   verification: "verified" | "unverified";
+  /** Current qualifying hold bounds, null together when no current hold qualifies. */
   holdWindowStart: string | null;
   holdWindowEnd: string | null;
   evidenceWindowStart: string;
@@ -124,6 +126,7 @@ export interface MiningIncidents {
   plantId: "D01";
   runId: string;
   catalogVersion: string;
+  /** Evaluator-measured logical assessment time, not response receipt time or replay asOf. */
   asOf: string;
   incidents: MiningIncident[];
 }

@@ -8,11 +8,14 @@ import {
   normalizeReading,
   unknownQuality,
   validIncidentWindows,
+  validIncidentAssociation,
   refreshedIncidentSelection,
   sameScope,
   moduleStatus,
   validOverview,
   validAsOf,
+  currentIncidentQuery,
+  validCurrentAssessmentAsOf,
   validSeries,
 } from "../src/ui/public/mining/data.js";
 import { connections, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
@@ -116,6 +119,53 @@ describe("unknown and catalog selection semantics", () => {
         holdWindowStart: "2026-01-01T00:01:00Z",
         holdWindowEnd: "2026-01-01T00:00:00Z",
       }),
+    ).toBe(false);
+  });
+  it("keeps incident assessments current-only and separates measurement time from replay time", () => {
+    const now = Date.parse("2026-01-01T12:00:00Z");
+    const replayParams = {
+      plantId: "D01",
+      runId: "approved",
+      asOf: "2026-01-01T11:59:00Z",
+    };
+    expect(currentIncidentQuery("replay", replayParams)).toBeNull();
+    expect(currentIncidentQuery("live", replayParams)).toEqual({
+      plantId: "D01",
+      runId: "approved",
+    });
+    expect(validCurrentAssessmentAsOf(replayParams.asOf, now)).toBe(true);
+    expect(validCurrentAssessmentAsOf("2026-01-01T11:58:00Z", now)).toBe(false);
+    expect(validCurrentAssessmentAsOf("not-a-timestamp", now)).toBe(false);
+  });
+  it("allows only canonical module associations and does not invent a metric for state-only incidents", () => {
+    const catalog = { modules: [{ id: "D01.A.crusher" }] };
+    expect(
+      validIncidentAssociation(
+        { moduleId: null, metric: null, affectedModuleIds: [] },
+        catalog,
+      ),
+    ).toBe(true);
+    expect(
+      validIncidentAssociation(
+        { moduleId: null, metric: "feed", affectedModuleIds: [] },
+        catalog,
+      ),
+    ).toBe(false);
+    expect(
+      validIncidentAssociation(
+        {
+          moduleId: "D01.A.crusher",
+          metric: null,
+          affectedModuleIds: ["D01.A.crusher"],
+        },
+        catalog,
+      ),
+    ).toBe(true);
+    expect(
+      validIncidentAssociation(
+        { moduleId: "D01.foreign.crusher", metric: "vibration", affectedModuleIds: [] },
+        catalog,
+      ),
     ).toBe(false);
   });
   it("refreshes selected incident data and clears a selection no longer active", () => {
