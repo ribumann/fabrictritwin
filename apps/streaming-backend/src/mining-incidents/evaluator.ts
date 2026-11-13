@@ -18,6 +18,8 @@ interface Observation {
   runId: string;
   eventId: string;
   timestamp: string;
+  /** Actual curated ingestion_time() provenance only; receipt time is not a substitute. */
+  ingestionTime?: string | null;
 }
 
 export interface MiningReadingObservation extends Observation {
@@ -55,21 +57,38 @@ export interface MiningIncidentTransition {
   timestamp: string;
   transition: "raised" | "escalated" | "cleared";
   incident: MiningIncident;
-  evidence: Array<{
-    eventId: string;
-    tagId: string;
-    value: number;
-    unit: string;
-    timestamp: string;
-    quality: Quality;
-  }>;
-  stateEvidence: MiningStateObservation[];
+  evidence: MiningIncidentEvidence[];
+  stateEvidence: Array<MiningStateObservation & { ingestionTime: string | null }>;
   freshness: {
     lastValidAt: string | null;
     intervalSeconds: 30 | 60;
     staleAfterSeconds: number;
   } | null;
   evidenceWindow: { start: string; end: string } | null;
+}
+
+export interface MiningIncidentEvidence {
+  eventId: string;
+  tagId: string;
+  value: number;
+  unit: string;
+  timestamp: string;
+  quality: Quality;
+  ingestionTime: string | null;
+}
+
+export interface MiningIncidentAssessment {
+  runId: string;
+  plantId: "D01";
+  catalogHash: string;
+  assessedAt: string;
+  incident: MiningIncident;
+  holdKind: "breach" | "recovery" | null;
+  holdWindow: { start: string; end: string } | null;
+  evidenceWindow: { start: string; end: string };
+  evidence: MiningIncidentEvidence[];
+  stateEvidence: Array<MiningStateObservation & { ingestionTime: string | null }>;
+  freshness: MiningIncidentTransition["freshness"];
 }
 
 interface Span {
@@ -110,8 +129,10 @@ export class MiningIncidentEvaluator {
   private readonly states = new Map<Scope, MiningStateObservation[]>();
   private readonly events = new Map<string, string>();
   private readonly incidents = new Map<string, MiningIncident>();
+  private readonly assessments = new Map<string, MiningIncidentAssessment>();
   private readonly holdFloor = new Map<string, number>();
   private readonly startedAt: number;
+  private readonly catalogHash: string;
   private evaluatedAt = -Infinity;
 
   constructor(
@@ -135,6 +156,7 @@ export class MiningIncidentEvaluator {
       }
       this.tags.set(tag.tagId, { ...tag });
     }
+    this.catalogHash = createHash("sha256").update(JSON.stringify(tags)).digest("hex");
   }
 
   observe(
@@ -143,6 +165,9 @@ export class MiningIncidentEvaluator {
   ): void {
     const time = utc(observation.timestamp);
     const received = utc(receivedAt);
+    if (observation.ingestionTime != null && utc(observation.ingestionTime) > received) {
+      throw new Error("Mining ingestion provenance cannot be later than receipt.");
+    }
     if (
       observation.runId !== this.runId ||
       !["reading", "state"].includes(observation.kind) ||
@@ -166,6 +191,7 @@ export class MiningIncidentEvaluator {
             observation.unit,
             observation.quality,
             observation.intervalSeconds,
+            observation.ingestionTime ?? null,
           ]
         : [
             observation.runId,
@@ -176,6 +202,7 @@ export class MiningIncidentEvaluator {
             observation.state,
             observation.scheduledRunning,
             observation.sequence,
+            observation.ingestionTime ?? null,
           ],
     );
     const prior = this.events.get(observation.eventId);
@@ -285,6 +312,7 @@ export class MiningIncidentEvaluator {
         held(common(rmsHigh, temperatureHigh), 2) ? "high" : "warning",
         [vibration, temperature],
         held(rmsHigh, 2) ? rmsHigh : bearingClear,
+        { breach: rmsHigh, recovery: bearingClear },
       );
       const dmsBad = this.eitherProcessSpan(
         [
@@ -307,6 +335,7 @@ export class MiningIncidentEvaluator {
         "warning",
         [density, pressure],
         held(dmsBad, 2) ? dmsBad : dmsClear,
+        { breach: dmsBad, recovery: dmsClear },
       );
       const stopped = this.stateSpan(
         scope,
@@ -324,6 +353,7 @@ export class MiningIncidentEvaluator {
         "warning",
         [],
         held(stopped, 2) ? stopped : running,
+        { breach: stopped, recovery: running },
         stopped !== undefined || running !== undefined,
       );
     }
@@ -340,6 +370,7 @@ export class MiningIncidentEvaluator {
       "high",
       [water],
       held(waterLow, 2) ? waterLow : waterClear,
+      { breach: waterLow, recovery: waterClear },
     );
 
     for (const tag of this.tags.values()) {
@@ -369,6 +400,7 @@ export class MiningIncidentEvaluator {
         "warning",
         [tag.tagId],
         undefined,
+        {},
         true,
         {
           lastValidAt: lastGood?.timestamp ?? null,
@@ -402,6 +434,7 @@ export class MiningIncidentEvaluator {
         "warning",
         [],
         undefined,
+        {},
         true,
         {
           lastValidAt: latest?.timestamp ?? null,
@@ -417,6 +450,16 @@ export class MiningIncidentEvaluator {
     return [...this.incidents.values()]
       .filter((incident) => !incident.clearedAt)
       .map((incident) => ({ ...incident }));
+  }
+
+  /** Current evaluated proof, not a reconstruction from the last transition/outbox page. */
+  activeAssessments(): MiningIncidentAssessment[] {
+    return [...this.assessments.entries()].flatMap(([key, assessment]) => {
+      const incident = this.incidents.get(key);
+      return incident && !incident.clearedAt
+        ? [structuredClone({ ...assessment, incident: { ...incident } })]
+        : [];
+    });
   }
 
   acknowledge(incidentId: string, timestamp: string): void {
@@ -456,6 +499,11 @@ export class MiningIncidentEvaluator {
         })
       ) {
         incident.verification = "unverified";
+        const assessment = this.assessments.get(`${incident.ruleId}:${incident.scopeId}`);
+        if (assessment) {
+          assessment.holdKind = null;
+          assessment.holdWindow = null;
+        }
       }
     }
   }
@@ -557,6 +605,7 @@ export class MiningIncidentEvaluator {
     severity: MiningIncident["severity"],
     tagIds: string[],
     span: Span | undefined,
+    current: { breach?: Span; recovery?: Span },
     verified?: boolean,
     freshness?: MiningIncidentTransition["freshness"],
   ): void {
@@ -568,7 +617,7 @@ export class MiningIncidentEvaluator {
       tagIds.every((tagId) => {
         return this.processSpan(tagId, at, () => true) !== undefined;
       });
-    let transition: MiningIncidentTransition["transition"];
+    let transition: MiningIncidentTransition["transition"] | undefined;
     if (!active && raise) {
       incident = {
         incidentId: this.id(`${key}:raised:${at}`),
@@ -590,12 +639,48 @@ export class MiningIncidentEvaluator {
       } else if (raise && severity === "high" && incident.severity !== "high") {
         incident.severity = "high";
         transition = "escalated";
-      } else return;
+      }
     } else return;
     if (!incident) throw new Error("Missing mining incident transition state.");
+    const hold = current.breach ?? current.recovery;
+    this.assessments.set(key, {
+      runId: this.runId,
+      plantId: "D01",
+      catalogHash: this.catalogHash,
+      assessedAt: new Date(at).toISOString(),
+      incident: { ...incident },
+      holdKind: hold ? (current.breach ? "breach" : "recovery") : null,
+      holdWindow: hold
+        ? { start: new Date(hold.start).toISOString(), end: new Date(hold.end).toISOString() }
+        : null,
+      ...this.evidence(tagIds, scopeId, at, {
+        start: Math.max(this.startedAt, at - 3 * MINUTE),
+        end: at,
+      }),
+      freshness: freshness ?? null,
+    });
+    if (!transition) return;
     const evidenceSpan = span
       ? { start: Math.max(span.start, span.end - 3 * MINUTE), end: span.end }
       : { start: Math.max(this.startedAt, at - 3 * MINUTE), end: at };
+    output.push({
+      eventId: this.id(`${key}:${transition}:${at}`),
+      runId: this.runId,
+      plantId: "D01",
+      timestamp: new Date(at).toISOString(),
+      transition,
+      incident: { ...incident },
+      ...this.evidence(tagIds, scopeId, at, evidenceSpan),
+      freshness: freshness ?? null,
+    });
+  }
+
+  private evidence(
+    tagIds: string[],
+    scopeId: string,
+    at: number,
+    evidenceSpan: Span,
+  ): Pick<MiningIncidentAssessment, "evidence" | "stateEvidence" | "evidenceWindow"> {
     const stateScopes = new Set(
       tagIds.flatMap((tagId) => {
         const tag = this.tags.get(tagId);
@@ -604,13 +689,7 @@ export class MiningIncidentEvaluator {
     );
     const stateScope = SCOPES.find((scope) => scopeId === scope || scopeId === `state:${scope}`);
     if (stateScope) stateScopes.add(stateScope);
-    output.push({
-      eventId: this.id(`${key}:${transition}:${at}`),
-      runId: this.runId,
-      plantId: "D01",
-      timestamp: new Date(at).toISOString(),
-      transition,
-      incident: { ...incident },
+    return {
       evidence: tagIds.flatMap((tagId) => {
         const rows = this.readingRows(tagId, at);
         const selected = rows.filter(
@@ -626,6 +705,7 @@ export class MiningIncidentEvaluator {
           unit: row.unit,
           timestamp: row.timestamp,
           quality: row.quality,
+          ingestionTime: row.ingestionTime ?? null,
         }));
       }),
       stateEvidence: [...stateScopes].flatMap((scope) =>
@@ -634,14 +714,13 @@ export class MiningIncidentEvaluator {
             (row) =>
               utc(row.timestamp) >= evidenceSpan.start && utc(row.timestamp) <= evidenceSpan.end,
           )
-          .map((row) => ({ ...row })),
+          .map((row) => ({ ...row, ingestionTime: row.ingestionTime ?? null })),
       ),
-      freshness: freshness ?? null,
       evidenceWindow: {
         start: new Date(evidenceSpan.start).toISOString(),
         end: new Date(evidenceSpan.end).toISOString(),
       },
-    });
+    };
   }
 
   private id(value: string): string {

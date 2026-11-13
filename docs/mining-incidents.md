@@ -19,6 +19,15 @@ periodic state records and transitions both establish observed state freshness.
 Sequence orders same-time state events; a later transition supersedes the
 earlier periodic state record.
 
+Curated reading/state observations may additionally carry `ingestionTime`, but
+only when a trusted curated adapter has retained the event's actual raw
+`ingestion_time()` provenance. Canonical timestamp validation is not proof of
+that origin. Missing/explicitly null provenance stays null in exported evidence;
+neither sample time nor evaluator `receivedAt` is substituted. Supplied
+provenance must be canonical and no later than receipt; conflicting provenance
+for an existing event identity is rejected. No production provenance adapter is
+enabled by this source-only API.
+
 The evaluator rejects conflicting event identities or tag timestamps, unknown
 tags, wrong units/cadence, nonfinite values, invalid quality/state, noncanonical
 UTC times and observations later than receipt. It bounds one run to 30 minutes,
@@ -153,7 +162,46 @@ operator policy.
 
 ## In-app notification and read integration
 
-`snapshot()` returns `{runId, asOf, incidents}` from committed local state.
+`snapshot()` returns `{runId, binding, asOf, incidents, assessments}` from
+committed local state. `binding` is the same exact approved run/catalog digest
+as the journal head, and metadata-only `incidents` is retained for compatibility.
+The evaluator's `activeAssessments()` and snapshot `assessments` expose current
+proof **on every evaluation, even when no transition occurs**:
+
+```typescript
+interface MiningIncidentAssessment {
+  runId: string;
+  plantId: "D01";
+  catalogHash: string; // SHA-256 of the exact ordered evaluator catalog
+  assessedAt: string; // actual logical evaluation minute, not refresh/receipt time
+  incident: MiningIncident;
+  holdKind: "breach" | "recovery" | null;
+  holdWindow: { start: string; end: string } | null;
+  evidenceWindow: { start: string; end: string };
+  evidence: MiningIncidentEvidence[];
+  stateEvidence: Array<MiningStateObservation & { ingestionTime: string | null }>;
+  freshness: MiningIncidentTransition["freshness"];
+}
+```
+
+`holdWindow` is the actual current qualifying breach or recovery span, possibly
+shorter than the rule's raise/clear threshold. It is not the previous trigger's
+hold. Missing/non-good evidence resets holds; when no current qualifying span
+exists, both hold kind/window are null. Staleness derived from absence never
+invents an observed hold span. Rule thresholds, verification and transition IDs
+are unchanged. Telemetry-stale verification describes the stale advisory, not a
+fabricated good numeric observation: its evidence may be empty and its
+`freshness.lastValidAt` may be null or outside the current evidence window.
+
+Current assessment evidence is independently bounded to the last three minutes
+through the actual evaluated `assessedAt`, retaining bad/uncertain rows and
+actual state evidence. Each numeric evidence entry includes event/tag identity,
+value, unit, quality, event `timestamp` and nullable actual `ingestionTime`.
+Full history still determines holds, which may extend before that evidence
+window. Caller mutations cannot change the evaluator's assessment state.
+Acknowledgement metadata can update independently after measurement evaluation;
+it does not relabel `assessedAt` or change the measured hold/evidence.
+
 `outbox(afterId?, limit?)` returns deterministic transition notifications with
 their stable `eventId` identities, at most 100 per page. `afterId` is the last
 seen transition event ID. This is **availability for in-app reading**, never a
@@ -170,12 +218,24 @@ cooldown and unknown-delivery policy; do not treat acknowledgement as delivery.
 
 `readMiningIncidentJournal(store, run, {signal?, afterId?, limit?})` is the
 reader-owned route integration hook. It reads a single head and immutable chain,
-returning `{runId, asOf, incidents, notifications}` without acquiring a lease,
+returning `{runId, binding, asOf, incidents, assessments, notifications}` without acquiring a lease,
 recovering a runtime, querying Fabric or writing. Missing persistence returns
 `undefined`; `asOf: null` means no minute has been processed, not healthy
 ingestion. Corruption throws. The route still needs its own curated G5
 readiness/approval gate and must not present journal availability as ingestion
 proof. No HTTP routes or live dependencies are mounted by this item.
+
+Assessments are derived from replay, not an additional serialized checkpoint or
+an outbox lookup, and are not limited by notification pagination. Existing
+schema-1 journals without ingestion provenance replay with null provenance;
+the optional observation field and assessment export are additive and do not
+change rule/transition semantics or stored run bindings. This API exposes only
+the latest committed evaluation. A BFF may serve that current snapshot using
+its actual measurement `asOf`, but strict historical point-in-time requests
+must fail closed: there is no historical assessment selector in this item.
+Even an exact match to the measurement minute does not reconstruct historical
+acknowledgement state. Never relabel a later snapshot or use current incident/
+acknowledgement state to claim a historical response.
 
 Live acceptance still requires approved storage configuration, delegated
 activation/acknowledgement, curator-bound source validation, host lifecycle

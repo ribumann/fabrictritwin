@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { D01PlantSimulator, type D01TransportBody } from "@triathlon-twin/simulator/mining";
+import {
+  D01PlantSimulator,
+  D01_PLANT_CATALOG,
+  toD01PublishProfileRecords,
+  type D01TransportBody,
+} from "@triathlon-twin/simulator/mining";
+import { createD01IncidentRun } from "../src/mining-incidents/catalog.js";
+import { MiningIncidentRuntime } from "../src/mining-incidents/runtime.js";
 import {
   configuredMiningPublisherRuntime,
   MiningPublisherRuntime,
+  type MiningPublisherIncidents,
   type MiningScheduler,
 } from "../src/mining/publisher-runtime.js";
 import { MiningRunCoordinator } from "../src/mining/run-coordinator.js";
@@ -99,6 +107,35 @@ describe("D01 real-clock publisher", () => {
   });
   const settle = async () => {
     for (let i = 0; i < 50; i++) await Promise.resolve();
+  };
+  const blockedIncidents = () => {
+    const incidentStore = new Store();
+    let settleRead!: () => void;
+    let readSignal!: AbortSignal;
+    const incidents: MiningPublisherIncidents = {
+      dependencies: {
+        store: incidentStore,
+        source: {
+          read: async ({ signal }) => {
+            readSignal = signal;
+            await new Promise<void>((resolve) => {
+              settleRead = resolve;
+            });
+            signal.throwIfAborted();
+            return { observations: [], receivedAt: new Date().toISOString() };
+          },
+        },
+        authority: { authorize: async () => {}, checkRun: async () => {} },
+        now: clock.now,
+        monotonic: clock.monotonic,
+      },
+    };
+    return {
+      incidents,
+      incidentStore,
+      signal: () => readSignal,
+      settleRead: () => settleRead(),
+    };
   };
 
   it("does no work on construction, status or default-off configuration", async () => {
@@ -401,5 +438,343 @@ describe("D01 real-clock publisher", () => {
     expect(results[1]).toMatchObject({ status: "rejected", reason: { code: "invalid" } });
     expect(send).toHaveBeenCalledOnce();
     await owner.finish();
+  });
+
+  it("aborts incidents on accepted stop and joins their actual read before owner release", async () => {
+    const open = vi.spyOn(MiningIncidentRuntime, "open");
+    const incidentStore = new Store();
+    const releaseIncident = vi.spyOn(incidentStore, "release");
+    const releaseOwner = vi.spyOn(store, "release");
+    let settleRead!: () => void;
+    let readSignal!: AbortSignal;
+    const source = vi.fn(async ({ signal }: { signal: AbortSignal; asOf: string }) => {
+      readSignal = signal;
+      await new Promise<void>((resolve) => {
+        settleRead = resolve;
+      });
+      signal.throwIfAborted();
+      return { observations: [], receivedAt: new Date().toISOString() };
+    });
+    const incidents: MiningPublisherIncidents = {
+      dependencies: {
+        store: incidentStore,
+        source: { read: source },
+        authority: { authorize: async () => {}, checkRun: async () => {} },
+        now: clock.now,
+        monotonic: clock.monotonic,
+      },
+    };
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, incidents);
+    await settle();
+    expect(source).toHaveBeenCalledOnce();
+    const run = (await runtime.status(requestId))?.run;
+    if (!run) throw new Error("Missing admitted run.");
+    expect(open).toHaveBeenCalledOnce();
+    expect(open.mock.calls[0]?.[0]).toEqual(createD01IncidentRun(run));
+    expect(
+      await runtime.run({ ...input, durationSeconds: 60 }, undefined, incidents),
+    ).toMatchObject({ phase: "running" });
+    expect(source).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledOnce();
+    await runtime.requestStop(requestId);
+    expect(readSignal.aborted).toBe(true);
+    expect(releaseIncident).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(releaseOwner).not.toHaveBeenCalled();
+    settleRead();
+    expect(await execution).toMatchObject({ phase: "stopped" });
+    expect(releaseOwner).toHaveBeenCalledOnce();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("aborts incidents before waiting for an already admitted send, then joins both", async () => {
+    const fixture = blockedIncidents();
+    const releaseOwner = vi.spyOn(store, "release");
+    let settleSend!: () => void;
+    publish.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          settleSend = resolve;
+        }),
+    );
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, fixture.incidents);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(publish).toHaveBeenCalledOnce();
+    await runtime.requestStop(requestId);
+    expect(fixture.signal().aborted).toBe(true);
+    expect(fixture.incidentStore.lease).toBeUndefined();
+    expect(releaseOwner).not.toHaveBeenCalled();
+    fixture.settleRead();
+    await settle();
+    expect(releaseOwner).not.toHaveBeenCalled();
+    settleSend();
+    await settle();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await execution).toMatchObject({ phase: "stopped" });
+    expect(releaseOwner).toHaveBeenCalledOnce();
+  });
+
+  it("reports a synchronous incident release failure after joining its pending work", async () => {
+    const fixture = blockedIncidents();
+    vi.spyOn(fixture.incidentStore, "release").mockImplementation(() => {
+      throw new Error("Incident lease release failed.");
+    });
+    const releaseOwner = vi.spyOn(store, "release");
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, fixture.incidents);
+    const rejected = expect(execution).rejects.toThrow();
+    await settle();
+    await runtime.requestStop(requestId);
+    expect(fixture.signal().aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(releaseOwner).not.toHaveBeenCalled();
+    fixture.settleRead();
+    await rejected;
+    expect(releaseOwner).toHaveBeenCalledOnce();
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "failed" });
+  });
+
+  it("aborts incident work when stop is persisted even if the status confirmation fails", async () => {
+    const fixture = blockedIncidents();
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, fixture.incidents);
+    await settle();
+    const originalCreate = store.create.bind(store);
+    const originalRead = store.read.bind(store);
+    let stopPersisted = false;
+    vi.spyOn(store, "create").mockImplementation(async (path, value) => {
+      const result = await originalCreate(path, value);
+      if (path === `stops/${requestId}.json`) stopPersisted = true;
+      return result;
+    });
+    const read = vi.spyOn(store, "read").mockImplementation(async (path) => {
+      if (stopPersisted && path === `requests/${requestId}.json`) {
+        stopPersisted = false;
+        throw new MiningCoordinationError("storage", "Stop status unavailable.");
+      }
+      return originalRead(path);
+    });
+    await expect(runtime.requestStop(requestId)).rejects.toThrow("Stop status unavailable.");
+    expect(fixture.signal().aborted).toBe(true);
+    expect(fixture.incidentStore.lease).toBeUndefined();
+    read.mockRestore();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(store.lease).toBeDefined();
+    fixture.settleRead();
+    expect(await execution).toMatchObject({ phase: "stopped" });
+  });
+
+  it("fails closed and aborts incidents and sending when stop persistence is uncertain", async () => {
+    const fixture = blockedIncidents();
+    let settleSend!: () => void;
+    let sendSignal!: AbortSignal;
+    publish.mockImplementation(async (_events, signal) => {
+      sendSignal = signal;
+      await new Promise<void>((resolve) => {
+        settleSend = resolve;
+      });
+    });
+    const acknowledged = vi.spyOn(D01PlantSimulator.prototype, "acknowledgeBatch");
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, fixture.incidents);
+    const rejected = expect(execution).rejects.toThrow("Stop write unconfirmed.");
+    await vi.advanceTimersByTimeAsync(30_000);
+    const originalCreate = store.create.bind(store);
+    vi.spyOn(store, "create").mockImplementation(async (path, value) => {
+      const created = await originalCreate(path, value);
+      if (path === `stops/${requestId}.json`) {
+        throw new MiningCoordinationError("uncertain", "Stop write unconfirmed.");
+      }
+      return created;
+    });
+    await expect(runtime.requestStop(requestId)).rejects.toMatchObject({ code: "uncertain" });
+    expect(fixture.signal().aborted).toBe(true);
+    expect(sendSignal.aborted).toBe(true);
+    fixture.settleRead();
+    settleSend();
+    await rejected;
+    expect(acknowledged).not.toHaveBeenCalled();
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "failed", stopRequested: true });
+  });
+
+  it("joins aborted incident work even when publisher lease authority is lost", async () => {
+    const fixture = blockedIncidents();
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, fixture.incidents);
+    let settled = false;
+    const rejected = expect(execution).rejects.toThrow();
+    void execution.catch(() => {
+      settled = true;
+    });
+    await settle();
+    store.lease = undefined;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(fixture.signal().aborted).toBe(true);
+    expect(fixture.incidentStore.lease).toBeUndefined();
+    expect(settled).toBe(false);
+    fixture.settleRead();
+    await rejected;
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "interrupted" });
+  });
+
+  it("aborts an in-flight send on incident failure and awaits its settlement without acknowledging", async () => {
+    const fixture = blockedIncidents();
+    let failRead!: () => void;
+    fixture.incidents.dependencies.source.read = async () => {
+      await new Promise<void>((resolve) => {
+        failRead = resolve;
+      });
+      throw new MiningCoordinationError("uncertain", "Incident source outcome unknown.");
+    };
+    let settleSend!: () => void;
+    let sendSignal!: AbortSignal;
+    publish.mockImplementation(async (_events, signal) => {
+      sendSignal = signal;
+      await new Promise<void>((resolve) => {
+        settleSend = resolve;
+      });
+    });
+    const acknowledged = vi.spyOn(D01PlantSimulator.prototype, "acknowledgeBatch");
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, fixture.incidents);
+    const rejected = expect(execution).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(30_000);
+    failRead();
+    await settle();
+    expect(sendSignal.aborted).toBe(true);
+    expect(fixture.incidentStore.lease).toBeUndefined();
+    expect(close).not.toHaveBeenCalled();
+    expect(acknowledged).not.toHaveBeenCalled();
+    settleSend();
+    await rejected;
+    expect(acknowledged).not.toHaveBeenCalled();
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "failed" });
+  });
+
+  it("waits for interrupted incident activation before acknowledging a stop", async () => {
+    const fixture = blockedIncidents();
+    let settleAuthorization!: () => void;
+    let authorizationSignal!: AbortSignal;
+    fixture.incidents.dependencies.authority.authorize = async (_operation, _run, signal) => {
+      authorizationSignal = signal;
+      await new Promise<void>((resolve) => {
+        settleAuthorization = resolve;
+      });
+      signal.throwIfAborted();
+    };
+    const releaseOwner = vi.spyOn(store, "release");
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, fixture.incidents);
+    await settle();
+    await runtime.requestStop(requestId);
+    expect(authorizationSignal.aborted).toBe(true);
+    expect(releaseOwner).not.toHaveBeenCalled();
+    settleAuthorization();
+    expect(await execution).toMatchObject({ phase: "stopped" });
+    expect(releaseOwner).toHaveBeenCalledOnce();
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it("preserves uncertainty if an incident head commits before stop but its response is lost", async () => {
+    const fixture = blockedIncidents();
+    fixture.incidents.dependencies.source.read = async ({ asOf }) => ({
+      observations: [],
+      receivedAt: asOf,
+    });
+    let finishWrite!: () => void;
+    let markWrite!: () => void;
+    const writeStarted = new Promise<void>((resolve) => {
+      markWrite = resolve;
+    });
+    const originalWrite = fixture.incidentStore.write.bind(fixture.incidentStore);
+    const write = vi.spyOn(fixture.incidentStore, "write").mockImplementation(async (...args) => {
+      await originalWrite(...args);
+      markWrite();
+      await new Promise<void>((resolve) => {
+        finishWrite = resolve;
+      });
+      throw new MiningCoordinationError("uncertain", "Incident head response lost.");
+    });
+    const releaseOwner = vi.spyOn(store, "release");
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, fixture.incidents);
+    const rejected = execution.catch((error: unknown) => error);
+    await writeStarted;
+    expect(write).toHaveBeenCalledOnce();
+    await runtime.requestStop(requestId);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(releaseOwner).not.toHaveBeenCalled();
+    finishWrite();
+    expect(await rejected).toMatchObject({
+      code: "uncertain",
+      cause: { code: "uncertain", message: "Incident head response lost." },
+    });
+    expect(releaseOwner).toHaveBeenCalledOnce();
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "failed" });
+  });
+
+  it("does not turn a late uncertain incident error into a successful stop", async () => {
+    const incidentStore = new Store();
+    let settleRead!: () => void;
+    const incidents: MiningPublisherIncidents = {
+      dependencies: {
+        store: incidentStore,
+        source: {
+          read: async () => {
+            await new Promise<void>((resolve) => {
+              settleRead = resolve;
+            });
+            throw new MiningCoordinationError("uncertain", "Incident commit is unconfirmed.");
+          },
+        },
+        authority: { authorize: async () => {}, checkRun: async () => {} },
+        now: clock.now,
+        monotonic: clock.monotonic,
+      },
+    };
+    const execution = runtime.run({ ...input, durationSeconds: 60 }, undefined, incidents);
+    const rejected = expect(execution).rejects.toThrow(/unconfirmed/);
+    await settle();
+    await runtime.requestStop(requestId);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(store.lease).toBeDefined();
+    settleRead();
+    await rejected;
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "failed" });
+  });
+
+  it("rejects incident activation for non-minute runs before admission", async () => {
+    const incidents: MiningPublisherIncidents = {
+      dependencies: {
+        store: new Store(),
+        source: { read: async () => ({ observations: [], receivedAt: new Date().toISOString() }) },
+        authority: { authorize: async () => {}, checkRun: async () => {} },
+      },
+    };
+    await expect(runtime.run(input, undefined, incidents)).rejects.toMatchObject({
+      code: "invalid",
+    });
+    expect(await runtime.status(requestId)).toBeUndefined();
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it("freezes the full catalog-ordered binding using the versioned profile", () => {
+    const startedAt = new Date().toISOString();
+    const run = {
+      runId: requestId,
+      startedAt,
+      stopAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const binding = createD01IncidentRun(run);
+    const profile = new Map(toD01PublishProfileRecords().map((row) => [row.tag_id, row]));
+    const modules = new Map(D01_PLANT_CATALOG.modules.map((module) => [module.id, module]));
+    expect(binding).toMatchObject({ runId: requestId, startedAt, endsAt: run.stopAt });
+    expect(binding.tags).toEqual(
+      D01_PLANT_CATALOG.telemetry_tags.map((tag) => ({
+        tagId: tag.id,
+        moduleId: tag.module_id,
+        scopeId: modules.get(tag.module_id)?.line,
+        unit: tag.unit,
+        intervalSeconds: profile.get(tag.id)?.interval_seconds,
+      })),
+    );
+    expect(binding.tags.filter((tag) => tag.intervalSeconds === 30)).toHaveLength(45);
+    expect(binding.tags.filter((tag) => tag.intervalSeconds === 60)).toHaveLength(11);
+    expect(Object.isFrozen(binding)).toBe(true);
+    expect(Object.isFrozen(binding.tags)).toBe(true);
+    expect(binding.tags.every(Object.isFrozen)).toBe(true);
   });
 });

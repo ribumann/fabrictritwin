@@ -366,4 +366,152 @@ describe("measurement-derived mining advisories", () => {
       evaluator.evaluate(iso(360)).find((row) => row.incident.scopeId === "state:B")?.transition,
     ).toBe("cleared");
   });
+
+  it("refreshes current active evidence without transitions and keeps real holds distinct from evidence windows", () => {
+    const evaluator = new MiningIncidentEvaluator(RUN, iso(0), TAGS);
+    feed(evaluator, 0, 240, { [WATER]: 15 });
+    const raised = evaluator
+      .evaluate(iso(240))
+      .find((row) => row.incident.ruleId === "shared-water")!;
+    const initial = evaluator
+      .activeAssessments()
+      .find((row) => row.incident.ruleId === "shared-water")!;
+    feed(evaluator, 270, 360, { [WATER]: 15 });
+    expect(evaluator.evaluate(iso(360))).toEqual([]);
+    const current = evaluator
+      .activeAssessments()
+      .find((row) => row.incident.ruleId === "shared-water")!;
+    expect(initial.assessedAt).toBe(iso(240));
+    expect(current.assessedAt).toBe(iso(360));
+    expect(current.holdKind).toBe("breach");
+    expect(current.holdWindow).toEqual({ start: iso(120), end: iso(360) });
+    expect(current.evidenceWindow).toEqual({ start: iso(180), end: iso(360) });
+    expect(current.evidence.at(-1)?.eventId).toBe(`${WATER}:360`);
+    expect(current.evidence.every((row) => row.ingestionTime === null)).toBe(true);
+    expect(raised.evidence.at(-1)?.timestamp).toBe(iso(240));
+    current.evidence.length = 0;
+    expect(
+      evaluator.activeAssessments().find((row) => row.incident.ruleId === "shared-water")?.evidence
+        .length,
+    ).toBeGreaterThan(0);
+    evaluator.acknowledge(current.incident.incidentId, iso(360));
+    expect(
+      evaluator.activeAssessments().find((row) => row.incident.ruleId === "shared-water")?.incident
+        .acknowledgedAt,
+    ).toBe(iso(360));
+  });
+
+  it.each(["bad", "uncertain"] as const)(
+    "resets current holds on %s and preserves unknown/recovery assessments",
+    (quality) => {
+      const evaluator = new MiningIncidentEvaluator(RUN, iso(0), TAGS);
+      feed(evaluator, 0, 240, { [WATER]: 15 });
+      evaluator.evaluate(iso(240));
+      reading(evaluator, WATER, 300, 15, quality);
+      expect(
+        evaluator.activeAssessments().find((row) => row.incident.ruleId === "shared-water")
+          ?.holdWindow,
+      ).toBeNull();
+      expect(
+        evaluator.evaluate(iso(300)).some((row) => row.incident.ruleId === "shared-water"),
+      ).toBe(false);
+      const unknown = evaluator
+        .activeAssessments()
+        .find((row) => row.incident.ruleId === "shared-water")!;
+      expect(unknown.holdKind).toBeNull();
+      expect(unknown.holdWindow).toBeNull();
+      expect(unknown.incident.verification).toBe("unverified");
+      expect(unknown.evidence.at(-1)?.quality).toBe(quality);
+      feed(evaluator, 330, 420);
+      evaluator.evaluate(iso(420));
+      const recovery = evaluator
+        .activeAssessments()
+        .find((row) => row.incident.ruleId === "shared-water")!;
+      expect(recovery.holdKind).toBe("recovery");
+      expect(recovery.holdWindow).toEqual({ start: iso(360), end: iso(420) });
+      evaluator.evaluate(iso(660));
+      const missing = evaluator
+        .activeAssessments()
+        .find((row) => row.incident.ruleId === "shared-water")!;
+      expect(missing.holdWindow).toBeNull();
+      expect(missing.incident.verification).toBe("unverified");
+      expect(missing.evidence).toEqual([]);
+    },
+  );
+
+  it("reports state/staleness assessments on unchanged minutes without fabricating absence holds", () => {
+    const evaluator = new MiningIncidentEvaluator(RUN, iso(0), TAGS);
+    for (const at of [0, 60, 120]) state(evaluator, "B", at, "fault");
+    evaluator.evaluate(iso(120));
+    evaluator.evaluate(iso(180));
+    const stopped = evaluator
+      .activeAssessments()
+      .find((row) => row.incident.ruleId === "unplanned-stop")!;
+    expect(stopped.assessedAt).toBe(iso(180));
+    expect(stopped.holdWindow).toEqual({ start: iso(0), end: iso(180) });
+    expect(stopped.stateEvidence.map((row) => row.eventId)).toEqual([
+      "B:0:0",
+      "B:60:120",
+      "B:120:240",
+    ]);
+    evaluator.evaluate(iso(360));
+    evaluator.evaluate(iso(420));
+    const stale = evaluator.activeAssessments().find((row) => row.incident.scopeId === "state:B")!;
+    expect(stale.assessedAt).toBe(iso(420));
+    expect(stale.holdWindow).toBeNull();
+    expect(stale.stateEvidence).toEqual([]);
+    expect(stale.freshness?.lastValidAt).toBe(iso(120));
+  });
+
+  it("retains only supplied event ingestion provenance and rejects conflicts/future provenance", () => {
+    const evaluator = new MiningIncidentEvaluator(RUN, iso(0), [
+      TAGS.find((tag) => tag.tagId === WATER)!,
+    ]);
+    for (let at = 0; at <= 300; at += 60) {
+      state(evaluator, "shared", at);
+      if (at === 0) continue;
+      evaluator.observe(
+        {
+          kind: "reading",
+          runId: RUN,
+          eventId: `provenance:${at}`,
+          timestamp: iso(at),
+          tagId: WATER,
+          value: 15,
+          unit: "%",
+          quality: "good",
+          intervalSeconds: 60,
+          ...(at === 180 ? { ingestionTime: iso(at + 5) } : {}),
+        },
+        iso(at + 10),
+      );
+    }
+    evaluator.evaluate(iso(300));
+    const assessment = evaluator
+      .activeAssessments()
+      .find((row) => row.incident.ruleId === "shared-water")!;
+    expect(assessment.evidence.find((row) => row.eventId === "provenance:180")?.ingestionTime).toBe(
+      iso(185),
+    );
+    expect(
+      assessment.evidence.find((row) => row.eventId === "provenance:240")?.ingestionTime,
+    ).toBeNull();
+    expect(assessment.stateEvidence.every((row) => row.ingestionTime === null)).toBe(true);
+    const duplicate: MiningReadingObservation = {
+      kind: "reading",
+      runId: RUN,
+      eventId: "provenance:180",
+      timestamp: iso(180),
+      tagId: WATER,
+      value: 15,
+      unit: "%",
+      quality: "good",
+      intervalSeconds: 60,
+      ingestionTime: iso(186),
+    };
+    expect(() => evaluator.observe(duplicate, iso(310))).toThrow("Conflicting");
+    expect(() =>
+      evaluator.observe({ ...duplicate, eventId: "future", ingestionTime: iso(312) }, iso(310)),
+    ).toThrow("provenance");
+  });
 });

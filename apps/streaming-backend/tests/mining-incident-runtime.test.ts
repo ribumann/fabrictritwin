@@ -184,6 +184,97 @@ describe("durable fenced mining incident processing", () => {
     await runtime.close();
   });
 
+  it("replays current no-transition assessments, binding and actual optional event provenance", async () => {
+    const { dependencies, source, store } = fixture();
+    source.read = async ({ asOf }) => {
+      const minute = (Date.parse(asOf) - START) / 60_000;
+      return {
+        observations: observations(minute).map((row) =>
+          row.kind === "reading" && minute === 5 ? { ...row, ingestionTime: asOf } : row,
+        ),
+        receivedAt: asOf,
+      };
+    };
+    let runtime = await MiningIncidentRuntime.open(run, "fresh", dependencies);
+    for (let minute = 0; minute <= 4; minute++) await runtime.processMinute(iso(minute));
+    const notificationCount = runtime.outbox().length;
+    await runtime.processMinute(iso(5));
+    expect(runtime.outbox()).toHaveLength(notificationCount);
+    const before = runtime.snapshot();
+    const current = before.assessments.find((row) => row.incident.ruleId === "shared-water")!;
+    expect(before.binding).toMatch(/^[a-f0-9]{64}$/);
+    expect(current.runId).toBe(run.runId);
+    expect(current.catalogHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(current.assessedAt).toBe(iso(5));
+    expect(current.holdWindow).toEqual({ start: iso(2), end: iso(5) });
+    expect(current.evidence.find((row) => row.timestamp === iso(5))?.ingestionTime).toBe(iso(5));
+    expect(current.evidence.find((row) => row.timestamp === iso(4))?.ingestionTime).toBeNull();
+    await runtime.close();
+    const persisted = await readMiningIncidentJournal(store, run);
+    expect(persisted?.assessments).toEqual(before.assessments);
+    expect(persisted?.binding).toBe(before.binding);
+    runtime = await MiningIncidentRuntime.open(run, "recover", dependencies);
+    expect(runtime.snapshot()).toEqual(before);
+    await runtime.close();
+  });
+
+  it("returns all current assessments independently of more than 100 historical notifications", async () => {
+    const { dependencies, source, store } = fixture();
+    const wideRun: MiningIncidentRun = {
+      ...run,
+      tags: Array.from({ length: 56 }, (_, tag): MiningIncidentRun["tags"][number] => ({
+        tagId: `D01.A.observed.tag${tag}`,
+        moduleId: "D01.A.observed",
+        scopeId: "A",
+        unit: "kPa",
+        intervalSeconds: 30,
+      })),
+    };
+    source.read = async ({ asOf }) => {
+      const minute = (Date.parse(asOf) - START) / 60_000;
+      const readings: MiningReadingObservation[] =
+        minute === 3
+          ? wideRun.tags.flatMap((tag) =>
+              [2.5, 3].map((at): MiningReadingObservation => ({
+                kind: "reading",
+                runId: run.runId,
+                eventId: `${tag.tagId}:${at}`,
+                timestamp: iso(at),
+                tagId: tag.tagId,
+                value: 1,
+                unit: tag.unit,
+                quality: "good",
+                intervalSeconds: 30,
+              })),
+            )
+          : [];
+      return {
+        observations: [...observations(minute).filter((row) => row.kind === "state"), ...readings],
+        receivedAt: asOf,
+      };
+    };
+    const runtime = await MiningIncidentRuntime.open(wideRun, "fresh", dependencies);
+    for (let minute = 0; minute <= 5; minute++) await runtime.processMinute(iso(minute));
+    const first = runtime.outbox();
+    expect(first).toHaveLength(100);
+    expect(runtime.outbox(first.at(-1)!.eventId).length).toBeGreaterThan(0);
+    await runtime.close();
+    const persisted = await readMiningIncidentJournal(store, wideRun, { limit: 1 });
+    expect(persisted?.notifications).toHaveLength(1);
+    const numericStale = persisted!.assessments.filter((row) =>
+      row.incident.scopeId.startsWith("D01."),
+    );
+    expect(numericStale).toHaveLength(56);
+    expect(
+      numericStale.every(
+        (row) =>
+          row.assessedAt === iso(5) &&
+          row.holdWindow === null &&
+          row.freshness?.lastValidAt === iso(3),
+      ),
+    ).toBe(true);
+  });
+
   it("deduplicates minutes and ack without re-reading, re-notifying or clearing; no reminder cooldown sends", async () => {
     const { dependencies, store, source } = fixture();
     const runtime = await MiningIncidentRuntime.open(run, "fresh", dependencies);
