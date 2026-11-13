@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash, webcrypto } from "node:crypto";
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -20,7 +21,7 @@ import {
   validCurrentAssessmentAsOf,
   validSeries,
 } from "../src/ui/public/mining/data.js";
-import { connections, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
+import { connections, createPlant3D, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
 import {
   APPEARANCE_RELEASE,
   fitModelToNode,
@@ -383,6 +384,109 @@ describe("unknown and catalog selection semantics", () => {
 });
 
 describe("pinned reconstructed appearance", () => {
+  it("rebuilds screened placements on 20 → 24 → 20 and cancels superseded loads", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const bundle = loadAppearanceBundle();
+    for (const asset of bundle.assetsById.values())
+      asset.sha256 = createHash("sha256").update(bytes).digest("hex");
+    const catalog = readCatalog();
+    const renders: { scene: THREE.Scene; camera: THREE.Camera }[] = [];
+    const disposeSplat = vi.fn();
+    class Renderer {
+      domElement = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+      setPixelRatio() {}
+      setClearColor() {}
+      setSize() {}
+      setAnimationLoop() {}
+      render(scene: THREE.Scene, camera: THREE.Camera) { renders.push({ scene, camera }); }
+      dispose() {}
+    }
+    class Controls {
+      target = new THREE.Vector3();
+      enabled = true;
+      addEventListener() {}
+      removeEventListener() {}
+      dispose() {}
+    }
+    class Loader {
+      async loadAsync() {
+        return { scene: new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()) };
+      }
+    }
+    class SplatMesh extends THREE.Group {
+      initialized = Promise.resolve();
+      splats = {};
+      dispose() { disposeSplat(); }
+    }
+    class SparkRenderer extends THREE.Group {
+      dispose() {}
+    }
+    class Observer {
+      observe() {}
+      disconnect() {}
+    }
+    let pauseFetch = false;
+    const fetchImpl = vi.fn((_url: string, init: RequestInit) => {
+      if (!pauseFetch) return Promise.resolve(new Response(bytes));
+      return new Promise<Response>((_resolve, reject) =>
+        init.signal?.addEventListener("abort", () =>
+          reject(new DOMException("Appearance change was canceled.", "AbortError")),
+        ),
+      );
+    });
+    vi.doMock("three", async () => ({
+      ...await vi.importActual<typeof import("three")>("three"),
+      WebGLRenderer: Renderer,
+    }));
+    vi.doMock("three/addons/loaders/GLTFLoader.js", () => ({ GLTFLoader: Loader }));
+    vi.doMock("three/addons/controls/OrbitControls.js", () => ({ OrbitControls: Controls }));
+    vi.doMock("@sparkjsdev/spark", () => ({ SparkRenderer, SplatMesh }));
+    vi.stubGlobal("window", { devicePixelRatio: 1 });
+    vi.stubGlobal("ResizeObserver", Observer);
+    vi.stubGlobal("fetch", fetchImpl);
+    vi.stubGlobal("crypto", webcrypto);
+    try {
+      const container = { clientWidth: 800, clientHeight: 420, replaceChildren: vi.fn() };
+      const viewer = await createPlant3D(container, catalog, vi.fn());
+      const lines = new Set(["A", "B", "C", "shared"]);
+      viewer.update(lines, false, "D01.A.dms");
+      const camera = renders.at(-1)?.camera;
+      const selectedBox = renders.at(-1)?.scene.children.find(
+        (child) => child instanceof THREE.BoxHelper && child.visible,
+      );
+      expect(selectedBox).toBeDefined();
+      await viewer.setVisualMode("reconstructed", bundle, false);
+      expect(viewer.renderedModuleCount).toBe(20);
+      await viewer.setVisualMode("reconstructed", bundle, true);
+      expect(viewer.renderedModuleCount).toBe(24);
+      const loaded = fetchImpl.mock.calls.length;
+      await viewer.setVisualMode("reconstructed", bundle, true);
+      expect(fetchImpl).toHaveBeenCalledTimes(loaded);
+      await viewer.setVisualMode("reconstructed", bundle, false);
+      expect(viewer.renderedModuleCount).toBe(20);
+      expect(renders.at(-1)?.camera).toBe(camera);
+      expect(selectedBox?.visible).toBe(true);
+      expect(disposeSplat).toHaveBeenCalled();
+
+      pauseFetch = true;
+      const beforePending = fetchImpl.mock.calls.length;
+      const pending = viewer.setVisualMode("reconstructed", bundle, true);
+      const pendingResult = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(beforePending + 1));
+      pauseFetch = false;
+      await viewer.setVisualMode("reconstructed", bundle, false);
+      await pendingResult;
+      expect(viewer.renderedModuleCount).toBe(20);
+      viewer.dispose();
+    } finally {
+      vi.doUnmock("three");
+      vi.doUnmock("three/addons/loaders/GLTFLoader.js");
+      vi.doUnmock("three/addons/controls/OrbitControls.js");
+      vi.doUnmock("@sparkjsdev/spark");
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("binds the published splats to the same 24 catalog modules and keeps screened placements selectable", () => {
     const bundle = loadAppearanceBundle();
     const bindings = [...bundle.moduleBindings.values()];

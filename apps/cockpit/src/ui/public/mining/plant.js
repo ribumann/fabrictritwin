@@ -180,6 +180,7 @@ export async function createPlant3D(container, catalog, select) {
   let enabled = true;
   let disposed = false;
   let activeMode = null;
+  let renderedAppearance = null;
   let visualRoot = null;
   let sparkRenderer = null;
   let appearanceController = null;
@@ -234,6 +235,7 @@ export async function createPlant3D(container, catalog, select) {
   renderer.domElement.addEventListener("pointerup", onPointerUp);
 
   function releaseVisual() {
+    renderedAppearance = null;
     if (visualRoot) {
       scene.remove(visualRoot);
       visualRoot.clear();
@@ -374,7 +376,15 @@ export async function createPlant3D(container, catalog, select) {
       if (disposed) throw new Error("Plant renderer is disposed.");
       if (!["clean", "reconstructed"].includes(mode))
         throw new Error("Unknown plant appearance mode.");
-      if (mode === activeMode && models.size === catalog.modules.length) return;
+      if (externalSignal?.aborted)
+        throw new DOMException("Appearance change was canceled.", "AbortError");
+      if (
+        renderedAppearance?.mode === mode &&
+        (mode === "clean" ||
+          (renderedAppearance.bundle === bundle &&
+            renderedAppearance.showScreenedOut === showScreenedOut))
+      )
+        return;
       appearanceController?.abort();
       const controller = new AbortController();
       appearanceController = controller;
@@ -394,6 +404,7 @@ export async function createPlant3D(container, catalog, select) {
         assertCurrent(generation, controller.signal);
         update(currentLines, currentUtilities, selectedModuleId, currentStatuses, currentTopology);
         updateLoop();
+        renderedAppearance = { mode, bundle, showScreenedOut };
       } catch (error) {
         if (generation === appearanceGeneration) releaseVisual();
         throw error;
