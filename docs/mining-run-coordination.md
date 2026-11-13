@@ -1,12 +1,12 @@
 # Mining run coordination (source only)
 
-The backend exposes gated read routes and a separately gated delegated cancellation
-endpoint. Start remains unwired to HTTP, startup, or deployment. The
+The backend exposes gated read routes plus separately gated delegated start and
+cancellation endpoints. The
 [explicit default-off publisher runtime](mining-publisher-runtime.md) is a
 separately callable integration, including the opt-in bounded final-flush contract.
 It does not prove G3 authoritative hosted delivery or G8 live stop/ingestion. Existing
 triathlon locks, routes, simulator jobs and `DEMO_PROFILE` behavior are unchanged.
-No storage operation is performed merely by importing the module.
+No mining storage operation is performed merely by importing modules.
 
 ## Read-only HTTP boundary
 
@@ -197,6 +197,36 @@ query response. It requires `MINING_MANAGED_IDENTITY_CLIENT_ID` and the platform
 `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`; it rejects unknown cloud metadata and
 never falls back to another identity or token resource. This cancellation work does
 not prove deployed query readiness or authorize a live query.
+
+## Delegated start boundary
+
+`POST /api/mining/runs/start` remains disabled unless `MINING_START_ENABLED=true`
+and synthetic mode is off. This endpoint is delegated-operator only and never
+promotes viewer identities into write authority.
+
+Approved configuration requires:
+
+- Existing API tenant/client validation (`ASSISTANT_AUTH_TENANT_ID`,
+  `ASSISTANT_AUTH_CLIENT_ID`) and explicit `MINING_MANAGED_IDENTITY_CLIENT_ID`.
+- `MINING_START_OPERATOR_PRINCIPAL_IDS`: lowercase Entra **user** object UUIDs.
+- `MINING_START_DELEGATED_SCOPE`: one exact delegated scope; test values are
+  illustrative, not proof of installed Entra scope/consent.
+- `MINING_APPROVED_RUN_ID`: exact lowercase UUIDv4 run approved for delegated start.
+
+Request body is strict and bounded:
+`{ plantId:"D01", runId:"<approved UUID>" }`.
+The API does not accept query parameters or extra JSON keys.
+
+A start call returns after durable admission only, with
+`publisherStatus` and `ingestionStatus:"unknown"`; it does **not** wait for
+sender completion or imply ingestion success. Observed retries remain idempotent
+and never adopt a sender. Rejected/conflicting admission returns 409.
+
+The route uses the supervised trusted host lifecycle: one local execution owner
+at a time, explicit admission/completion split, joined transport/persistence
+settlement on shutdown, and explicit failure logging for later reconciliation.
+This source capability does not create a public operator start path, does not
+apply deployment/host settings, and does not activate mining.
 
 ## Delegated cancellation boundary
 

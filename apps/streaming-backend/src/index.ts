@@ -15,12 +15,15 @@ import { createSyntheticRouter } from "./api/synthetic.js";
 import { createMiningReadRouter } from "./api/mining-read.js";
 import { configuredMiningCuratedProvider } from "./mining/read/runtime.js";
 import { createMiningCancelRouter } from "./api/mining-cancel.js";
+import { createMiningStartRouter } from "./api/mining-start.js";
+import { MiningPublisherHost } from "./mining/publisher-host.js";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
 const server = createServer(app);
 const synthetic = resolveRuntimeProfile() === "synthetic";
 const runtime = synthetic ? new SyntheticRuntime() : undefined;
+const miningPublisherHost = synthetic ? undefined : new MiningPublisherHost();
 const alertListener = synthetic
   ? createDefaultAlertListener({
       athleteIds: [runtime!.dataset.athlete.athleteId],
@@ -29,6 +32,7 @@ const alertListener = synthetic
   : createDefaultAlertListener();
 
 app.use(express.json());
+app.use("/api/mining", createMiningStartRouter({ synthetic, host: miningPublisherHost }));
 app.use("/api/mining", createMiningCancelRouter({ synthetic }));
 app.use(
   "/api/mining",
@@ -54,21 +58,27 @@ app.get("/healthz", (_req, res) => {
 
 const streamServer = attachStreamServer(server, { synthetic });
 alertListener?.start();
-server.on("close", () => {
+const closeServer = server.close.bind(server);
+server.close = (callback) => {
   runtime?.close();
   alertListener?.stop();
-});
-if (runtime) {
-  // Upgraded WebSockets otherwise keep server.close() waiting indefinitely. Stop
-  // the in-memory run immediately and close subscriptions as shutdown begins.
-  const closeServer = server.close.bind(server);
-  server.close = (callback) => {
-    runtime.close();
-    alertListener?.stop();
+  if (runtime) {
+    // Upgraded WebSockets otherwise keep server.close() waiting indefinitely.
     for (const client of streamServer.clients) client.terminate();
-    return closeServer(callback);
-  };
-}
+  }
+  return closeServer((error) => {
+    if (error) {
+      callback?.(error);
+      return;
+    }
+    Promise.resolve(miningPublisherHost?.close())
+      .then(() => callback?.())
+      .catch((cause: unknown) => {
+        console.error("[streaming-backend] Mining publisher host shutdown failed", cause);
+        callback?.(cause instanceof Error ? cause : new Error(String(cause)));
+      });
+  });
+};
 
 // Compare via pathToFileURL (not a raw `file://` template string) so this also
 // matches on Windows, where process.argv[1] is a drive-letter path with
