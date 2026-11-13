@@ -379,6 +379,26 @@ timestamp strings, recomputing each event ID from `run_id:sequence` and
 retaining those exact strings for the proof query. The per-table event count is
 scoped to that fresh run, not to all historical rows.
 
+After building the simulator workspace, generate that exact two-message packet
+without sending anything:
+
+```powershell
+npm run build --workspace apps/simulator
+$runId = [guid]::NewGuid().ToString()
+$timestamp = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+$packet = node scripts/fabric/build-mining-raw-canary.mjs $runId $timestamp | ConvertFrom-Json
+```
+
+The packet contains `ndjson`, its SHA-256, and an aggregate-only
+`verificationQuery` with its own SHA-256. Keep the same packet for sending and
+verification; do not regenerate timestamps after a send. The query always emits
+one row per expected table, including when a table received nothing. Both rows
+must have `passed=true`: every copy must have the intended event ID, original
+timestamp string and non-null ingestion time. Cross-routing or an unexpected
+event ID in that run fails the check. Duplicate correct copies are allowed.
+This tool creates no resources, sends no events, grants no authority, and does
+not prove full-payload preservation, classifiers, or mining readiness.
+
 ```jsonl
 {"entityType":"PlantTelemetry","schema_version":2,"run_id":"00000000-0000-4000-8000-000000000001","event_id":"a49cfbfc2222aac3040a8adecfe8bb3775bc5501d3782830ebeac39035d5511a","sequence":1,"interval_seconds":30,"timestamp":"2026-01-15T12:00:00.123Z","plant_id":"D01","module_id":"D01.A.crusher","equipment_id":"D01.A.crusher.feeder","tag_id":"D01.A.crusher.ore_flow","value":42.0,"unit":"t/h","quality":"good"}
 {"entityType":"PlantStateEvent","schema_version":2,"run_id":"00000000-0000-4000-8000-000000000001","event_id":"322a2802a280929e5b715409a04651bc00172cceb0eb2d3fa1fe66813f106009","sequence":2,"timestamp":"2026-01-15T12:00:00.124Z","plant_id":"D01","scope_id":"A","scheduled_running":true,"state":"running"}
