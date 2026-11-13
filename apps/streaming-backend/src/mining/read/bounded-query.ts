@@ -7,6 +7,7 @@ const MAX_ROWS = 1000;
 const DEADLINE_MS = 9_000;
 const METADATA_BYTES = 16_384;
 const RESOURCE = "https://kusto.kusto.windows.net";
+export type MiningTokenResource = typeof RESOURCE | "https://api.fabric.microsoft.com";
 
 type Family = "feed" | "density" | "vibration" | "water-energy";
 interface Scope {
@@ -203,7 +204,10 @@ function configuration(env: NodeJS.ProcessEnv): { uri: string; database: string 
   return { uri, database };
 }
 
-function identityEndpoint(env: NodeJS.ProcessEnv): URL {
+export function identityEndpoint(
+  env: NodeJS.ProcessEnv,
+  resource: MiningTokenResource = RESOURCE,
+): URL {
   if (
     !env.IDENTITY_ENDPOINT ||
     !env.IDENTITY_HEADER ||
@@ -229,7 +233,7 @@ function identityEndpoint(env: NodeJS.ProcessEnv): URL {
     throw new MiningQueryError("configuration", "The managed identity endpoint must be loopback.");
   }
   endpoint.searchParams.set("api-version", "2019-08-01");
-  endpoint.searchParams.set("resource", RESOURCE);
+  endpoint.searchParams.set("resource", resource);
   endpoint.searchParams.set("client_id", env.MINING_MANAGED_IDENTITY_CLIENT_ID);
   return endpoint;
 }
@@ -240,7 +244,7 @@ export function assertMiningQueryConfiguration(env: NodeJS.ProcessEnv): void {
   identityEndpoint(env);
 }
 
-async function readJson(response: Response, maxBytes: number): Promise<unknown> {
+export async function readJson(response: Response, maxBytes: number): Promise<unknown> {
   if (response.status !== 200) {
     await response.body?.cancel();
     throw new MiningQueryError("upstream", `Mining service returned HTTP ${response.status}.`);
@@ -276,7 +280,7 @@ async function readJson(response: Response, maxBytes: number): Promise<unknown> 
   }
 }
 
-function assertPublicCloudMetadata(value: unknown): void {
+export function assertPublicCloudMetadata(value: unknown): void {
   const azure = record(value) ? value.AzureAD : undefined;
   if (
     !record(azure) ||
@@ -289,14 +293,19 @@ function assertPublicCloudMetadata(value: unknown): void {
   }
 }
 
-function accessToken(value: unknown, clientId: string, now: number): string {
+export function accessToken(
+  value: unknown,
+  clientId: string,
+  now: number,
+  resource: MiningTokenResource = RESOURCE,
+): string {
   if (
     !record(value) ||
     typeof value.access_token !== "string" ||
     !value.access_token ||
     typeof value.token_type !== "string" ||
     value.token_type.toLowerCase() !== "bearer" ||
-    value.resource !== RESOURCE ||
+    value.resource !== resource ||
     value.client_id !== clientId ||
     (typeof value.expires_on !== "string" && typeof value.expires_on !== "number")
   ) {
