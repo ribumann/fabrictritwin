@@ -285,7 +285,7 @@ function outbox(state: Replay, afterId?: string, limit = 100): MiningIncidentTra
 
 /** Pure persisted read: no leases, source reads, recovery, mutation or ingestion-proof claim. */
 export async function readMiningIncidentJournal(
-  store: MiningIncidentStore,
+  store: Pick<MiningIncidentStore, "read">,
   input: MiningIncidentRun,
   options: { signal?: AbortSignal; afterId?: string; limit?: number } = {},
 ) {

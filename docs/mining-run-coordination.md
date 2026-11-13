@@ -28,9 +28,9 @@ failures are logged and returned as 503 instead of being reported as invalid tok
 Status and context perform read-only durable reads; publisher completion does not
 prove ingestion. Rejected durable admissions return a distinct 409 rather than
 being reported as absent. A single request deadline or client disconnect cancels ongoing
-JWKS and Blob status reads and prevents subsequent reads. Queries, incident persistence and
-the assistant are not connected: context reports `readAvailable: false`, while data
-routes return explicit 503.
+JWKS, Blob and curated reads and prevents subsequent reads. With the default host
+composition, queries, incident persistence and the assistant are not connected:
+context reports `readAvailable: false`, while data routes return explicit 503.
 Start, cancel and acknowledgement remain unavailable without delegated authorization.
 Do not enable these settings as a substitute for approving infrastructure or data access.
 
@@ -50,11 +50,37 @@ identity; there is no endpoint, identity or token-resource fallback.
 
 The unmounted DTO mappers target the reviewed
 G5 source contract, including the summary conflict fix in source PR #32 at
-`4e5373d744057161f73888ac5d57ee0e6fdc8f07`. That source has not been compiled
-or deployed to the hosted estate. A readiness control row or a successful scalar
+`4e5373d744057161f73888ac5d57ee0e6fdc8f07`. That source is not installed as native
+functions in the hosted estate. A readiness control row or a successful scalar
 query alone does not prove deployment, timestamp provenance, or writer approval.
 No data route invokes the transport while those prerequisites and a truthful
 current-incident evidence contract remain unverified.
+The explicitly injectable `createMiningCuratedProvider` now composes these
+mappers with the bounded transport and read-only persisted incident replay.
+It is **not configured by the production entrypoint**. A trusted host must supply
+an independently approved receipt pin/expectations and an actual native verifier;
+no production native verifier or newly issued receipt is provided by this source.
+Every request revalidates the downloaded canonical bytes, strict receipt schema,
+approved target/run/source/semantic expectations, observation consistency and
+fresh native verification before reading the matching incident journal or data.
+Flags, successful scalar queries, a receipt's own claims, and test doubles are
+not substitutes for that verifier. There is no readiness cache.
+
+An explicitly composed reader still requires the router's signed viewer/run
+authorization and a durable **accepted** run before proof or query reads. Missing,
+corrupt or unassessed incident journals, failed native verification and malformed
+query results return 503, not healthy data or a fallback. Status continues to
+report ingestion as unknown: a source canary does not prove a full published run.
+Overview joins catalog-first latest readings with a trailing five-minute summary
+at one requested UTC `asOf`; the summary publishes its exact window. Module
+health stays unknown unless a fresh source state explicitly establishes stopped;
+no engineering normal bands or propagated incident impacts are invented.
+Incidents retain the evaluator's actual assessment time; a request preceding
+that time cannot silently receive a newer snapshot. Series retain their requested
+bounded window, canonical tags, metric and bins. One HTTP deadline/disconnect
+cancels proof, native verification, journal and query work; failure also cancels
+the provider's sibling queries. No leases, evaluator recovery, acknowledgements,
+publishers or other writes are started by a curated read.
 The unmounted current-incident mapper uses `moduleId` for direct measurement or
 rule context only. It leaves `affectedModuleIds` empty because the evaluator
 does not model propagated impact or causation.
@@ -152,7 +178,9 @@ writer to discard the new fields. Before any separately approved activation,
 coordinate the upgrade of **all** replicas, readers and rollback procedures;
 do not roll back to schema-1 code against version 2 durable state. Disable new
 admissions and drain/reconcile owners and uncertain writes before a coordinated
-transition. Current incident read mapping does not support version 2.
+transition. Current incident read mapping supports the exact persisted legacy
+or version 2 definition; it does not add a contract to old runs or fall back
+across journal versions.
 
 The recorded contract is a source self-assertion, not independent proof of
 operator authorization, deployed image identity, actual delivery or readiness.

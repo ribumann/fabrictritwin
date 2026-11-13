@@ -234,6 +234,12 @@ function identityEndpoint(env: NodeJS.ProcessEnv): URL {
   return endpoint;
 }
 
+/** Pure validation, including the explicitly selected managed identity; performs no I/O. */
+export function assertMiningQueryConfiguration(env: NodeJS.ProcessEnv): void {
+  configuration(env);
+  identityEndpoint(env);
+}
+
 async function readJson(response: Response, maxBytes: number): Promise<unknown> {
   if (response.status !== 200) {
     await response.body?.cancel();
