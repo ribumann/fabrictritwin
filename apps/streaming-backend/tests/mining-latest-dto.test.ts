@@ -72,6 +72,23 @@ describe("latest mining source mapping", () => {
     ).toEqual(["uncertain", "bad", "stale"]);
   });
 
+  it("does not claim ingestion provenance without proof", () => {
+    const rows = sourceRows();
+    Object.assign(rows[0], {
+      quality: "good",
+      status: "OK",
+      value: 7,
+      age_seconds: 10,
+      event_time: "2026-01-01T00:04:50.000Z",
+      received_at: input.asOf,
+    });
+    expect(mapLatestRows(input, rows).readings[0].ingestionTime).toBeNull();
+    rows[0].received_at = null;
+    expect(mapLatestRows(input, rows).readings[0].ingestionTime).toBeNull();
+    rows[0].received_at = "not-a-timestamp";
+    expect(() => mapLatestRows(input, rows)).toThrow("timestamp");
+  });
+
   it("rejects incomplete or spoofed grids and exposes source conflict", () => {
     const rows = sourceRows();
     expect(() => mapLatestRows(input, rows.slice(1))).toThrow("Incomplete");

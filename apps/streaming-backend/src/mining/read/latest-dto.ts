@@ -116,7 +116,6 @@ export function mapLatestRows(
       let quality: Quality;
       let age: number | null = null;
       let sampleTime: string | null = null;
-      let ingestionTime: string | null = null;
       let value: number | null = null;
       if (row.status === "UNKNOWN_NO_OBSERVATION") {
         if (
@@ -131,7 +130,7 @@ export function mapLatestRows(
       } else {
         if (
           typeof row.event_time !== "string" ||
-          typeof row.received_at !== "string" ||
+          (row.received_at !== null && typeof row.received_at !== "string") ||
           typeof row.age_seconds !== "number" ||
           !Number.isSafeInteger(row.age_seconds) ||
           row.age_seconds < 0 ||
@@ -141,7 +140,7 @@ export function mapLatestRows(
           return fail("Invalid latest reading.");
         }
         const eventTime = instant(row.event_time);
-        instant(row.received_at);
+        if (row.received_at !== null) instant(row.received_at);
         if (
           eventTime > asOf ||
           row.age_seconds !== Math.floor(asOf / 1000) - Math.floor(eventTime / 1000)
@@ -168,7 +167,6 @@ export function mapLatestRows(
                 ? "stale"
                 : "good";
         sampleTime = row.event_time;
-        ingestionTime = row.received_at;
         age = row.age_seconds;
         value = row.value;
       }
@@ -179,7 +177,8 @@ export function mapLatestRows(
         value,
         unit: tag.unit,
         sampleTime,
-        ingestionTime,
+        // A non-null source receipt is not proof of raw ingestion provenance.
+        ingestionTime: null,
         quality,
         ageSeconds: age,
         normalBand: null,
@@ -208,7 +207,7 @@ export function mapLatestRows(
       }
       if (
         typeof row.event_time !== "string" ||
-        typeof row.received_at !== "string" ||
+        (row.received_at !== null && typeof row.received_at !== "string") ||
         typeof row.age_seconds !== "number" ||
         !Number.isSafeInteger(row.age_seconds) ||
         row.age_seconds < 0 ||
@@ -219,7 +218,7 @@ export function mapLatestRows(
         return fail("Invalid latest state.");
       }
       const eventTime = instant(row.event_time);
-      instant(row.received_at);
+      if (row.received_at !== null) instant(row.received_at);
       if (
         eventTime > asOf ||
         row.age_seconds !== Math.floor(asOf / 1000) - Math.floor(eventTime / 1000)
