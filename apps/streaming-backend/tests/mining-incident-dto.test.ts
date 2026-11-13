@@ -50,7 +50,7 @@ describe("current incident assessment mapping", () => {
     expect(result.incidents[0]).toMatchObject({
       moduleId,
       metric,
-      affectedModuleIds: moduleId ? [moduleId] : [],
+      affectedModuleIds: [],
       acknowledgedAt: "2026-01-01T00:06:00.000Z",
       holdWindowStart: null,
       holdWindowEnd: null,

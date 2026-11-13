@@ -93,7 +93,7 @@ describe("current incident journal mapping", () => {
     const mapped = mapCurrentIncidentJournal({ run, journal });
     const incident = mapped.incidents.find((item) => item.ruleId === "shared-water");
     expect(incident).toMatchObject({
-      moduleId: "D01.shared.water", metric: "water-energy",
+      moduleId: "D01.shared.water", affectedModuleIds: [], metric: "water-energy",
       acknowledgedAt: iso(6), holdWindowStart: iso(2), holdWindowEnd: iso(5),
     });
     expect(mapped.asOf).toBe(iso(5));

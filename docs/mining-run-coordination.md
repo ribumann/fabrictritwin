@@ -46,6 +46,9 @@ or deployed to the hosted estate. A readiness control row or a successful scalar
 query alone does not prove deployment, timestamp provenance, or writer approval.
 No data route invokes the transport while those prerequisites and a truthful
 current-incident evidence contract remain unverified.
+The unmounted current-incident mapper uses `moduleId` for direct measurement or
+rule context only. It leaves `affectedModuleIds` empty because the evaluator
+does not model propagated impact or causation.
 The source-only transport uses a single abort signal for bounded public-cloud
 metadata discovery, the Container Apps loopback managed-identity broker, and the
 query response. It requires `MINING_MANAGED_IDENTITY_CLIENT_ID` and the platform's

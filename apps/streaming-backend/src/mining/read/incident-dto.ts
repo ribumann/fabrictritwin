@@ -169,7 +169,7 @@ export function mapCurrentIncidentAssessments(input: {
       acknowledgedAt: incident.acknowledgedAt,
       verification: incident.verification,
       moduleId: target.moduleId,
-      affectedModuleIds: target.moduleId ? [target.moduleId] : [],
+      affectedModuleIds: [],
       metric: target.metric,
       title: target.title,
       holdWindowStart: assessment.holdWindow?.start ?? null,
