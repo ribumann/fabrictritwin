@@ -31,8 +31,9 @@ being reported as absent. A single request deadline or client disconnect cancels
 JWKS, Blob and curated reads and prevents subsequent reads. With the default host
 composition, queries, incident persistence and the assistant are not connected:
 context reports `readAvailable: false`, while data routes return explicit 503.
-Start and acknowledgement remain unavailable. Cancellation has its own default-off
-delegated boundary below; viewer credentials never authorize it.
+Start has its own default-off delegated boundary below; no acknowledgement
+endpoint is available. Cancellation has a separate default-off delegated
+boundary; viewer credentials never authorize either operation.
 Do not enable these settings as a substitute for approving infrastructure or data access.
 
 The unmounted query transport additionally requires
@@ -225,6 +226,10 @@ and never adopt a sender. Rejected/conflicting admission returns 409.
 The route uses the supervised trusted host lifecycle: one local execution owner
 at a time, explicit admission/completion split, joined transport/persistence
 settlement on shutdown, and explicit failure logging for later reconciliation.
+When the backend is the main process, SIGTERM/SIGINT start this shutdown path;
+it stops new publisher admissions before closing HTTP and awaiting active work.
+The host platform may still terminate an uncooperative process before settlement,
+so shutdown does not prove delivery, ingestion, or rollback.
 This source capability does not create a public operator start path, does not
 apply deployment/host settings, and does not activate mining.
 

@@ -49,15 +49,16 @@ One local admission/execution may be active at a time; a conflicting start
 must reconcile durable status instead of restarting. Cross-replica authority
 still comes exclusively from the existing Blob lease coordinator.
 
-Shutdown must **await** `host.close()`. This prevents new starts, aborts owned
-work and joins its real settlement; errors remain errors, not successful stop
-acknowledgements. Repeated close calls share the same outcome. Uncooperative
-I/O can delay settlement, and platform termination can still interrupt a run;
-finite leases and durable reconciliation remain necessary. A future host
-binding must independently establish sufficient worker lifetime, scaling and
-shutdown behavior for the full run. There is deliberately no application-entry
-point binding, scale/configuration change or public start endpoint in this
-source capability.
+The backend entrypoint mounts a default-off delegated start route and coordinates
+shutdown. A direct `server.close()` and main-process `SIGTERM`/`SIGINT` both
+prevent new publisher work first, stop background services, terminate upgraded
+WebSocket clients, close HTTP, and join `host.close()` before reporting success.
+Shutdown errors are surfaced. Uncooperative I/O can delay settlement, and the
+platform can terminate the process before it settles; this does not prove a run
+completed or its writes were rolled back. Finite leases and durable
+reconciliation remain necessary. Worker lifetime and scaling are still not
+configured or validated for a full run, and the route remains disabled unless
+its separately approved settings are explicitly applied.
 
 Incident processing is a separate **explicit** optional third argument to
 `run(input, cancellation, incidents)`: the trusted host supplies
