@@ -23,6 +23,42 @@ delegate to the coordinator and never start a sender. Stop acceptance is intent,
 not acknowledgement. An optional caller AbortSignal fails the run; it is not a
 durable operator stop. Use the authorized `requestStop` path for that.
 
+### Supervised host ownership
+
+`MiningPublisherHost` is an explicit trusted-host lifecycle adapter, not an HTTP
+route, a startup job or an activation grant. Construction does no I/O. Its
+default factory captures the environment once and retains the existing
+default-off publisher configuration.
+
+After independently authorizing the exact run, call `host.start(input,
+requestSignal, incidents?)`. Retain both returned promises: `admission` reports
+`kind:"started"` only after fresh durable accepted-admission readback, whereas
+`completion` joins the actual sender, incident cleanup, transport close and
+terminal persistence. Neither admission nor publisher completion proves Fabric
+ingestion. `kind:"observed"` never adopts, resumes or launches a sender, including
+for rejected or pending admissions; callers must inspect the returned status.
+
+The request signal can cancel admission, including a late accepted write. If
+admission returns a fresh owner after cancellation, the runtime persists failure
+and cleans up that owner without constructing a transport. An uncertain
+admission/lost write response still requires reconciliation; neither path rolls
+back durable admission. After admission notification, request
+completion/disconnect no longer owns execution. The host tracks the completion
+promise and reports execution failures even if the request disappears.
+One local admission/execution may be active at a time; a conflicting start
+must reconcile durable status instead of restarting. Cross-replica authority
+still comes exclusively from the existing Blob lease coordinator.
+
+Shutdown must **await** `host.close()`. This prevents new starts, aborts owned
+work and joins its real settlement; errors remain errors, not successful stop
+acknowledgements. Repeated close calls share the same outcome. Uncooperative
+I/O can delay settlement, and platform termination can still interrupt a run;
+finite leases and durable reconciliation remain necessary. A future host
+binding must independently establish sufficient worker lifetime, scaling and
+shutdown behavior for the full run. There is deliberately no application-entry
+point binding, scale/configuration change or public start endpoint in this
+source capability.
+
 Incident processing is a separate **explicit** optional third argument to
 `run(input, cancellation, incidents)`: the trusted host supplies
 `MiningIncidentDependencies`, including a delegated authority and a real

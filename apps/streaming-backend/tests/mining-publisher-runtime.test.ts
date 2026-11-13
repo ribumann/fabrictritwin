@@ -3,6 +3,7 @@ import {
   D01PlantSimulator,
   D01_PLANT_CATALOG,
   toD01PublishProfileRecords,
+  type D01Publisher,
   type D01TransportBody,
 } from "@triathlon-twin/simulator/mining";
 import {
@@ -17,6 +18,7 @@ import {
   type MiningScheduler,
 } from "../src/mining/publisher-runtime.js";
 import { MiningRunCoordinator } from "../src/mining/run-coordinator.js";
+import { MiningPublisherHost } from "../src/mining/publisher-host.js";
 import {
   MiningCoordinationError,
   type MiningStore,
@@ -92,7 +94,7 @@ describe("D01 real-clock publisher", () => {
     typeof vi.fn<(events: readonly D01TransportBody[], signal: AbortSignal) => Promise<void>>
   >;
   let close: ReturnType<typeof vi.fn<() => Promise<void>>>;
-  let factory: ReturnType<typeof vi.fn>;
+  let factory: ReturnType<typeof vi.fn<() => D01Publisher>>;
   let runtime: MiningPublisherRuntime;
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
@@ -106,6 +108,7 @@ describe("D01 real-clock publisher", () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     vi.useRealTimers();
   });
   const settle = async () => {
@@ -193,6 +196,175 @@ describe("D01 real-clock publisher", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(await execution).toMatchObject({ phase: "stopped" });
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("reports confirmed admission separately from transport completion and observed retries", async () => {
+    const admitted = vi.fn();
+    const execution = runtime.run(input, undefined, undefined, admitted);
+    await settle();
+    expect(admitted).toHaveBeenCalledWith({
+      kind: "started",
+      status: expect.objectContaining({
+        runId: requestId,
+        admission: "accepted",
+        phase: "running",
+      }),
+    });
+    expect(publish).not.toHaveBeenCalled();
+    const observed = vi.fn();
+    await runtime.run(input, undefined, undefined, observed);
+    expect(observed).toHaveBeenCalledWith({
+      kind: "observed",
+      status: expect.objectContaining({
+        runId: requestId,
+        admission: "accepted",
+        phase: "running",
+      }),
+    });
+    expect(factory).toHaveBeenCalledOnce();
+    await runtime.requestStop(requestId);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await execution;
+  });
+
+  it("cleans up an accepted owner when admission notification fails before constructing transport", async () => {
+    const rejected = expect(
+      runtime.run(input, undefined, undefined, () => {
+        throw new Error("Admission recipient failed.");
+      }),
+    ).rejects.toThrow("Admission recipient failed.");
+    await rejected;
+    expect(factory).not.toHaveBeenCalled();
+    expect(store.lease).toBeUndefined();
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "failed" });
+  });
+
+  it("does not notify or publish when a fresh admission cannot be read back", async () => {
+    vi.spyOn(coordinator, "status").mockResolvedValueOnce(undefined);
+    const admitted = vi.fn();
+    await expect(runtime.run(input, undefined, undefined, admitted)).rejects.toMatchObject({
+      code: "uncertain",
+    });
+    expect(admitted).not.toHaveBeenCalled();
+    expect(factory).not.toHaveBeenCalled();
+    expect(store.lease).toBeUndefined();
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "failed" });
+  });
+
+  it("owns execution after admission without binding it to the request lifetime", async () => {
+    const request = new AbortController();
+    const host = new MiningPublisherHost(() => runtime);
+    const parameters = { ...input, durationSeconds: 5 };
+    const execution = host.start(parameters, request.signal);
+    parameters.durationSeconds = 1800;
+    expect(await execution.admission).toMatchObject({
+      kind: "started",
+      status: { admission: "accepted", run: { durationSeconds: 5 } },
+    });
+    request.abort(new Error("Request finished."));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await execution.completion).toMatchObject({ phase: "publisher_complete" });
+    expect(publish).toHaveBeenCalledOnce();
+    await host.close();
+  });
+
+  it("aborts a disconnected admission and reconciles its accepted owner without launching", async () => {
+    const reported = vi.spyOn(console, "error").mockImplementation(() => {});
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const write = store.write.bind(store);
+    vi.spyOn(store, "write").mockImplementation(async (path, value, etag, lease) => {
+      const result = await write(path, value, etag, lease);
+      if (path === `requests/${requestId}.json`) await pending;
+      return result;
+    });
+    const request = new AbortController();
+    const host = new MiningPublisherHost(() => runtime);
+    const execution = host.start(input, request.signal);
+    const rejectedAdmission = expect(execution.admission).rejects.toThrow("Disconnected.");
+    const rejectedCompletion = expect(execution.completion).rejects.toThrow("Disconnected.");
+    await settle();
+    request.abort(new Error("Disconnected."));
+    release();
+    await Promise.all([rejectedAdmission, rejectedCompletion]);
+    expect(factory).not.toHaveBeenCalled();
+    expect(store.lease).toBeUndefined();
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "failed" });
+    expect(reported).toHaveBeenCalledOnce();
+    await host.close();
+  });
+
+  it("rejects overlapping local calls and joins actual in-flight send settlement on shutdown", async () => {
+    const reported = vi.spyOn(console, "error").mockImplementation(() => {});
+    let settleSend!: () => void;
+    let sendSignal!: AbortSignal;
+    publish.mockImplementation(async (_events, signal) => {
+      sendSignal = signal;
+      await new Promise<void>((resolve) => {
+        settleSend = resolve;
+      });
+    });
+    const host = new MiningPublisherHost(() => runtime);
+    const execution = host.start(input);
+    const rejected = expect(execution.completion).rejects.toThrow();
+    await execution.admission;
+    expect(() => host.start(input)).toThrow(/already owns/);
+    await vi.advanceTimersByTimeAsync(30_000);
+    const closing = host.close();
+    const rejectedClose = expect(closing).rejects.toThrow();
+    expect(host.close()).toBe(closing);
+    expect(() => host.start(input)).toThrow(/shutting down/);
+    expect(sendSignal.aborted).toBe(true);
+    expect(close).not.toHaveBeenCalled();
+    expect(store.lease).toBeDefined();
+    settleSend();
+    await Promise.all([rejected, rejectedClose]);
+    expect(close).toHaveBeenCalledOnce();
+    expect(store.lease).toBeUndefined();
+    expect(await runtime.status(requestId)).toMatchObject({ phase: "failed" });
+    expect(reported).toHaveBeenCalledOnce();
+  });
+
+  it("never adopts a terminal observed run or reconstructs its transport", async () => {
+    const prior = runtime.run({ ...input, durationSeconds: 5 });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await prior;
+    const host = new MiningPublisherHost(() => runtime);
+    const execution = host.start({ ...input, durationSeconds: 5 });
+    expect(await execution.admission).toMatchObject({
+      kind: "observed",
+      status: { phase: "publisher_complete" },
+    });
+    expect(await execution.completion).toMatchObject({ phase: "publisher_complete" });
+    expect(factory).toHaveBeenCalledOnce();
+    await host.close();
+  });
+
+  it("does no factory work for a pre-aborted or closed host and rejects disabled publishers", async () => {
+    const construct = vi.fn(() => runtime);
+    const host = new MiningPublisherHost(construct);
+    const request = new AbortController();
+    request.abort(new Error("Request already ended."));
+    expect(() => host.start(input, request.signal)).toThrow("Request already ended.");
+    await host.close();
+    expect(() => host.start(input)).toThrow(/shutting down/);
+    expect(construct).not.toHaveBeenCalled();
+    const disabled = new MiningPublisherHost(() => undefined);
+    expect(() => disabled.start(input)).toThrow(/not enabled/);
+    await disabled.close();
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it("captures default-off configuration without later environment changes activating the host", async () => {
+    vi.stubEnv("MINING_PUBLISHER_ENABLED", "false");
+    const host = new MiningPublisherHost();
+    vi.stubEnv("MINING_PUBLISHER_ENABLED", "true");
+    expect(() => host.start(input)).toThrow(/not enabled/);
+    await host.close();
+    expect(factory).not.toHaveBeenCalled();
+    expect(store.documents.size).toBe(0);
   });
 
   it("does not acknowledge or retry uncertain delivery", async () => {

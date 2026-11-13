@@ -33,6 +33,11 @@ export interface MiningPublisherIncidents {
   dependencies: MiningIncidentDependencies;
 }
 
+export interface MiningPublisherAdmission {
+  kind: "started" | "observed";
+  status: MiningRunStatus;
+}
+
 const systemClock: MiningClock = { now: Date.now, monotonic: () => performance.now() };
 const systemScheduler: MiningScheduler = {
   wait: async (milliseconds, signal) => {
@@ -68,13 +73,18 @@ export class MiningPublisherRuntime {
     input: StartMiningRun,
     cancellation?: AbortSignal,
     incidents?: MiningPublisherIncidents,
+    onAdmission?: (admission: MiningPublisherAdmission) => void,
   ): Promise<MiningRunStatus> {
     cancellation?.throwIfAborted();
     if (incidents && (input.durationSeconds ?? 1_200) % 60 !== 0) {
       throw new MiningCoordinationError("invalid", "Incident processing requires whole minutes.");
     }
     const admission = await this.coordinator.start(input);
-    if (admission.kind === "observed") return admission.status;
+    if (admission.kind === "observed") {
+      cancellation?.throwIfAborted();
+      onAdmission?.({ kind: "observed", status: admission.status });
+      return admission.status;
+    }
     const { owner, run } = admission;
     const startedAt = Date.parse(run.startedAt);
     const firstTick = this.clock.monotonic() - (this.clock.now() - startedAt);
@@ -90,6 +100,16 @@ export class MiningPublisherRuntime {
     let incident: IncidentExecution | undefined;
     let stopIncident: (() => void) | undefined;
     try {
+      signal.throwIfAborted();
+      if (onAdmission) {
+        const status = await this.coordinator.status(run.runId, signal);
+        signal.throwIfAborted();
+        if (!status || status.admission !== "accepted" || status.runId !== run.runId) {
+          throw new MiningCoordinationError("uncertain", "Mining admission cannot be confirmed.");
+        }
+        onAdmission({ kind: "started", status });
+        signal.throwIfAborted();
+      }
       if (incidents) {
         const execution = new IncidentExecution(run, incidents, (error) =>
           incidentFailure.abort(error),
