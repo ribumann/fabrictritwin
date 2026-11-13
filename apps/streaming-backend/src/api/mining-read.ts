@@ -3,6 +3,10 @@ import { verifyMcpCallerPrincipalIdWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningRunCoordinator, type MiningRunStatus } from "../mining/run-coordinator.js";
 import { MiningCoordinationError } from "../mining/store.js";
+import type {
+  MiningCuratedProvider,
+  MiningCuratedRequest,
+} from "../mining/read/curated-provider.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const principalId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -24,6 +28,7 @@ interface ReadOptions {
   env?: NodeJS.ProcessEnv;
   verifyPrincipal?: (req: Request, signal?: AbortSignal) => Promise<string | undefined>;
   status?: (runId: string, signal?: AbortSignal) => Promise<MiningRunStatus | undefined>;
+  curated?: MiningCuratedProvider;
   now?: () => number;
 }
 
@@ -239,7 +244,7 @@ export function createMiningReadRouter(options: ReadOptions): Router {
         error(res, 403, "mining_run_forbidden", "The requested run is not approved.");
         return;
       }
-      if (route !== "context" && route !== "runs/status") {
+      if (route !== "context" && route !== "runs/status" && !options.curated) {
         error(
           res,
           503,
@@ -275,15 +280,88 @@ export function createMiningReadRouter(options: ReadOptions): Router {
         if (route === "runs/status") {
           res.json(run);
         } else {
-          res.json({
+          let data: Awaited<ReturnType<MiningCuratedProvider>> = null;
+          if (options.curated) {
+            if (status.admission !== "accepted" || !status.run || status.run.runId !== runId) {
+              error(
+                res,
+                503,
+                "mining_admission_unavailable",
+                "A durable accepted run is required.",
+              );
+              return;
+            }
+            const signal = controllers.get(res)!.signal;
+            let input: MiningCuratedRequest;
+            if (route === "context") {
+              input = { kind: "context", run: status.run };
+            } else if (route === "overview" || route === "incidents") {
+              input = {
+                kind: route,
+                run: status.run,
+                asOf: new Date(
+                  (req.query.asOf as string | undefined) ?? (options.now ?? Date.now)(),
+                ).toISOString(),
+              };
+            } else {
+              const metric = req.query.metric;
+              if (
+                metric !== "feed" &&
+                metric !== "density" &&
+                metric !== "vibration" &&
+                metric !== "water-energy"
+              ) {
+                error(res, 400, "invalid_mining_query", "Unsupported mining metric.");
+                return;
+              }
+              const window = {
+                run: status.run,
+                start: new Date(String(req.query.start)).toISOString(),
+                end: new Date(String(req.query.end)).toISOString(),
+                metric,
+                binMinutes: req.query.binMinutes === "1" ? 1 : 5,
+                maxRows: Number(req.query.maxRows),
+              } as const;
+              input =
+                route === "trends"
+                  ? { ...window, kind: "trend", moduleId: String(req.query.moduleId) }
+                  : { ...window, kind: "compare" };
+            }
+            try {
+              data = await options.curated(input, signal);
+              if (res.headersSent || res.destroyed) return;
+            } catch (cause) {
+              if (res.headersSent || res.destroyed) return;
+              console.error("[mining-read] Curated source read failed", cause);
+              error(
+                res,
+                503,
+                "mining_curated_source_unavailable",
+                "Validated curated mining data or current incident evidence is unavailable.",
+              );
+              return;
+            }
+          }
+          if (route !== "context") {
+            res.json(route === "overview" ? { ...data, run } : data);
+            return;
+          }
+          const context = {
             plantId,
             approvedRun: run,
             catalogVersion: catalog.D01_CATALOG_VERSION,
-            readAvailable: false,
-            unavailableReason:
-              "Validated curated mining queries and persisted incidents are not connected.",
+            readAvailable: Boolean(options.curated),
             assistant: { available: false },
-          });
+          };
+          res.json(
+            options.curated
+              ? context
+              : {
+                  ...context,
+                  unavailableReason:
+                    "Validated curated mining queries and persisted incidents are not connected.",
+                },
+          );
         }
       } catch (cause) {
         if (res.headersSent || res.destroyed) return;
