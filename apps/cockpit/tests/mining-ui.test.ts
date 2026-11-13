@@ -6,6 +6,7 @@ import {
   readingAt,
   normalizeReading,
   unknownQuality,
+  validIncidentWindows,
   sameScope,
   moduleStatus,
   validOverview,
@@ -87,6 +88,34 @@ describe("mining request lifecycle", () => {
   });
 });
 describe("unknown and catalog selection semantics", () => {
+  it("accepts an absent current hold without weakening the evidence window", () => {
+    const incident = {
+      holdWindowStart: null,
+      holdWindowEnd: null,
+      evidenceWindowStart: "2026-01-01T00:00:00Z",
+      evidenceWindowEnd: "2026-01-01T00:05:00Z",
+    };
+    expect(validIncidentWindows(incident)).toBe(true);
+    expect(
+      validIncidentWindows({
+        ...incident,
+        holdWindowStart: "2026-01-01T00:00:00Z",
+      }),
+    ).toBe(false);
+    expect(
+      validIncidentWindows({
+        ...incident,
+        evidenceWindowEnd: "2025-12-31T23:59:00Z",
+      }),
+    ).toBe(false);
+    expect(
+      validIncidentWindows({
+        ...incident,
+        holdWindowStart: "2026-01-01T00:01:00Z",
+        holdWindowEnd: "2026-01-01T00:00:00Z",
+      }),
+    ).toBe(false);
+  });
   it("preserves uncertain quality without exposing its value as usable or healthy", () => {
     const asOf = "2026-01-01T00:01:00Z";
     const reading = {

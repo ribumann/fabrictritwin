@@ -64,7 +64,9 @@ cross-run/catalog responses are rejected, including late arrivals after a switch
 Publisher statuses preserve `admission_pending`, `admission_unknown`,
 `interrupted` and `publisher_complete` without inventing terminal success.
 Incident responses have at most 20 active records with retained unverified state,
-rule/scope IDs, hold/evidence window bounds and separate acknowledgment/clear timestamps.
+rule/scope IDs and separate acknowledgment/clear timestamps. Current qualifying
+hold bounds are nullable as a pair; null means there is no current qualifying hold.
+The bounded evidence window remains required and is not a substitute for an active hold.
 
 The BFF constructs its own service-auth headers for reads, ignoring all browser
 authorization/principal headers. It uses only the existing viewer-scoped Cockpit

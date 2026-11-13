@@ -29,6 +29,24 @@ export function unknownQuality(quality) {
   return quality === "uncertain" || quality === "bad" ? `${quality} / unknown` : "unknown";
 }
 
+export function validIncidentWindows(incident) {
+  const hasHoldStart = typeof incident?.holdWindowStart === "string";
+  const hasHoldEnd = typeof incident?.holdWindowEnd === "string";
+  const evidenceStart = Date.parse(incident?.evidenceWindowStart);
+  const evidenceEnd = Date.parse(incident?.evidenceWindowEnd);
+  if (
+    hasHoldStart !== hasHoldEnd ||
+    !Number.isFinite(evidenceStart) ||
+    !Number.isFinite(evidenceEnd) ||
+    evidenceStart > evidenceEnd
+  )
+    return false;
+  if (!hasHoldStart) return incident.holdWindowStart === null && incident.holdWindowEnd === null;
+  const holdStart = Date.parse(incident.holdWindowStart);
+  const holdEnd = Date.parse(incident.holdWindowEnd);
+  return Number.isFinite(holdStart) && Number.isFinite(holdEnd) && holdStart <= holdEnd;
+}
+
 export function sameScope(data, runId, catalogVersion) {
   return data?.plantId === "D01" && data.runId === runId && data.catalogVersion === catalogVersion;
 }

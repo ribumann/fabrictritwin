@@ -4,6 +4,7 @@ import {
   usable,
   normalizeReading,
   unknownQuality,
+  validIncidentWindows,
   sameScope,
   moduleStatus,
   validOverview,
@@ -196,7 +197,7 @@ function drawDrawer() {
   text(
     "incident-evidence",
     selectedIncident
-      ? `${selectedIncident.title} · rule ${selectedIncident.ruleId} · scope ${selectedIncident.scopeId} · ${selectedIncident.verification} · raised ${timestamp(selectedIncident.raisedAt)}. Hold: ${timestamp(selectedIncident.holdWindowStart)} to ${timestamp(selectedIncident.holdWindowEnd)}; evidence: ${timestamp(selectedIncident.evidenceWindowStart)} to ${timestamp(selectedIncident.evidenceWindowEnd)}. ${selectedIncident.evidence.map((reading) => `${reading.tagId}: ${usable(reading) ? number(reading.value) : "Unknown"} ${reading.unit}, ${reading.quality}, ${timestamp(reading.sampleTime)}`).join("; ")}${selectedIncident.affectedModuleIds.length ? ` · Topology context: ${selectedIncident.affectedModuleIds.join(", ")} (not proven causation).` : ""}`
+      ? `${selectedIncident.title} · rule ${selectedIncident.ruleId} · scope ${selectedIncident.scopeId} · ${selectedIncident.verification} · raised ${timestamp(selectedIncident.raisedAt)}. Hold: ${selectedIncident.holdWindowStart === null ? "no current qualifying hold" : `${timestamp(selectedIncident.holdWindowStart)} to ${timestamp(selectedIncident.holdWindowEnd)}`}; evidence: ${timestamp(selectedIncident.evidenceWindowStart)} to ${timestamp(selectedIncident.evidenceWindowEnd)}. ${selectedIncident.evidence.map((reading) => `${reading.tagId}: ${usable(reading) ? number(reading.value) : "Unknown"} ${reading.unit}, ${reading.quality}, ${timestamp(reading.sampleTime)}`).join("; ")}${selectedIncident.affectedModuleIds.length ? ` · Topology context: ${selectedIncident.affectedModuleIds.join(", ")} (not proven causation).` : ""}`
       : "",
   );
 }
@@ -463,13 +464,8 @@ async function refresh(scope = "all") {
                 !["verified", "unverified"].includes(item.verification) ||
                 typeof item.ruleId !== "string" ||
                 typeof item.scopeId !== "string" ||
-                [
-                  "raisedAt",
-                  "holdWindowStart",
-                  "holdWindowEnd",
-                  "evidenceWindowStart",
-                  "evidenceWindowEnd",
-                ].some((key) => !Number.isFinite(Date.parse(item[key]))) ||
+                !Number.isFinite(Date.parse(item.raisedAt)) ||
+                !validIncidentWindows(item) ||
                 item.affectedModuleIds.some(
                   (id) => !catalog.modules.some((module) => module.id === id),
                 ) ||

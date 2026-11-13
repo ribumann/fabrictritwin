@@ -113,8 +113,8 @@ export interface MiningIncident {
   clearedAt: string | null;
   acknowledgedAt: string | null;
   verification: "verified" | "unverified";
-  holdWindowStart: string;
-  holdWindowEnd: string;
+  holdWindowStart: string | null;
+  holdWindowEnd: string | null;
   evidenceWindowStart: string;
   evidenceWindowEnd: string;
   evidence: MiningReading[];
