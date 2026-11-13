@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { MiningCoordinationError, type MiningStore } from "./store.js";
+import {
+  assertD01RunContract,
+  createD01RunContract,
+  type D01RunContract,
+} from "../mining-incidents/catalog.js";
 
 const PLANT = "D01";
 const PLANT_PATH = "plants/D01.json";
@@ -41,6 +46,8 @@ export interface MiningRunRecord extends RunSpec {
   finalFlushUntil?: string;
   authorityUntil: string;
   phase: RunPhase;
+  /** Absent on legacy schema-1 records; never inferred from the current catalog. */
+  contract?: D01RunContract;
 }
 
 interface Admission {
@@ -133,8 +140,34 @@ function parseAdmission(value: unknown): Admission {
   return { spec: parseSpec(record.spec), admission: record.admission as Admission["admission"] };
 }
 
-function parseRun(value: unknown): MiningRunRecord {
+function parseRun(value: unknown, version: 1 | 2): MiningRunRecord {
   const record = object(value);
+  if (version === 1 && "contract" in record)
+    invalid("Legacy mining records cannot claim a run contract.");
+  if (version === 2) {
+    const keys = new Set([
+      "plantId",
+      "runId",
+      "durationSeconds",
+      "scenario",
+      "seed",
+      "startedAt",
+      "stopAt",
+      "finalFlushUntil",
+      "authorityUntil",
+      "phase",
+      "contract",
+    ]);
+    if (Object.keys(record).some((key) => !keys.has(key)))
+      invalid("Unexpected persisted mining run field.");
+    try {
+      assertD01RunContract(record.contract);
+    } catch (cause) {
+      throw new MiningCoordinationError("invalid", "Invalid persisted mining run contract.", {
+        cause,
+      });
+    }
+  }
   const identity = parseSpec(value);
   const dates = [record.startedAt, record.stopAt, record.authorityUntil];
   if (
@@ -166,13 +199,43 @@ function parseRun(value: unknown): MiningRunRecord {
     ...(typeof finalFlushUntil === "string" ? { finalFlushUntil } : {}),
     authorityUntil: record.authorityUntil as string,
     phase: record.phase as RunPhase,
+    ...(version === 2 ? { contract: createD01RunContract() } : {}),
   };
 }
 
 function parsePlant(value: unknown): MiningRunRecord | null {
   const record = object(value);
-  if (record.version !== 1) invalid("Unsupported mining coordination document version.");
-  return record.run === null ? null : parseRun(record.run);
+  if (record.version !== 1 && record.version !== 2)
+    invalid("Unsupported mining coordination document version.");
+  if (Object.keys(record).sort().join() !== "run,version")
+    invalid("Invalid mining coordination document.");
+  return record.run === null ? null : parseRun(record.run, record.version);
+}
+
+function parseHistory(value: unknown): MiningRunRecord {
+  const record = object(value);
+  if ("version" in record) {
+    if (record.version !== 2 || Object.keys(record).sort().join() !== "run,version")
+      invalid("Unsupported mining history document version.");
+    return parseRun(record.run, 2);
+  }
+  return parseRun(record, 1);
+}
+
+function history(run: MiningRunRecord): unknown {
+  return run.contract ? { version: 2, run } : run;
+}
+
+async function saveHistory(store: MiningStore, run: MiningRunRecord): Promise<void> {
+  const path = historyPath(run.runId);
+  const value = history(run);
+  if (await store.create(path, value)) return;
+  const existing = await store.read(path);
+  if (
+    !existing ||
+    JSON.stringify(parseHistory(existing.value)) !== JSON.stringify(parseHistory(value))
+  )
+    invalid("Existing mining history conflicts with the authoritative run.");
 }
 
 function terminal(phase: RunPhase): boolean {
@@ -210,7 +273,7 @@ export class MiningRunCoordinator {
     if (admission.spec.runId !== runId) invalid("Mining admission identity mismatch.");
     const archived = await read(historyPath(runId));
     const plant = archived ? undefined : await read(PLANT_PATH);
-    let run = archived ? parseRun(archived.value) : plant ? parsePlant(plant.value) : null;
+    let run = archived ? parseHistory(archived.value) : plant ? parsePlant(plant.value) : null;
     if (run && run.runId !== runId) {
       if (archived) invalid("Mining history identity mismatch.");
       run = null;
@@ -249,6 +312,7 @@ export class MiningRunCoordinator {
     | { kind: "observed"; status: MiningRunStatus }
   > {
     const identity = spec(input);
+    const contract = createD01RunContract();
     const path = requestPath(identity.runId);
     const created = await this.store.create(path, { spec: identity, admission: "pending" });
     const receipt = await this.store.read(path);
@@ -269,7 +333,7 @@ export class MiningRunCoordinator {
     }
 
     if (!(await this.store.read(PLANT_PATH))) {
-      await this.store.create(PLANT_PATH, { version: 1, run: null });
+      await this.store.create(PLANT_PATH, { version: 2, run: null });
     }
     const leaseId = randomUUID();
     const acquiredAt = this.clock.now();
@@ -289,7 +353,7 @@ export class MiningRunCoordinator {
         const archived = terminal(previous.phase)
           ? previous
           : { ...previous, phase: "interrupted" as const };
-        await this.store.create(historyPath(previous.runId), archived);
+        await saveHistory(this.store, archived);
       }
       if (this.clock.monotonic() - acquiredTick >= AUTHORITY_MS) {
         throw new MiningCoordinationError(
@@ -303,6 +367,7 @@ export class MiningRunCoordinator {
         stopAt: new Date(acquiredAt + identity.durationSeconds * 1_000).toISOString(),
         authorityUntil: new Date(acquiredAt + AUTHORITY_MS).toISOString(),
         phase: "running",
+        contract,
       };
       const flushBudget = Math.min(
         this.finalFlushMilliseconds,
@@ -311,7 +376,7 @@ export class MiningRunCoordinator {
       if (flushBudget > 0) {
         run.finalFlushUntil = new Date(Date.parse(run.stopAt) + flushBudget).toISOString();
       }
-      const etag = await this.store.write(PLANT_PATH, { version: 1, run }, current.etag, leaseId);
+      const etag = await this.store.write(PLANT_PATH, { version: 2, run }, current.etag, leaseId);
       await this.store.write(path, { spec: identity, admission: "accepted" }, receipt.etag);
       if (this.clock.monotonic() - acquiredTick >= AUTHORITY_MS) {
         throw new MiningCoordinationError(
@@ -320,7 +385,7 @@ export class MiningRunCoordinator {
         );
       }
       const owner = new MiningRunOwner(this.store, run, etag, leaseId, this.clock, acquiredTick);
-      return { kind: "started", run: { ...run }, owner };
+      return { kind: "started", run: structuredClone(run), owner };
     } catch (error) {
       // On uncertain admission, release no authority to callers; the finite lease is the fallback.
       try {
@@ -509,7 +574,7 @@ export class MiningRunOwner {
     this.assertAuthority();
     this.etag = await this.store.write(
       PLANT_PATH,
-      { version: 1, run: this.run },
+      { version: 2, run: this.run },
       this.etag,
       this.leaseId,
     );
@@ -668,7 +733,7 @@ export class MiningRunOwner {
     };
     try {
       await this.persist();
-      await this.store.create(historyPath(this.run.runId), this.run);
+      await saveHistory(this.store, this.run);
       this.assertAuthority();
       await this.store.release(PLANT_PATH, this.leaseId);
       this.closed = true;

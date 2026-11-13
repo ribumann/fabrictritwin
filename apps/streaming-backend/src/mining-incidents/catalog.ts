@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   D01_CATALOG_VERSION,
   D01_PLANT_CATALOG,
@@ -10,6 +11,50 @@ import {
 import type { MiningRunRecord } from "../mining/run-coordinator.js";
 import type { MiningTag } from "./evaluator.js";
 import type { MiningIncidentRun } from "./runtime.js";
+
+/** Source-recorded contract; it is not an authorization or deployment attestation. */
+export interface D01RunContract {
+  catalogVersion: string;
+  profileVersion: string;
+  evaluatorReplayVersion: 1;
+}
+
+export function createD01RunContract(): D01RunContract {
+  const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  if (
+    D01_CATALOG_VERSION !==
+      "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" ||
+    D01_PUBLISH_PROFILE_VERSION !== "d01-publish-profile-v1" ||
+    hash(D01_PLANT_CATALOG) !==
+      "ae3ed7020cf49e13a6ac6153171e1703506b893047801c6c125a40ecdc7045e7" ||
+    hash(toD01PublishProfileRecords()) !==
+      "d28979a03d8ee5f5072f40c3a836c499918d2aeb085cbf00e4c770aa4dede3cc"
+  ) {
+    throw new Error("D01 catalog or publish profile no longer matches the supported contract.");
+  }
+  return {
+    catalogVersion: D01_CATALOG_VERSION,
+    profileVersion: D01_PUBLISH_PROFILE_VERSION,
+    evaluatorReplayVersion: 1,
+  };
+}
+
+export function assertD01RunContract(value: unknown): asserts value is D01RunContract {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid D01 run contract.");
+  }
+  const contract = value as Record<string, unknown>;
+  const supported = createD01RunContract();
+  if (
+    Object.keys(contract).sort().join() !==
+      "catalogVersion,evaluatorReplayVersion,profileVersion" ||
+    contract.catalogVersion !== supported.catalogVersion ||
+    contract.profileVersion !== supported.profileVersion ||
+    contract.evaluatorReplayVersion !== supported.evaluatorReplayVersion
+  ) {
+    throw new Error("Unsupported D01 run contract.");
+  }
+}
 
 /** Reconstructs the exact run/catalog binding without activating incident processing. */
 export function createD01IncidentRun(
@@ -55,5 +100,16 @@ export function createD01IncidentRun(
     startedAt: run.startedAt,
     endsAt: run.stopAt,
     tags: Object.freeze(tags),
+  });
+}
+
+/** Builds the prospective journal definition only from an already bound run. */
+export function createD01VersionedIncidentRun(
+  run: Pick<MiningRunRecord, "runId" | "startedAt" | "stopAt"> & { contract: D01RunContract },
+): MiningIncidentRun {
+  assertD01RunContract(run.contract);
+  return Object.freeze({
+    ...createD01IncidentRun(run),
+    contract: Object.freeze(createD01RunContract()),
   });
 }

@@ -1,4 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
+import {
+  createD01IncidentRun,
+  createD01RunContract,
+  createD01VersionedIncidentRun,
+} from "../src/mining-incidents/catalog.js";
 import {
   MiningIncidentRuntime,
   readMiningIncidentJournal,
@@ -137,6 +143,110 @@ function fixture() {
 }
 
 describe("durable fenced mining incident processing", () => {
+  it("writes and replays a schema-2 journal only with the exact prospective binding", async () => {
+    const { dependencies, store } = fixture();
+    const input = {
+      runId: run.runId,
+      startedAt: run.startedAt,
+      stopAt: run.endsAt,
+      contract: createD01RunContract(),
+    };
+    const versioned = createD01VersionedIncidentRun(input);
+    const legacy = createD01IncidentRun(input);
+    const runtime = await MiningIncidentRuntime.open(versioned, "fresh", dependencies);
+    await runtime.processMinute(iso(0));
+    const expected = createHash("sha256").update(JSON.stringify(versioned)).digest("hex");
+    expect(store.head().value).toMatchObject({ schema: 2, binding: expected });
+    expect(
+      [...store.documents.entries()]
+        .filter(([path]) => !path.endsWith("head.json"))
+        .every(([, doc]) => (doc.value as { schema: number }).schema === 2),
+    ).toBe(true);
+    await runtime.close();
+    await expect(readMiningIncidentJournal(store, legacy)).rejects.toThrow();
+    await expect(MiningIncidentRuntime.open(legacy, "recover", dependencies)).rejects.toThrow();
+    await expect(MiningIncidentRuntime.open(versioned, "fresh", dependencies)).rejects.toThrow();
+    const recovered = await MiningIncidentRuntime.open(versioned, "recover", dependencies);
+    expect(recovered.snapshot().binding).toBe(expected);
+    expect(recovered.snapshot().asOf).toBe(iso(0));
+    await recovered.close();
+    expect((await readMiningIncidentJournal(store, versioned))?.binding).toBe(expected);
+  });
+
+  it("keeps schema-1 binding unchanged and rejects versioned recovery or corrupt versions", async () => {
+    const { dependencies, store } = fixture();
+    const legacy = createD01IncidentRun({
+      runId: run.runId,
+      startedAt: run.startedAt,
+      stopAt: run.endsAt,
+    });
+    const versioned = createD01VersionedIncidentRun({
+      runId: run.runId,
+      startedAt: run.startedAt,
+      stopAt: run.endsAt,
+      contract: createD01RunContract(),
+    });
+    const runtime = await MiningIncidentRuntime.open(legacy, "fresh", dependencies);
+    await runtime.processMinute(iso(0));
+    expect(store.head().value).toMatchObject({
+      schema: 1,
+      binding: createHash("sha256").update(JSON.stringify(legacy)).digest("hex"),
+    });
+    await runtime.close();
+    await expect(MiningIncidentRuntime.open(versioned, "recover", dependencies)).rejects.toThrow();
+    await expect(MiningIncidentRuntime.open(versioned, "fresh", dependencies)).rejects.toThrow();
+    const recovered = await MiningIncidentRuntime.open(legacy, "recover", dependencies);
+    expect(recovered.snapshot().asOf).toBe(iso(0));
+    await recovered.close();
+    const badVersion = structuredClone(versioned);
+    Object.assign(badVersion.contract!, { evaluatorReplayVersion: 2 });
+    await expect(MiningIncidentRuntime.open(badVersion, "recover", dependencies)).rejects.toThrow();
+    const badTags = { ...versioned, tags: versioned.tags.slice(1) };
+    await expect(MiningIncidentRuntime.open(badTags, "recover", dependencies)).rejects.toThrow();
+  });
+
+  it("preserves schema-2 uncertainty and requires explicit recovery after a lost fenced response", async () => {
+    const { dependencies, store } = fixture();
+    const versioned = createD01VersionedIncidentRun({
+      runId: run.runId,
+      startedAt: run.startedAt,
+      stopAt: run.endsAt,
+      contract: createD01RunContract(),
+    });
+    const runtime = await MiningIncidentRuntime.open(versioned, "fresh", dependencies);
+    store.unknownWrite = true;
+    await expect(runtime.processMinute(iso(0))).rejects.toMatchObject({ code: "uncertain" });
+    expect(store.writes).toBe(1);
+    store.unknownWrite = false;
+    const recovered = await MiningIncidentRuntime.open(versioned, "recover", dependencies);
+    expect(recovered.snapshot().asOf).toBe(iso(0));
+    await recovered.close();
+  });
+
+  it("rejects a validly hashed schema-1 page in a schema-2 chain", async () => {
+    const { dependencies, store } = fixture();
+    const versioned = createD01VersionedIncidentRun({
+      runId: run.runId,
+      startedAt: run.startedAt,
+      stopAt: run.endsAt,
+      contract: createD01RunContract(),
+    });
+    const runtime = await MiningIncidentRuntime.open(versioned, "fresh", dependencies);
+    await runtime.processMinute(iso(0));
+    await runtime.close();
+    const [pagePath, page] = [...store.documents.entries()].find(
+      ([path]) => !path.endsWith("head.json"),
+    )!;
+    const changed = { ...(page.value as object), schema: 1 };
+    const hash = createHash("sha256").update(JSON.stringify(changed)).digest("hex");
+    const head = store.head().value as { tail: string; bytes: number };
+    head.tail = hash;
+    head.bytes = Buffer.byteLength(JSON.stringify(changed));
+    store.documents.set(pagePath.replace(/[^/]+$/, `${hash}.json`), { ...page, value: changed });
+    await expect(readMiningIncidentJournal(store, versioned)).rejects.toThrow();
+    await expect(MiningIncidentRuntime.open(versioned, "recover", dependencies)).rejects.toThrow();
+  });
+
   it("replays restart holds, active verification, acknowledgement and next transitions identically", async () => {
     const { dependencies, store } = fixture();
     const direct = new MiningIncidentEvaluator(run.runId, run.startedAt, run.tags);

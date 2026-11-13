@@ -26,9 +26,10 @@ durable operator stop. Use the authorized `requestStop` path for that.
 Incident processing is a separate **explicit** optional third argument to
 `run(input, cancellation, incidents)`: the trusted host supplies
 `MiningIncidentDependencies`, including a delegated authority and a real
-strictly validated curated source. The pure `createD01IncidentRun(run)` factory
+strictly validated curated source. The pure `createD01VersionedIncidentRun(run)` factory
 binds `runId`, `startedAt` and `endsAt` to the freshly admitted run and its
-model `stopAt`, never `finalFlushUntil`. It freezes tags in canonical source
+model `stopAt`, never `finalFlushUntil`, and incorporates its persisted contract
+into the schema-2 journal definition. It freezes tags in canonical source
 catalog order, joins module scopes and the versioned publication profile by
 ID, and checks their identities and intervals. It never uses the raw interval
 placeholder. Incident processing requires a whole number of minutes. No
@@ -36,11 +37,11 @@ constructor, configuration flag, observed admission, status read or ordinary
 viewer disconnect activates or adopts it. There is no production curated
 adapter or delegated write boundary in this source.
 
-The factory can reconstruct a read-only journal binding from a durable run
-record without activating it. Run records do not currently persist catalog or
-profile versions: a digest match does not establish historical authorization or
-which producer version ran. An independently trusted approved-run/version
-proof is still required before exposing incident data.
+`createD01IncidentRun` retains the exact legacy schema-1 definition for
+read/recovery; it does not add the new contract to old records. A reconstructed
+digest or prospective source-recorded contract does not establish historical
+authorization or which deployed producer actually ran. An independently trusted
+approved-run/version proof is still required before exposing incident data.
 
 On an accepted stop through this runtime, the local incident processor is
 aborted as soon as stop intent is persisted, even if the subsequent status

@@ -5,7 +5,10 @@ import {
   toD01PublishProfileRecords,
   type D01TransportBody,
 } from "@triathlon-twin/simulator/mining";
-import { createD01IncidentRun } from "../src/mining-incidents/catalog.js";
+import {
+  createD01IncidentRun,
+  createD01VersionedIncidentRun,
+} from "../src/mining-incidents/catalog.js";
 import { MiningIncidentRuntime } from "../src/mining-incidents/runtime.js";
 import {
   configuredMiningPublisherRuntime,
@@ -468,9 +471,11 @@ describe("D01 real-clock publisher", () => {
     await settle();
     expect(source).toHaveBeenCalledOnce();
     const run = (await runtime.status(requestId))?.run;
-    if (!run) throw new Error("Missing admitted run.");
+    if (!run?.contract) throw new Error("Missing admitted run contract.");
     expect(open).toHaveBeenCalledOnce();
-    expect(open.mock.calls[0]?.[0]).toEqual(createD01IncidentRun(run));
+    expect(open.mock.calls[0]?.[0]).toEqual(
+      createD01VersionedIncidentRun({ ...run, contract: run.contract }),
+    );
     expect(
       await runtime.run({ ...input, durationSeconds: 60 }, undefined, incidents),
     ).toMatchObject({ phase: "running" });

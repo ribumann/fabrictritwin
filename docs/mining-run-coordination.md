@@ -125,6 +125,30 @@ authorization **must be enforced by the future caller**; this is not a public AP
   `admission_unknown`/`interrupted` are not successful starts or stopped
   acknowledgements. Status reads never renew a lease or start work.
 
+## Prospective run contract and rollout
+
+Fresh admissions persist a server-derived `contract` containing the supported
+catalog version, publication profile version and `evaluatorReplayVersion: 1`.
+It is written in a **version 2** plant envelope under the plant lease and ETag
+before the accepted admission and owner are returned. The contract survives
+heartbeats, finalization and version 2 history envelopes. The supported catalog
+and profile content are pinned as well as their version labels. An unsupported
+or malformed contract is rejected, not filled from current defaults.
+
+Version 1 plant records and unwrapped history remain readable without a
+contract: their catalog, profile and evaluator provenance is **unknown**.
+There is no automatic conversion or certification. Version 2 state and history
+are deliberately rejected by old schema-1 code instead of allowing an older
+writer to discard the new fields. Before any separately approved activation,
+coordinate the upgrade of **all** replicas, readers and rollback procedures;
+do not roll back to schema-1 code against version 2 durable state. Disable new
+admissions and drain/reconcile owners and uncertain writes before a coordinated
+transition. Current incident read mapping does not support version 2.
+
+The recorded contract is a source self-assertion, not independent proof of
+operator authorization, deployed image identity, actual delivery or readiness.
+Trusted run/version approval and source/deployment verification remain separate.
+
 ## Concurrency, failure and recovery
 
 One leased `plants/D01.json` blob is the authoritative plant state shared by all
