@@ -329,4 +329,8 @@ $arguments = '__ARGUMENTS__' | ConvertFrom-Json -AsHashtable
         Should -Invoke Invoke-WebRequest -Times 0 -Exactly
         Should -Invoke Invoke-RestMethod -Times 0 -Exactly
     }
+
+    Context 'guarded static source apply' {
+        . (Join-Path $PSScriptRoot 'Mining-StaticLoader.Cases.ps1')
+    }
 }

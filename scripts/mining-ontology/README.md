@@ -1,4 +1,4 @@
-# D01 native ontology source (offline)
+# D01 native ontology static source
 
 This additive **old-experience JSON** source consumes the simulator-owned
 `apps/simulator/src/mining/plant-catalog.json` at its pinned byte hash. It does
@@ -39,17 +39,81 @@ closed. Every unrelated definition part retains its exact payload and metadata;
 the desired snapshot has no added parts. `-Mode Verify` compares snapshots
 **offline**; it does not prove active instances or source data.
 
-**Apply is intentionally blocked**, including repeated attempts, without making
-network requests. The live executor/receipts are not implemented here. Before
-an approved executor can write: verify tenant/caller, capacity/workspace, item
-ownership, Lakehouse write permission (`Lakehouse.ReadWrite.All` for delegated
-load), managed tables without Delta column mapping, OneLake file permissions,
-schema-enabled beta load availability, and exact loaded rows/hashes. Upload
-catalog CSVs under `Files/mining-D01/<hash>/`, then use the planned
-`.../schemas/dbo/tables/<owned-table>/load?beta=true` route, not legacy `/tables`.
-Follow each load operation to completion and verify its data before submitting
-the definition. Overwrite is scoped to these twelve owned tables only; never
-append duplicate catalog rows. Reconcile uncertain outcomes, never blindly retry.
+## Reviewed static apply
+
+`plan.ps1` stays offline (its legacy Apply mode remains blocked).
+`apply.ps1` provides the separate executor, defaulting to **read-only Verify**.
+No hosted execution is implied by this source. Before regenerating/reviewing
+the bundle, add `CallerObjectId`, `SqlEndpointId`, `SqlServer` (hostname only)
+and `SqlDatabase` (the source Lakehouse display name) to the private target.
+These must match live source metadata; they are not connection strings.
+
+Use the **same pinned planner arguments** with the executor, supplying the
+reviewed `plan.json` byte hash and a new private receipt path:
+
+```powershell
+.\scripts\mining-ontology\apply.ps1 -CatalogPath $catalog `
+  -BaselinePath $baseline -BaselineSha256 $reviewedBaselineHash `
+  -CurrentPath $current -TargetPath $privateTarget `
+  -TargetSha256 $reviewedTargetHash -BundleDirectory $newPrivateBundle `
+  -ReviewedPlanSha256 $reviewedPlanHash -ReceiptPath $newPrivateReceipt `
+  -Mode Apply -ApproveStaticWrites -AcknowledgeNonAtomicUpdate `
+  -ExclusiveWriterWindowId $approvedWindow
+```
+
+Only run this after explicit, target-specific write approval and an externally
+coordinated exclusive-writer window. The flags acknowledge that approval; they
+do not grant permissions or implement a remote lock. The executor regenerates
+the authoritative plan and validates every reviewed bundle file, rather than
+trusting editable request URLs or an arbitrary owned-part list. It uses the
+already signed-in Azure CLI profile without signing in or switching accounts,
+checks tenant/caller/audience/lifetime for each token, and uses encrypted
+`System.Data.SqlClient` connections. HTTP and query clients are injectable for
+offline tests; tokens stay in memory and never enter receipts.
+
+Preflight checks the exact schema-enabled source/SQL endpoint and ontology,
+a complete shortcut inventory, database metadata visibility and `dbo` SELECT.
+Content-addressed CSVs use OneLake ADLS create/append/flush and byte readback.
+Conditional creation never overwrites existing files. Only **absent** owned
+tables are loaded, using `.../schemas/dbo/tables/<owned-table>/load?beta=true`;
+existing tables must already match or apply refuses. A fresh absence check
+precedes each load. No telemetry is copied, and no existing table is repaired
+or overwritten. Load completion is bounded and returned operation locations
+must remain on the supported exact Fabric routes; writes are never retried.
+
+Each table must resolve to its exact local `Tables/dbo/<owned-table>` path,
+without shortcut redirection, with the expected string columns. The bounded
+Delta JSON history (versions 0 through latest, at most 128, no checkpoints)
+must prove column mapping is absent/`none`. Null metadata properties alone
+are **not** accepted as proof. Unsupported histories stop explicitly rather
+than guessing current state. SQL verification rejects row-security filters,
+reads up to expected-count-plus-one rows, ordinally sorts and hashes all
+loaded values against the reviewed CSV. Blank CSV cells and SQL NULL are
+equivalent empty strings. SQL endpoint lag stops apply without resubmitting
+the load; Verify can be run later.
+
+The private receipt is an append-only JSONL journal of full state snapshots
+(read the last complete line), durably flushed **before every write**. Earlier
+preimages survive a torn final record, which blocks repeat Apply. It retains the complete
+native preimage, operation locations, created-table/file residuals, row hashes
+and manual rollback guidance. Definition update rechecks the live preimage,
+submits the fully preserved additive parts without metadata changes, and
+verifies the entire postimage. There is **no atomic CAS or automatic rollback**.
+An unresolved receipt blocks repeat Apply. Reconcile using `-Mode Verify`
+with a new receipt path; never delete an uncertain receipt and retry blindly.
+A completed receipt can be reused for a second Apply: actual rows/definition
+are checked again and no writes occur.
+
+Required deployment checks are not yet hosted-verified: the exact caller needs
+source Lakehouse write/load access (delegated `Lakehouse.ReadWrite.All`), OneLake
+file read/write and shortcut-inventory read access, ontology read/write
+(`Item.ReadWrite.All` or applicable item scope), and SQL connectivity on TCP
+1433 with complete metadata visibility and source-schema SELECT. Coordinate
+least privilege with the estate owner; this tooling never grants roles.
+Schema-scoped beta load availability must be established on the actual item.
+An API/SQL failure is recorded as such, not automatically called a permission
+issue. Approval, token acquisition or feature failures must be resolved before
+an authorized run; missing curated telemetry does not block this static path.
 
 The old API supports `TimeSeries` / `KustoTable` with Eventhouse **item** ID,
 cluster URI, database, table, timestamp column and property/key mappings.
@@ -65,4 +129,8 @@ References: [old native definition](https://learn.microsoft.com/rest/api/fabric/
 [old binding requirements](https://learn.microsoft.com/fabric/iq/ontology/old-experience/how-to-bind-data),
 [schema-aware CSV loading](https://learn.microsoft.com/fabric/data-engineering/lakehouse-api),
 [load permissions/payload](https://learn.microsoft.com/rest/api/fabric/lakehouse/tables/load-table),
-[OneLake metadata](https://learn.microsoft.com/fabric/onelake/table-apis/delta-table-apis-overview).
+[OneLake metadata](https://learn.microsoft.com/fabric/onelake/table-apis/delta-table-apis-overview),
+[OneLake ADLS access/parity](https://learn.microsoft.com/fabric/onelake/onelake-access-api),
+[append/flush](https://learn.microsoft.com/rest/api/storageservices/datalakestoragegen2/path/update),
+[SQL verification connectivity](https://learn.microsoft.com/fabric/data-warehouse/connectivity),
+[native updateDefinition](https://learn.microsoft.com/rest/api/fabric/core/items/update-item-definition).

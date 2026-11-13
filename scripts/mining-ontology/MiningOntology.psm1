@@ -361,14 +361,21 @@ function Export-MiningOntologyPlan {
     }
     $definitionPath = Join-Path $OutputDirectory 'definition.json'
     [IO.File]::WriteAllText($definitionPath, (ConvertTo-MiningJson $Plan.definition), [Text.UTF8Encoding]::new($false))
+    $receipt = Get-MiningPlanReceipt $Plan
+    [IO.File]::WriteAllText((Join-Path $OutputDirectory 'plan.json'), (ConvertTo-MiningJson $receipt), [Text.UTF8Encoding]::new($false))
+    $receipt
+}
+
+function Get-MiningPlanReceipt {
+    param([Parameter(Mandatory)]$Plan)
     $receipt = [ordered]@{}
     foreach ($key in $Plan.Keys) {
         if ($key -notin @('definition', 'tables')) { $receipt[$key] = $Plan[$key] }
     }
     $receipt.tables = @($Plan.tables | ForEach-Object { [ordered]@{ name = $_.name; rowCount = $_.rowCount; sha256 = $_.sha256 } })
-    $receipt.definitionFileSha256 = (Get-FileHash -LiteralPath $definitionPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    [IO.File]::WriteAllText((Join-Path $OutputDirectory 'plan.json'), (ConvertTo-MiningJson $receipt), [Text.UTF8Encoding]::new($false))
+    $receipt.definitionFileSha256 = Get-MiningTextHash (ConvertTo-MiningJson $Plan.definition)
     $receipt
 }
 
-Export-ModuleMember -Function New-MiningOntologyPlan, Export-MiningOntologyPlan
+. (Join-Path $PSScriptRoot 'StaticLoader.ps1')
+Export-ModuleMember -Function New-MiningOntologyPlan, Export-MiningOntologyPlan, Invoke-MiningStaticApply, New-MiningLiveClient
