@@ -93,6 +93,8 @@ describe("mining summary source mapping", () => {
       { ...row(), common_coverage: 1.1 },
       { ...row(), running_lines: 4 },
       { ...row(), status: "STATE_COVERAGE_INCOMPLETE", running_lines: 3 },
+      { ...row(), processed_tonnes: null },
+      { ...row(), status: "NO_DATA", conflicting_event_count: 1 },
       { ...row(), non_good_sample_count: 1 },
       { ...row(), first_event_time: "2026-01-01T10:59:59Z" },
       { ...row(), window_end_utc: "2026-01-01T11:10:00.0000001Z" },

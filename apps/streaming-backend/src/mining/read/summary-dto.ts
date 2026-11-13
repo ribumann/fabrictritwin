@@ -108,7 +108,7 @@ export function mapSummaryRows(
   const feedB = numberOrNull(row.line_b_feed_tph);
   const feedC = numberOrNull(row.line_c_feed_tph);
   const plantFeed = numberOrNull(row.plant_feed_tph);
-  numberOrNull(row.processed_tonnes);
+  const processed = numberOrNull(row.processed_tonnes);
   const water = numberOrNull(row.gross_process_water_m3_per_t);
   const energy = numberOrNull(row.whole_plant_energy_kwh_per_t);
   const running = countOrNull(row.running_lines);
@@ -124,6 +124,7 @@ export function mapSummaryRows(
   ]) {
     if (value !== null) timestamp(value);
   }
+  if (conflicts !== 0) return fail("Invalid mining summary conflict count.");
   if (row.status === "NO_DATA") {
     return {
       throughput: missing("t/h"),
@@ -140,8 +141,7 @@ export function mapSummaryRows(
     late === null ||
     conflicts === null ||
     nonGood !== uncertain + bad ||
-    late > good + nonGood ||
-    conflicts !== 0
+    late > good + nonGood
   ) {
     return fail("Invalid mining summary quality counts.");
   }
@@ -167,6 +167,7 @@ export function mapSummaryRows(
       feedB === null ||
       feedC === null ||
       plantFeed === null ||
+      processed === null ||
       water === null ||
       energy === null)
   )
