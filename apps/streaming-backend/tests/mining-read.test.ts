@@ -305,6 +305,7 @@ describe("approved mining read boundary", () => {
       etag: "3",
       leased: false,
     });
+
     expect((await request(app).get("/api/mining/runs/status")).body).toMatchObject({
       publisherStatus: "admission_pending",
       ingestionStatus: "unknown",
@@ -318,6 +319,21 @@ describe("approved mining read boundary", () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  it("reports rejected durable admissions distinctly from missing runs", async () => {
+    const { app, documents, mutate } = setup();
+    documents.set(`requests/${runId}.json`, {
+      value: { spec, admission: "rejected" },
+      etag: "1",
+      leased: false,
+    });
+    for (const route of ["context", "runs/status"]) {
+      const response = await request(app).get(`/api/mining/${route}`);
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("mining_admission_rejected");
+    }
+    expect(mutate).not.toHaveBeenCalled();
   });
 
   it("validates windows, module IDs, fields and row bounds without reading or querying", async () => {

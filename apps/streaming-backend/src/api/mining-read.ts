@@ -258,7 +258,7 @@ export function createMiningReadRouter(options: ReadOptions): Router {
           });
         const status = await statusReader(runId, controllers.get(res)?.signal);
         if (res.headersSent || res.destroyed) return;
-        if (!status || status.runId !== runId || !runDto(status, catalog.D01_CATALOG_VERSION)) {
+        if (!status || status.runId !== runId) {
           error(
             res,
             404,
@@ -267,7 +267,11 @@ export function createMiningReadRouter(options: ReadOptions): Router {
           );
           return;
         }
-        const run = runDto(status, catalog.D01_CATALOG_VERSION)!;
+        const run = runDto(status, catalog.D01_CATALOG_VERSION);
+        if (!run) {
+          error(res, 409, "mining_admission_rejected", "The approved run admission was rejected.");
+          return;
+        }
         if (route === "runs/status") {
           res.json(run);
         } else {

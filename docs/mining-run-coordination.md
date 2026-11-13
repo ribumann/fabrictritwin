@@ -24,7 +24,8 @@ mining-state store below. No Easy Auth header or athlete mapping grants access.
 Invalid bearer tokens are rejected with 401; identity-provider verification
 failures are logged and returned as 503 instead of being reported as invalid tokens.
 Status and context perform read-only durable reads; publisher completion does not
-prove ingestion. A single request deadline or client disconnect cancels ongoing
+prove ingestion. Rejected durable admissions return a distinct 409 rather than
+being reported as absent. A single request deadline or client disconnect cancels ongoing
 Blob status reads and prevents subsequent reads. Queries, incident persistence and
 the assistant are not connected: context reports `readAvailable: false`, while data
 routes return explicit 503.
@@ -38,9 +39,12 @@ match the existing `EVENTHOUSE_QUERY_URI` and `EVENTHOUSE_DATABASE_NAME`, plus
 `MINING_CURATED_QUERY_VERSION=d01-g5-query-v1`. These values are configuration,
 not evidence of source readiness. No data route invokes this transport until the
 reviewed functions' readiness control rows and result schemas are connected.
-The SDK's separate metadata discovery is not cancellable by the query client's
-close operation; the transport must not be mounted until its entire pre-query
-and query path is bounded and cancellable.
+The source-only transport uses a single abort signal for bounded public-cloud
+metadata discovery, the Container Apps loopback managed-identity broker, and the
+query response. It requires `MINING_MANAGED_IDENTITY_CLIENT_ID` and the platform's
+`IDENTITY_ENDPOINT` and `IDENTITY_HEADER`; it rejects unknown cloud metadata and
+never falls back to another identity or token resource. This cancellation work does
+not prove deployed query readiness or authorize a live query.
 
 ## Prerequisites and configuration
 
