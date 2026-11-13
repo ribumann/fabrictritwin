@@ -164,3 +164,157 @@ Do not dispatch a real update until the coordinator has approved the exact
 resource IDs, proposed write and permissions, configured the environment and
 verified its OIDC subject. Image provenance and application compatibility are
 operator approval requirements; a digest pins content but does not certify it.
+
+## Protected mining private-state bootstrap (separate release item)
+
+`Prepare private mining state` is manual, main-only and uses the same protected
+`azure-deploy` environment and deployment concurrency group. **This source change
+does not authorize a dispatch or any cloud write.** Keep
+`MINING_STATE_BOOTSTRAP_ENABLED` unset or `false` until native environment
+protection, private target review and explicit write authorization are complete.
+Require independent reviewers, no self-approval/bypass and main-only deployment
+branches as described above; do not enable this on a repository plan that cannot
+enforce those controls.
+The reusable script also rejects non-WhatIf apply outside the expected main
+workflow context. Local use is preview-only. Context checks prevent accidental
+misuse; native GitHub protections and narrowly federated Azure authorization,
+not caller-set environment strings, remain the security boundary.
+
+The script defaults to read-only preview. It validates the exact tenant,
+subscription and deployment service principal; the existing ready StorageV2
+account must already disable shared-key and public-blob access. It verifies the
+existing backend and the **explicitly selected attached UAMI**, including its
+resource ID, tenant, client ID and principal ID. It probes the selected Blob
+endpoint with Entra HEAD requests to frontload network and read-access failures.
+It reads container and scoped role metadata, including pagination; a denied or
+ambiguous read is a blocker, not evidence that a resource is absent. All targets
+are in the explicitly configured resource group in public Azure.
+
+An approved apply may create only the missing dedicated private container and
+grant `Storage Blob Data Contributor` to that UAMI **at that container scope**.
+The [Blob Create Container API](https://learn.microsoft.com/en-us/rest/api/storageservices/create-container)
+fails if the name exists; it cannot overwrite container settings. An existing
+live private container is retained without modifying metadata or ACLs. Existing
+exact unconditional assignments are retained even under a different assignment
+name; new assignments use a deterministic name derived from scope, principal and
+role. A conflicting deterministic assignment or conditional matching role stops
+the operation. Inherited grants are not created, changed or represented as a
+least-privilege audit of the estate.
+
+### Protected environment variables
+
+Reuse `AZURE_DEPLOY_CLIENT_ID`, `AZURE_DEPLOY_TENANT_ID`,
+`AZURE_DEPLOY_SUBSCRIPTION_ID` and `AZURE_DEPLOY_RESOURCE_GROUP`. Do not put
+actual target identifiers, snapshots or private plan files in public source,
+issues, PRs or Actions artifacts. Additional **environment-level** variables:
+
+| Variable | Required value |
+| --- | --- |
+| `MINING_STATE_CALLER_PRINCIPAL_ID` | Exact object ID of the deployment service principal, not the backend |
+| `MINING_STATE_ACTOR_ID` | Numeric GitHub account ID of the authorized dispatching operator |
+| `MINING_STATE_STORAGE_ACCOUNT` | Explicit existing StorageV2 account name |
+| `MINING_STATE_CONTAINER` | Dedicated mining-state container name, never a shared/token container |
+| `MINING_STATE_BACKEND_APP` | Exact existing streaming-backend app name |
+| `MINING_STATE_IDENTITY_NAME` | Explicit existing attached UAMI resource name |
+| `MINING_STATE_IDENTITY_CLIENT_ID` | That UAMI's expected client ID |
+| `MINING_STATE_IDENTITY_PRINCIPAL_ID` | That UAMI's expected principal ID |
+| `MINING_STATE_APPROVED_DIGEST` | Lowercase 64-hex digest of the privately reviewed exact plan; apply only |
+| `MINING_STATE_BOOTSTRAP_ENABLED` | Exact `true` only after separate authorization; apply only |
+
+Both preview and apply require environment approval. The workflow verifies the
+actual immutable-ID OIDC subject for `azure-deploy`, issuer, audience, repository
+and owner IDs, actor ID, main ref, exact workflow path and source SHA before login.
+Azure tokens must match the pinned deployment caller as well as tenant. The
+environment subject expectation still needs actual canary verification; this
+change does not prove a federated exchange or grant any rights. Reruns are
+rejected: use a new dispatch, approvals and fresh preview after inspection.
+
+### Permission and network review before authorization
+
+Use the existing approved deployment identity only after reviewing its exact
+rights. It needs account/app/UAMI/container metadata reads, scoped RBAC reads,
+and Blob container properties read on the exact selected target. Missing
+container previews require an authenticated `404 ContainerNotFound`; network
+denials, firewall failures, other 404s and inaccessible metadata stop explicitly.
+Hosted-runner reachability is not assumed. No firewall, private endpoint,
+account policy or identity is altered to obtain access.
+
+For an authorized create, the caller needs
+`Microsoft.Storage/storageAccounts/blobServices/containers/write` for the
+selected container and `Microsoft.Authorization/roleAssignments/write` at that
+container scope. Have an administrator verify whether the exact child-scoped
+grants, including creation of an absent child and Blob authorization, are
+supported by the actual provider/policy. Never automatically broaden a denial
+to account/RG/subscription Contributor, Owner, User Access Administrator or Blob
+Data Contributor. Consider a custom role or administrator-managed conditions
+constraining RBAC writes to the approved role and principal; the service's
+authorization boundary, not the script, limits a compromised identity.
+No Entra writes, account keys, SAS/delegation keys or secret values are required.
+Existing OIDC and write capabilities are **untested**, not deployment-ready.
+
+### Private plan review and apply
+
+1. Prepare the exact main checkout and protected variables; keep all activation
+   flags off. Dispatch with `apply: false` only after authorization for reads.
+   The public summary contains only digest, fixed scope and status, never a raw
+   plan or runtime configuration. Approval of a preview is not write approval.
+2. In an independently secured operator session, run
+   `bootstrap-mining-state.ps1` (PowerShell 7.2+) with those exact values
+   and `-SourceRevision (git rev-parse HEAD) -PrivatePlanPath <private-new-file>`.
+   All target arguments are mandatory; there is no principal-selection fallback.
+   Use an access-controlled directory outside the repository and synced/public
+   artifact stores. The script refuses overwrites and private exports in Actions.
+   The private file includes raw account/backend/UAMI/container/RBAC metadata,
+   including runtime references: restrict access and retention accordingly.
+   Use the approved deployment caller, or explicitly select an **already
+   authorized service-principal read identity** with both
+   `-PrivateReviewReaderClientId` and `-PrivateReviewReaderPrincipalId`. These
+   options work only with a local private preview, never apply or Actions, and
+   do not acquire credentials or grant permissions. Tokens must match that
+   explicit reader; its IDs are recorded separately in private review evidence.
+   The plan still pins the approved deployment caller, so independent private
+   review does not require exporting a GitHub OIDC token or adding local
+   credentials to an OIDC-only deployment identity.
+3. Independently review that file's exact targets, proposed create/no-op
+   operations, caller, source and digest. Its digest must match the Actions
+   preview. Store that digest in `MINING_STATE_APPROVED_DIGEST`, then authorize
+   enablement separately. A digest is a binding, not permission or an attestation.
+4. Dispatch `apply: true` with the same digest in `approved_digest`. Obtain native
+   environment approval for this apply after reviewing its source and inputs.
+   The script re-reads state, requires exact digest equality and checks again
+   immediately before each write. Changed source, target, app settings, identity,
+   account or scoped role metadata requires a new preview and private review.
+   Do not reuse the original digest after a partial apply.
+
+The local private preview and Actions preview must use consistent PowerShell/API
+serialization, expected deployment caller and source. The review reader's identity
+is evidence outside the plan digest, not a write authorization. There is deliberately no public plan
+download, artifact upload, digest override or blind retry path.
+
+### Non-atomic boundaries and explicit exclusions
+
+Container creation and RBAC assignment are **not atomic** across resources.
+Fresh reads detect drift but cannot lock the backend, UAMI, account or other
+operators. Coordinate external configuration changes during the approved window.
+Between writes, only the newly created private container is accepted as expected
+drift; other changes stop before RBAC. After RBAC, verify the exact assignment and
+unchanged remaining metadata. Propagation delay can cause verification to fail
+after a successful write: that is an unverified/partial outcome, not permission
+to retry. The workflow has no automatic retries, rollback or deletion.
+
+Safe digest and phase-status messages remain in run logs as minimal evidence.
+On failure, preserve/review private Azure audit records and current exact
+container/assignment state before a new preview; never paste raw diagnostics into
+public logs. Public errors suppress service bodies and private targets, so they
+cannot establish that no write occurred. A failed or timed-out run may have
+created the container or role.
+
+**Runtime overlay is deferred.** The current settings helper cannot provide an
+exact ETag/CAS contract for updating only `MINING_STATE_BLOB_ENDPOINT` and
+`MINING_STATE_CONTAINER`. This workflow therefore makes **no app write**: no
+full-app PUT/PATCH, image, env, secret, identity, ingress or revision changes.
+Runtime, publisher and analytics flags stay default-off and unchanged.
+Coordination, ingestion, incidents, queries, Fabric, ontology and simulator
+activation are excluded. `BootstrapVerified` describes control-plane state only,
+not role propagation, runtime Blob access, private networking readiness, mining
+hosted proof, deployment or a functioning Azure/Fabric environment.
