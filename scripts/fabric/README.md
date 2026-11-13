@@ -111,7 +111,7 @@ The five fixed G5 read contracts are:
 | --- | --- | --- |
 | `mining_PlantLatest` | `(plant_id:string, run_id:string, as_of_utc:datetime)` | Catalog-wide tag/module rows; latest seven days; quality and freshness remain explicit |
 | `mining_PlantSummary` | `(plant_id:string, run_id:string, window_start_utc:datetime, window_end_utc:datetime)` | 60 seconds–24 hours; interval-integrated line feed, process water and whole-plant power; no hopper double count, OEE, grade, or line-energy allocation |
-| `mining_AssetTrend` | `(plant_id:string, run_id:string, requested_module_id:string, metric_family:string, window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)` | 1- or 5-minute bins; at most 24 hours; explicit gaps, quality counts, late counts and overflow |
+| `mining_AssetTrend` | `(plant_id:string, run_id:string, requested_module_id:string, metric_family:string, window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)` | BFF families `feed`, `density`, `vibration`, `water-energy`; 1- or 5-minute bins; at most 24 hours; explicit gaps, quality counts, late counts and overflow |
 | `mining_ActiveIncidents` | `(plant_id:string, requested_run_id:string, as_of_utc:datetime)` | Requires the separately approved `d01-incident-ledger-v1`; at most 20 incidents |
 | `mining_CompareLines` | `(plant_id:string, run_id:string, metric_family:string, window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)` | 1- or 5-minute bins; at most 24 hours and 1,000 rows; only `feed`, `density`, `vibration` |
 
@@ -131,6 +131,16 @@ the caller's smaller `maxRows` (1–1,000). Common statuses include `OK`,
 `BLOCKED_INCIDENT_SOURCE`, `NO_ACTIVE_INCIDENTS`, or `TOO_MANY_INCIDENTS`.
 Readiness failures retain their `BLOCKED_*` status. These status rows are
 explicit outcomes, not successful empty results.
+
+`AssetTrend` accepts the Cockpit metric families, not raw catalog metric names.
+Within the requested module, it selects catalog tags by the fixed mapping
+`feed` → `ore_flow`, `density` → `medium_density`, `vibration` →
+`vibration_rms`, and `water-energy` → `water_flow` or `power`. It returns each
+selected canonical `tagId`/`seriesId` independently with that tag's catalog
+unit and keeps `metric_family` equal to the requested Cockpit family. In
+particular, water-flow and power series are never combined or converted into a
+fabricated shared ratio; the selected module scope and each exact tag identity
+remain visible to the caller.
 
 The exact candidate result projections are below. All rows include
 `status:string`; Kusto strings cannot be null, so unavailable string values are

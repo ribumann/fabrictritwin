@@ -388,9 +388,9 @@
     window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)
 {
     let source_status = toscalar(mining_SourceReadiness() | project status);
+    let requested_metric_family = metric_family;
     let duration_seconds = todouble(datetime_diff("millisecond", window_end_utc, window_start_utc)) / 1000.0;
-    let metric_ok = metric_family in ("ore_flow", "medium_density", "feed_pressure", "vibration_rms",
-        "bearing_temperature", "motor_current", "water_flow", "level", "power", "product_mass");
+    let metric_ok = requested_metric_family in ("feed", "density", "vibration", "water-energy");
     let identity_ok = plant_id == "D01" and
         run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
         isnotempty(requested_module_id);
@@ -408,7 +408,11 @@
             record_kind == "tag"
         | extend tag_id = record_id, module_id = tostring(record_json.module_id),
             metric = tostring(record_json.metric), unit = tostring(record_json.unit)
-        | where module_id == requested_module_id and metric == metric_family
+        | where module_id == requested_module_id and (
+            (requested_metric_family == "feed" and metric == "ore_flow") or
+            (requested_metric_family == "density" and metric == "medium_density") or
+            (requested_metric_family == "vibration" and metric == "vibration_rms") or
+            (requested_metric_family == "water-energy" and metric in ("water_flow", "power")))
         | join kind=inner (
             mining_PublishProfile
             | where plant_id == "D01" and catalog_version ==
@@ -478,7 +482,7 @@
             good_count > 0 and non_good_count > 0, "MIXED_QUALITY",
             good_count == 0, "GAP",
             "OK"),
-            tagId = tag_id, seriesId = tag_id, metric_family = metric;
+            tagId = tag_id, seriesId = tag_id, metric_family = requested_metric_family;
     let row_count = toscalar(grid | count);
     let control =
         print status = case(
@@ -494,7 +498,7 @@
             row_count > 1000, "TOO_MANY_ROWS",
             "OK"),
             plant_id = "D01", run_id, module_id = requested_module_id, tagId = "", seriesId = "",
-            metric_family, bin_start_utc = datetime(null), value = real(null), unit = "",
+            metric_family = requested_metric_family, bin_start_utc = datetime(null), value = real(null), unit = "",
             good_count = long(null), non_good_count = long(null), coverage = real(null),
             source_qualities = dynamic(null),
             uncertain_count = long(null), bad_count = long(null),
@@ -507,7 +511,7 @@
         | where request_ok and source_status == "READY" and metric_ok and
             selected_count > 0 and conflict_count == 0 and event_count > 0 and row_count <= 1000
         | project status, plant_id = "D01", run_id, module_id, tagId, seriesId,
-            metric_family, bin_start_utc, value, unit, good_count, non_good_count,
+            metric_family = requested_metric_family, bin_start_utc, value, unit, good_count, non_good_count,
             source_qualities, uncertain_count, bad_count, late_count, expected_samples, coverage,
             first_event_time, last_event_time,
             first_received_at, last_received_at;

@@ -209,6 +209,20 @@ Describe 'Offline mining source and query contracts (static checks only)' {
         $script:QueriesText | Should -Match '(?s)mining_CompareLines\(\s*plant_id:string,\s*run_id:string,\s*metric_family:string'
     }
 
+    It 'maps AssetTrend families to canonical catalog metrics and keeps series separate' {
+        $assetTrend = [regex]::Match(
+            $script:QueriesText,
+            '(?s)mining_AssetTrend\(.*?\.create-or-alter function with \(folder = "Mining/Queries"\) mining_ActiveIncidents'
+        ).Value
+        $assetTrend | Should -Match 'metric_family in \("feed", "density", "vibration", "water-energy"\)'
+        $assetTrend | Should -Match 'requested_metric_family == "feed" and metric == "ore_flow"'
+        $assetTrend | Should -Match 'requested_metric_family == "density" and metric == "medium_density"'
+        $assetTrend | Should -Match 'requested_metric_family == "vibration" and metric == "vibration_rms"'
+        $assetTrend | Should -Match 'requested_metric_family == "water-energy" and metric in \("water_flow", "power"\)'
+        $assetTrend | Should -Match 'by module_id, tag_id, metric, unit, cadence_seconds,'
+        $assetTrend | Should -Match 'metric_family = requested_metric_family'
+    }
+
     It 'reads curated sources rather than raw dynamic tables' {
         $script:QueriesText | Should -Match 'mining_ValidatedTelemetry'
         $script:QueriesText | Should -Match 'mining_ValidatedState'
@@ -218,16 +232,17 @@ Describe 'Offline mining source and query contracts (static checks only)' {
     }
 
     It 'preserves canonical CompareLines tags, units, metric families, and overflow status' {
-        $script:QueriesText | Should -Match 'D01\.A\.crusher\.ore_flow'
-        $script:QueriesText | Should -Match 'D01\.B\.crusher\.ore_flow'
-        $script:QueriesText | Should -Match 'D01\.C\.crusher\.ore_flow'
-        $script:QueriesText | Should -Match 'D01\.A\.dms\.medium_density'
-        $script:QueriesText | Should -Match 'D01\.A\.crusher\.vibration_rms'
-        $script:QueriesText | Should -Match 'metric_ok = metric_family in \("feed", "density", "vibration"\)'
-        $script:QueriesText | Should -Match 'tag_id, metric, unit, metric_family'
-        $script:QueriesText | Should -Match 'row_count > 1000, "TOO_MANY_ROWS"'
-        $script:QueriesText | Should -Match 'row_count <= 1000'
-        $script:QueriesText | Should -Not -Match 'water-energy|line energy|hopper|sorter'
+        $compareLines = [regex]::Match($script:QueriesText, '(?s)mining_CompareLines\(.*$').Value
+        $compareLines | Should -Match 'D01\.A\.crusher\.ore_flow'
+        $compareLines | Should -Match 'D01\.B\.crusher\.ore_flow'
+        $compareLines | Should -Match 'D01\.C\.crusher\.ore_flow'
+        $compareLines | Should -Match 'D01\.A\.dms\.medium_density'
+        $compareLines | Should -Match 'D01\.A\.crusher\.vibration_rms'
+        $compareLines | Should -Match 'metric_ok = metric_family in \("feed", "density", "vibration"\)'
+        $compareLines | Should -Match 'tag_id, metric, unit, metric_family'
+        $compareLines | Should -Match 'row_count > 1000, "TOO_MANY_ROWS"'
+        $compareLines | Should -Match 'row_count <= 1000'
+        $compareLines | Should -Not -Match 'water-energy|line energy|hopper|sorter'
     }
 
     It 'uses half-open windows and interval-end binning for trend and summary coverage' {
