@@ -47,6 +47,11 @@ export function validIncidentWindows(incident) {
   return Number.isFinite(holdStart) && Number.isFinite(holdEnd) && holdStart <= holdEnd;
 }
 
+export function refreshedIncidentSelection(selectedIncident, incidents) {
+  if (!selectedIncident) return null;
+  return incidents.find((incident) => incident.incidentId === selectedIncident.incidentId) ?? null;
+}
+
 export function sameScope(data, runId, catalogVersion) {
   return data?.plantId === "D01" && data.runId === runId && data.catalogVersion === catalogVersion;
 }

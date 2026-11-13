@@ -5,6 +5,7 @@ import {
   normalizeReading,
   unknownQuality,
   validIncidentWindows,
+  refreshedIncidentSelection,
   sameScope,
   moduleStatus,
   validOverview,
@@ -483,7 +484,9 @@ async function refresh(scope = "all") {
           )
             throw new Error("Invalid or foreign-run incident response.");
           incidents = data.incidents.filter((item) => !item.clearedAt);
+          selectedIncident = refreshedIncidentSelection(selectedIncident, incidents);
           drawIncidents();
+          drawDrawer();
         } catch (error) {
           if (current()) {
             incidents = [];

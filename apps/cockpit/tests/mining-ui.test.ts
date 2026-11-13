@@ -7,6 +7,7 @@ import {
   normalizeReading,
   unknownQuality,
   validIncidentWindows,
+  refreshedIncidentSelection,
   sameScope,
   moduleStatus,
   validOverview,
@@ -115,6 +116,21 @@ describe("unknown and catalog selection semantics", () => {
         holdWindowEnd: "2026-01-01T00:00:00Z",
       }),
     ).toBe(false);
+  });
+  it("refreshes selected incident data and clears a selection no longer active", () => {
+    const selected = {
+      incidentId: "incident-1",
+      holdWindowStart: "2026-01-01T00:00:00Z",
+      holdWindowEnd: "2026-01-01T00:05:00Z",
+    };
+    const refreshed = {
+      incidentId: "incident-1",
+      holdWindowStart: null,
+      holdWindowEnd: null,
+    };
+    expect(refreshedIncidentSelection(selected, [refreshed])).toBe(refreshed);
+    expect(refreshedIncidentSelection(selected, [])).toBeNull();
+    expect(refreshedIncidentSelection(null, [refreshed])).toBeNull();
   });
   it("preserves uncertain quality without exposing its value as usable or healthy", () => {
     const asOf = "2026-01-01T00:01:00Z";
