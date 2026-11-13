@@ -319,15 +319,25 @@ export class MiningRunCoordinator {
   }
 
   /** Authorization belongs to the caller. No lease acquisition, break, or takeover occurs here. */
-  async requestStop(runId: string): Promise<{ accepted: true; status: MiningRunStatus }> {
+  async requestStop(
+    runId: string,
+    onPersisted?: () => void,
+    onUncertain?: (error: unknown) => void,
+  ): Promise<{ accepted: true; status: MiningRunStatus }> {
     const current = await this.status(uuid(runId));
     if (!current || current.admission !== "accepted") {
       throw new MiningCoordinationError("conflict", "Stop requires a durably admitted mining run.");
     }
-    await this.store.create(stopPath(runId), {
-      runId,
-      requestedAt: new Date(this.clock.now()).toISOString(),
-    });
+    try {
+      await this.store.create(stopPath(runId), {
+        runId,
+        requestedAt: new Date(this.clock.now()).toISOString(),
+      });
+    } catch (error) {
+      onUncertain?.(error);
+      throw error;
+    }
+    onPersisted?.();
     const status = await this.status(runId);
     if (!status) throw new MiningCoordinationError("uncertain", "Mining stop status disappeared.");
     return { accepted: true, status };
@@ -350,6 +360,7 @@ export class MiningRunOwner {
   private stopObserved = false;
   private finalBatchAdmitted = false;
   private cancellationReason: "stopped" | "publisher_complete" | "failed" | undefined;
+  private beforeComplete?: () => Promise<void>;
 
   constructor(
     private readonly store: MiningStore,
@@ -366,6 +377,17 @@ export class MiningRunOwner {
 
   get signal(): AbortSignal {
     return this.cancellation.signal;
+  }
+
+  /** Register once before starting owner work; completion waits for dependent work to settle. */
+  onBeforeComplete(action: () => Promise<void>): void {
+    if (this.beforeComplete || this.closed || this.busy || this.signal.aborted) {
+      throw new MiningCoordinationError(
+        "conflict",
+        "Mining completion participant is unavailable.",
+      );
+    }
+    this.beforeComplete = action;
   }
 
   private withinAuthority(): boolean {
@@ -606,6 +628,15 @@ export class MiningRunOwner {
 
   private async complete(outcome: "publisher_complete" | "failed"): Promise<void> {
     this.cancel(outcome);
+    let participantError: unknown;
+    let participantFailed = false;
+    try {
+      if (this.beforeComplete) await this.beforeComplete();
+    } catch (error) {
+      participantFailed = true;
+      participantError = error;
+      this.cancel("failed");
+    }
     this.run = {
       ...this.run,
       phase:
@@ -623,7 +654,13 @@ export class MiningRunOwner {
       this.closed = true;
       clearTimeout(this.deadline);
     } catch (error) {
+      if (participantFailed) {
+        this.lose(
+          new AggregateError([participantError, error], "Mining completion and cleanup failed."),
+        );
+      }
       this.lose(error);
     }
+    if (participantFailed) throw participantError;
   }
 }
