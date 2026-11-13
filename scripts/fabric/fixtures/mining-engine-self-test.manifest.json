@@ -3,8 +3,8 @@
   "status": "synthetic-engine-self-test-only",
   "sourceCommit": "324d73496913b4a2944713eb8861f2b7fdba4c02",
   "queryPath": "scripts/fabric/fixtures/mining-engine-self-test.kql",
-  "querySha256": "e72b19e490f03270085b064597192ded64a451673ae6adb58ad33dc2632d99b5",
-  "queryBytes": 108968,
+  "querySha256": "a4d60703bd6423bc252e3578aedaf90229345f89825ced8b0586784d6dcdfabc",
+  "queryBytes": 108183,
   "maxBytes": 262144,
   "fixtureSha256": "5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1",
   "sourceFiles": [

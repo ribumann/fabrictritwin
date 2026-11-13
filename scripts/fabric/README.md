@@ -237,6 +237,11 @@ byte count are recorded in the adjacent manifest. It has **not** been run
 against hosted KQL. Offline generation/tests validate source pins, locality,
 payload bounds and fixture expectations only; engine compilation, actual
 query results and all error branches remain unverified.
+The builder checks each pinned source against its exact frozen bytes, or
+against the equivalent original CRLF checkout form when read from an LF
+Git-blob checkout. It then normalizes source text to LF for extraction.
+Source pins remain unchanged; the output hash identifies the normalized
+successor payload and is reproducible across Windows and Linux.
 
 The manifest freezes the input arguments and independent expected results for
 all five G5 functions. In brief: PlantLatest returns 56 catalog tags and four

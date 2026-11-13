@@ -77,10 +77,14 @@ function sha256(bytes) {
 function readPinnedSource(relativePath, expectedHash) {
   const bytes = fs.readFileSync(path.join(root, relativePath));
   const actualHash = sha256(bytes);
-  if (actualHash !== expectedHash) {
+  const text = bytes.toString('utf8');
+  const originalCheckoutHash = sha256(
+    Buffer.from(text.replace(/\r\n?/g, '\n').replace(/\n/g, '\r\n'), 'utf8'),
+  );
+  if (actualHash !== expectedHash && originalCheckoutHash !== expectedHash) {
     fail(`Pinned source changed: ${relativePath} (${actualHash})`);
   }
-  return bytes.toString('utf8');
+  return text.replace(/\r\n?/g, '\n');
 }
 
 function findClosingDelimiter(text, openIndex, opening, closing) {

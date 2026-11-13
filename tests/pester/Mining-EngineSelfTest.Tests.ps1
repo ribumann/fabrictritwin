@@ -21,8 +21,8 @@ Describe 'Synthetic mining KQL engine self-test' {
         $script:Manifest.schemaVersion | Should -Be 1
         $script:Manifest.status | Should -Be 'synthetic-engine-self-test-only'
         $script:Manifest.sourceCommit | Should -Be '324d73496913b4a2944713eb8861f2b7fdba4c02'
-        $script:Manifest.querySha256 | Should -Be 'e72b19e490f03270085b064597192ded64a451673ae6adb58ad33dc2632d99b5'
-        $script:Manifest.queryBytes | Should -Be 108968
+        $script:Manifest.querySha256 | Should -Be 'a4d60703bd6423bc252e3578aedaf90229345f89825ced8b0586784d6dcdfabc'
+        $script:Manifest.queryBytes | Should -Be 108183
         $script:Manifest.fixtureSha256 | Should -Be '5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1'
         (Get-FileHash -LiteralPath $script:QueryPath -Algorithm SHA256).Hash.ToLowerInvariant() |
             Should -Be $script:Manifest.querySha256
@@ -31,8 +31,18 @@ Describe 'Synthetic mining KQL engine self-test' {
             $source.sha256 | Should -Be $script:ExpectedSourceHashes[$source.path]
             $relativePath = $source.path.Replace('/', '\')
             $path = Join-Path $script:Root $relativePath
-            (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() |
-                Should -Be $source.sha256
+            $actualHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualHash -ne $source.sha256) {
+                $sourceText = [Text.UTF8Encoding]::new($false, $true).GetString(
+                    [IO.File]::ReadAllBytes($path)
+                )
+                $originalCheckoutText = [regex]::Replace($sourceText, '\r\n|\r|\n', "`r`n")
+                $originalCheckoutBytes = [Text.Encoding]::UTF8.GetBytes($originalCheckoutText)
+                $actualHash = [Convert]::ToHexString(
+                    [Security.Cryptography.SHA256]::HashData($originalCheckoutBytes)
+                ).ToLowerInvariant()
+            }
+            $actualHash | Should -Be $source.sha256
         }
     }
 
