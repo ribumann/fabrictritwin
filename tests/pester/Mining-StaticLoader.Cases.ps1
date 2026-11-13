@@ -363,6 +363,22 @@ It 'preserves flushed preimages in an append-only journal and blocks a torn fina
     (Get-Content -LiteralPath $script:applyArgs.ReceiptPath -TotalCount 1) | Should -BeExactly $records[0]
 }
 
+It 'constructs the real encrypted SqlClient connection string without connecting' {
+    $value = & (Get-Module MiningOntology) {
+        param($Target)
+        Get-MiningSqlConnectionString $Target
+    } $script:target
+    $builder = [Data.SqlClient.SqlConnectionStringBuilder]::new($value)
+    $builder['Data Source'] | Should -BeExactly "tcp:$($script:target.SqlServer),1433"
+    $builder['Initial Catalog'] | Should -BeExactly $script:target.SqlDatabase
+    $builder['Encrypt'] | Should -BeTrue
+    $builder['TrustServerCertificate'] | Should -BeFalse
+    $builder['Connect Timeout'] | Should -Be 30
+    $builder['Integrated Security'] | Should -BeFalse
+    $builder['User ID'] | Should -BeNullOrEmpty
+    $builder['Password'] | Should -BeNullOrEmpty
+}
+
 It 'validates native client token tenant, caller, audience and lifetime without sign-in or account switching' {
     $script:tokenFault = ''
     Mock az -ModuleName MiningOntology {

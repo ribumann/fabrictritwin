@@ -16,11 +16,24 @@ function Assert-MiningClientTarget {
     }
 }
 
+function Get-MiningSqlConnectionString {
+    param($Target)
+    $builder = [Data.SqlClient.SqlConnectionStringBuilder]::new()
+    # PowerShell adapts this builder as IDictionary, requiring actual keyword names.
+    $builder['Data Source'] = "tcp:$($Target.SqlServer),1433"
+    $builder['Initial Catalog'] = $Target.SqlDatabase
+    $builder['Encrypt'] = $true
+    $builder['TrustServerCertificate'] = $false
+    $builder['Connect Timeout'] = 30
+    $builder.ConnectionString
+}
+
 function New-MiningLiveClient {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Target)
     $context = @{ tenantId = $Target.TenantId; subscriptionId = $Target.SubscriptionId; callerObjectId = $Target.CallerObjectId }
     Assert-MiningClientTarget $Target @{ context = $context }
+    $connectionString = Get-MiningSqlConnectionString $Target
     $tokens = @{}
     foreach ($entry in @(@('Fabric', 'https://api.fabric.microsoft.com'), @('Storage', 'https://storage.azure.com/'), @('Sql', 'https://database.windows.net/'))) {
         $raw = & az account get-access-token --subscription $Target.SubscriptionId --resource $entry[1] --output json --only-show-errors
@@ -69,13 +82,7 @@ function New-MiningLiveClient {
     }.GetNewClosure()
     $query = {
         param([string]$Sql)
-        $builder = [Data.SqlClient.SqlConnectionStringBuilder]::new()
-        $builder.DataSource = "tcp:$($Target.SqlServer),1433"
-        $builder.InitialCatalog = $Target.SqlDatabase
-        $builder.Encrypt = $true
-        $builder.TrustServerCertificate = $false
-        $builder.ConnectTimeout = 30
-        $connection = [Data.SqlClient.SqlConnection]::new($builder.ConnectionString)
+        $connection = [Data.SqlClient.SqlConnection]::new($connectionString)
         $connection.AccessToken = $tokens.Sql
         try {
             $connection.Open()
