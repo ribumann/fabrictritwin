@@ -19,6 +19,16 @@ export function readingAt(reading, asOf) {
   );
 }
 
+export function normalizeReading(reading, asOf) {
+  if (readingAt(reading, asOf)) return reading;
+  const quality = ["bad", "uncertain"].includes(reading.quality) ? reading.quality : "missing";
+  return { ...reading, quality, value: null };
+}
+
+export function unknownQuality(quality) {
+  return quality === "uncertain" || quality === "bad" ? `${quality} / unknown` : "unknown";
+}
+
 export function sameScope(data, runId, catalogVersion) {
   return data?.plantId === "D01" && data.runId === runId && data.catalogVersion === catalogVersion;
 }

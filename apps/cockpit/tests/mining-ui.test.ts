@@ -4,6 +4,8 @@ import {
   MiningPolling,
   usable,
   readingAt,
+  normalizeReading,
+  unknownQuality,
   sameScope,
   moduleStatus,
   validOverview,
@@ -85,6 +87,34 @@ describe("mining request lifecycle", () => {
   });
 });
 describe("unknown and catalog selection semantics", () => {
+  it("preserves uncertain quality without exposing its value as usable or healthy", () => {
+    const asOf = "2026-01-01T00:01:00Z";
+    const reading = {
+      moduleId: "D01.A.crusher",
+      quality: "uncertain",
+      value: 42,
+      sampleTime: "2026-01-01T00:00:00Z",
+      ageSeconds: 60,
+    };
+    const normalized = normalizeReading(reading, asOf);
+    expect(normalized).toMatchObject({ quality: "uncertain", value: null });
+    expect(usable(reading)).toBe(false);
+    expect(readingAt(reading, asOf)).toBe(false);
+    expect(unknownQuality(normalized.quality)).toBe("uncertain / unknown");
+    expect(
+      moduleStatus(
+        {
+          quality: "good",
+          latest: {
+            modules: [{ moduleId: reading.moduleId, status: "normal" }],
+            readings: [normalized],
+          },
+        },
+        reading.moduleId,
+      ),
+    ).toBe("unknown");
+    expect(normalizeReading({ ...reading, quality: "unsupported" }, asOf).quality).toBe("missing");
+  });
   it("rejects same-run replay details for another time, metric, module, unit or bin", () => {
     const params = {
       runId: "approved",

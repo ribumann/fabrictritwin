@@ -2,7 +2,8 @@ import {
   MiningReads,
   MiningPolling,
   usable,
-  readingAt,
+  normalizeReading,
+  unknownQuality,
   sameScope,
   moduleStatus,
   validOverview,
@@ -111,7 +112,7 @@ function drawPlant() {
 }
 function drawOverview() {
   const valid = overview?.quality === "good";
-  text("quality", `Quality: ${valid ? "good" : "unknown"}`);
+  text("quality", `Quality: ${valid ? "good" : unknownQuality(overview?.quality)}`);
   text("freshness", `Last refresh: ${timestamp(overview?.refreshedAt)}`);
   const run = overview?.run ?? context?.approvedRun;
   text(
@@ -165,7 +166,7 @@ function drawDrawer() {
     const details = node("dl");
     for (const [label, value] of [
       ["Reading", good ? `${number(reading.value)} ${tag.unit}` : `Unknown ${tag.unit}`],
-      ["Quality", good ? "good" : reading?.quality === "bad" ? "bad / unknown" : "unknown"],
+      ["Quality", good ? "good" : unknownQuality(reading?.quality)],
       ["Sample (UTC)", timestamp(reading?.sampleTime)],
       ["Ingested (UTC)", timestamp(reading?.ingestionTime)],
       [
@@ -332,7 +333,7 @@ function chart(container, data) {
   container.append(
     node(
       "p",
-      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins. Gaps and bad-quality samples are not connected.`,
+      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins. Gaps and non-good-quality samples are not connected.`,
     ),
   );
   const details = node("details"),
@@ -418,9 +419,7 @@ async function refresh(scope = "all") {
           )
             throw new Error("Mining overview does not match the canonical catalog.");
           data.latest.readings = data.latest.readings.map((reading) =>
-            readingAt(reading, data.asOf)
-              ? reading
-              : { ...reading, quality: reading.quality === "bad" ? "bad" : "missing", value: null },
+            normalizeReading(reading, data.asOf),
           );
           overview = data;
           text(
