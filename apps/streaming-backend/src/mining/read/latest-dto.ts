@@ -32,6 +32,21 @@ function instant(value: unknown): number {
   return millis;
 }
 
+function sameInstant(value: unknown, expected: string): boolean {
+  instant(value);
+  if (typeof value !== "string") return fail("Invalid latest timestamp.");
+  return (
+    value.replace(
+      /(?:\.(\d{1,7}))?Z$/,
+      (_, fraction: string | undefined) => `.${(fraction ?? "").padEnd(7, "0")}Z`,
+    ) ===
+    expected.replace(
+      /(?:\.(\d{1,7}))?Z$/,
+      (_, fraction: string | undefined) => `.${(fraction ?? "").padEnd(7, "0")}Z`,
+    )
+  );
+}
+
 /** Source mapping only: the caller must separately prove readiness and incident availability. */
 export function mapLatestRows(
   input: { runId: string; asOf: string },
@@ -48,7 +63,7 @@ export function mapLatestRows(
     if (
       rows[0].plant_id !== "D01" ||
       rows[0].run_id !== input.runId ||
-      instant(rows[0].as_of_utc) !== asOf
+      !sameInstant(rows[0].as_of_utc, input.asOf)
     )
       return fail("Invalid latest control scope.");
     throw new MiningQueryError("upstream", `Mining latest unavailable: ${rows[0].status}.`);
@@ -74,7 +89,11 @@ export function mapLatestRows(
     { status: "running" | "stopped" | "fault" | "unknown"; state: State | null }
   >();
   for (const row of rows) {
-    if (row.plant_id !== "D01" || row.run_id !== input.runId || instant(row.as_of_utc) !== asOf) {
+    if (
+      row.plant_id !== "D01" ||
+      row.run_id !== input.runId ||
+      !sameInstant(row.as_of_utc, input.asOf)
+    ) {
       return fail("Mining latest scope does not match.");
     }
     if (row.row_kind === "tag") {

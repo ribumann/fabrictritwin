@@ -80,6 +80,9 @@ describe("latest mining source mapping", () => {
     const conflicting = sourceRows();
     conflicting[0].status = "DUPLICATE_CONFLICT";
     expect(() => mapLatestRows(input, conflicting)).toThrow("conflicting events");
+    const wrongInstant = sourceRows();
+    wrongInstant[0].as_of_utc = "2026-01-01T00:05:00.0000001Z";
+    expect(() => mapLatestRows(input, wrongInstant)).toThrow("scope");
   });
 
   it("does not mistake a blocked readiness control for missing data", () => {
