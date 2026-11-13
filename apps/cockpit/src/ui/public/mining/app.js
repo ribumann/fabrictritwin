@@ -2,6 +2,7 @@ import {
   MiningReads,
   MiningPolling,
   usable,
+  formatTimestamp,
   normalizeReading,
   unknownQuality,
   validIncidentWindows,
@@ -27,8 +28,7 @@ const number = (value) =>
   Number.isFinite(value)
     ? value.toLocaleString(undefined, { maximumFractionDigits: 2 })
     : "Unknown";
-const timestamp = (value) =>
-  Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : "unknown";
+const timestamp = formatTimestamp;
 const coverage = (value) =>
   Number.isFinite(value) && value >= 0 && value <= 1 ? `${Math.round(value * 100)}%` : "unknown";
 const reads = new MiningReads();
@@ -427,8 +427,8 @@ async function refresh(scope = "all") {
           text(
             "connection",
             mode === "replay"
-              ? `REPLAY · evaluated at ${params.asOf}`
-              : "Authorized Fabric mining read · simulation provenance is provided by the backend.",
+              ? `REPLAY · evaluated at ${params.asOf} · publisher provenance is not verified.`
+              : "Fabric read succeeded · pinned catalog is the approved expected scope; publisher provenance is not verified.",
           );
           drawOverview();
         } catch (error) {
@@ -684,6 +684,7 @@ try {
   if (!receiptResponse.ok) throw new Error("Canonical asset receipt is unavailable.");
   const receipt = await receiptResponse.json();
   catalogVersion = `sha256:${receipt.catalog.sha256}`;
+  text("catalog-scope", `APPROVED EXPECTED catalog scope: ${catalogVersion}`);
   if (
     catalog.modules?.length !== 24 ||
     !Array.isArray(catalog.streams) ||

@@ -29,6 +29,11 @@ export function unknownQuality(quality) {
   return quality === "uncertain" || quality === "bad" ? `${quality} / unknown` : "unknown";
 }
 
+export function formatTimestamp(value) {
+  const timestamp = typeof value === "string" ? Date.parse(value) : NaN;
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "unknown";
+}
+
 export function validIncidentWindows(incident) {
   const hasHoldStart = typeof incident?.holdWindowStart === "string";
   const hasHoldEnd = typeof incident?.holdWindowEnd === "string";

@@ -3,6 +3,7 @@ import {
   MiningReads,
   MiningPolling,
   usable,
+  formatTimestamp,
   readingAt,
   normalizeReading,
   unknownQuality,
@@ -159,6 +160,12 @@ describe("unknown and catalog selection semantics", () => {
       ),
     ).toBe("unknown");
     expect(normalizeReading({ ...reading, quality: "unsupported" }, asOf).quality).toBe("missing");
+  });
+  it("keeps absent or invalid ingestion timestamps unknown", () => {
+    expect(formatTimestamp(null)).toBe("unknown");
+    expect(formatTimestamp(undefined)).toBe("unknown");
+    expect(formatTimestamp("not-a-timestamp")).toBe("unknown");
+    expect(formatTimestamp("2026-01-01T00:00:00Z")).toBe("2026-01-01T00:00:00.000Z");
   });
   it("rejects same-run replay details for another time, metric, module, unit or bin", () => {
     const params = {

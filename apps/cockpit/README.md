@@ -61,12 +61,17 @@ Replay freshness is evaluated at `asOf`; latest provenance timestamps are UTC.
 `normalBand` is a demo normal band, never the catalog's broad simulation envelope.
 Every run-scoped response includes `plantId`, `runId` and `catalogVersion`;
 cross-run/catalog responses are rejected, including late arrivals after a switch.
+The Cockpit's pinned catalog version is an approved expected scope, not verified
+publisher provenance; a matching response does not prove which catalog the
+publisher actually used.
 Publisher statuses preserve `admission_pending`, `admission_unknown`,
 `interrupted` and `publisher_complete` without inventing terminal success.
 Incident responses have at most 20 active records with retained unverified state,
 rule/scope IDs and separate acknowledgment/clear timestamps. Current qualifying
 hold bounds are nullable as a pair; null means there is no current qualifying hold.
 The bounded evidence window remains required and is not a substitute for an active hold.
+Evidence `ingestionTime` may be null; the UI renders it as unknown and never
+substitutes evaluator or response-receipt time.
 
 The BFF constructs its own service-auth headers for reads, ignoring all browser
 authorization/principal headers. It uses only the existing viewer-scoped Cockpit
