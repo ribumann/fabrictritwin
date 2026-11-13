@@ -3,12 +3,21 @@ import plantCatalog from "./plant-catalog.json" with { type: "json" };
 export const D01_PLANT_ID = "D01" as const;
 export const D01_CATALOG_VERSION =
   "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" as const;
+export const D01_PUBLISH_PROFILE_VERSION = "d01-publish-profile-v1" as const;
 
 export type D01PlantCatalog = typeof plantCatalog;
 export type D01Module = D01PlantCatalog["modules"][number];
 export type D01Equipment = D01PlantCatalog["equipment"][number];
 export type D01Stream = D01PlantCatalog["streams"][number];
 export type D01TelemetryTag = D01PlantCatalog["telemetry_tags"][number];
+
+export interface D01PublishProfileRecord {
+  plant_id: typeof D01_PLANT_ID;
+  catalog_version: typeof D01_CATALOG_VERSION;
+  profile_version: typeof D01_PUBLISH_PROFILE_VERSION;
+  tag_id: string;
+  interval_seconds: 30 | 60;
+}
 
 export type D01CatalogRecord =
   | {
@@ -160,12 +169,47 @@ export const D01_PLANT_CATALOG = plantCatalog;
 
 validateD01PlantCatalog(D01_PLANT_CATALOG);
 
+const metricPublishIntervals: Record<D01TelemetryTag["metric"], 30 | 60> = {
+  bearing_temperature: 60,
+  feed_pressure: 30,
+  level: 60,
+  medium_density: 30,
+  motor_current: 30,
+  ore_flow: 30,
+  power: 30,
+  product_mass: 60,
+  vibration_rms: 30,
+  water_flow: 30,
+};
+
+const publishProfile = D01_PLANT_CATALOG.telemetry_tags.map((tag): D01PublishProfileRecord => {
+  const interval = metricPublishIntervals[tag.metric];
+  if (interval !== 30 && interval !== 60) {
+    throw new Error(`No D01 publish interval for tag '${tag.id}'.`);
+  }
+  return {
+    plant_id: D01_PLANT_ID,
+    catalog_version: D01_CATALOG_VERSION,
+    profile_version: D01_PUBLISH_PROFILE_VERSION,
+    tag_id: tag.id,
+    interval_seconds: interval,
+  };
+});
+
+const publishIntervalsByTag = new Map(
+  publishProfile.map((record) => [record.tag_id, record.interval_seconds]),
+);
+
+export function toD01PublishProfileRecords(): D01PublishProfileRecord[] {
+  return publishProfile.map((record) => ({ ...record }));
+}
+
 export function getD01TagIntervalSeconds(tag: D01TelemetryTag): 30 | 60 {
-  return tag.metric === "bearing_temperature" ||
-    tag.metric === "level" ||
-    tag.metric === "product_mass"
-    ? 60
-    : 30;
+  const interval = publishIntervalsByTag.get(tag.id);
+  if (interval === undefined) {
+    throw new Error(`No D01 publish interval for tag '${tag.id}'.`);
+  }
+  return interval;
 }
 
 export function toD01CatalogRecords(): D01CatalogRecord[] {
