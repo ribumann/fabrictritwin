@@ -37,6 +37,8 @@ interface RunSpec {
 export interface MiningRunRecord extends RunSpec {
   startedAt: string;
   stopAt: string;
+  /** Explicit optional final-batch budget; never beyond 1800s from startedAt. */
+  finalFlushUntil?: string;
   authorityUntil: string;
   phase: RunPhase;
 }
@@ -147,10 +149,21 @@ function parseRun(value: unknown): MiningRunRecord {
   if (Date.parse(stopAt) - Date.parse(startedAt) !== identity.durationSeconds * 1_000) {
     invalid("Persisted mining deadline does not match the bounded run.");
   }
+  const finalFlushUntil = record.finalFlushUntil;
+  if (
+    finalFlushUntil !== undefined &&
+    (typeof finalFlushUntil !== "string" ||
+      !Number.isFinite(Date.parse(finalFlushUntil)) ||
+      Date.parse(finalFlushUntil) <= Date.parse(stopAt) ||
+      Date.parse(finalFlushUntil) >
+        Math.min(Date.parse(stopAt) + 5_000, Date.parse(startedAt) + 1_800_000))
+  )
+    invalid("Invalid persisted mining final-flush deadline.");
   return {
     ...identity,
     startedAt,
     stopAt,
+    ...(typeof finalFlushUntil === "string" ? { finalFlushUntil } : {}),
     authorityUntil: record.authorityUntil as string,
     phase: record.phase as RunPhase,
   };
@@ -167,10 +180,19 @@ function terminal(phase: RunPhase): boolean {
 }
 
 export class MiningRunCoordinator {
+  private readonly finalFlushMilliseconds: number;
+
   constructor(
     private readonly store: MiningStore,
     private readonly clock: MiningClock = systemClock,
-  ) {}
+    options: { finalFlushMilliseconds?: number } = {},
+  ) {
+    const budget = options.finalFlushMilliseconds ?? 0;
+    if (!Number.isInteger(budget) || budget < 0 || budget > 5_000) {
+      invalid("Mining final-flush budget must be an explicit integer from 0 to 5000ms.");
+    }
+    this.finalFlushMilliseconds = budget;
+  }
 
   async status(runId: string): Promise<MiningRunStatus | undefined> {
     uuid(runId);
@@ -187,7 +209,7 @@ export class MiningRunCoordinator {
       !terminal(run.phase) &&
       ((!archived && !plant?.leased) ||
         this.clock.now() >= Date.parse(run.authorityUntil) ||
-        this.clock.now() >= Date.parse(run.stopAt))
+        this.clock.now() >= Date.parse(run.finalFlushUntil ?? run.stopAt))
     ) {
       run = { ...run, phase: "interrupted" };
     }
@@ -262,6 +284,13 @@ export class MiningRunCoordinator {
         authorityUntil: new Date(acquiredAt + AUTHORITY_MS).toISOString(),
         phase: "running",
       };
+      const flushBudget = Math.min(
+        this.finalFlushMilliseconds,
+        (MAX_DURATION_SECONDS - identity.durationSeconds) * 1_000,
+      );
+      if (flushBudget > 0) {
+        run.finalFlushUntil = new Date(Date.parse(run.stopAt) + flushBudget).toISOString();
+      }
       const etag = await this.store.write(PLANT_PATH, { version: 1, run }, current.etag, leaseId);
       await this.store.write(path, { spec: identity, admission: "accepted" }, receipt.etag);
       if (this.clock.monotonic() - acquiredTick >= AUTHORITY_MS) {
@@ -319,6 +348,7 @@ export class MiningRunOwner {
   private lost = false;
   private closed = false;
   private stopObserved = false;
+  private finalBatchAdmitted = false;
   private cancellationReason: "stopped" | "publisher_complete" | "failed" | undefined;
 
   constructor(
@@ -354,6 +384,14 @@ export class MiningRunOwner {
     );
   }
 
+  private lifetimeElapsed(): boolean {
+    const deadline = Date.parse(this.run.finalFlushUntil ?? this.run.stopAt);
+    return (
+      this.clock.now() >= deadline ||
+      this.clock.monotonic() >= this.startTick + deadline - Date.parse(this.run.startedAt)
+    );
+  }
+
   private cancel(reason: "stopped" | "publisher_complete" | "failed"): void {
     if (reason === "failed" || this.cancellationReason === undefined) {
       this.cancellationReason = reason;
@@ -377,8 +415,11 @@ export class MiningRunOwner {
       ...(this.cancellationReason
         ? []
         : [
-            this.startTick + this.run.durationSeconds * 1_000 - this.clock.monotonic(),
-            Date.parse(this.run.stopAt) - this.clock.now(),
+            this.startTick +
+              Date.parse(this.run.finalFlushUntil ?? this.run.stopAt) -
+              Date.parse(this.run.startedAt) -
+              this.clock.monotonic(),
+            Date.parse(this.run.finalFlushUntil ?? this.run.stopAt) - this.clock.now(),
           ]),
     );
     this.deadline = setTimeout(
@@ -390,7 +431,9 @@ export class MiningRunOwner {
           );
           return;
         }
-        if (this.durationElapsed()) this.cancel("publisher_complete");
+        if (this.lifetimeElapsed()) {
+          this.cancel(this.run.finalFlushUntil ? "failed" : "publisher_complete");
+        }
         this.armDeadline();
       },
       Math.max(1, remaining),
@@ -446,7 +489,9 @@ export class MiningRunOwner {
         this.cancel("stopped");
         this.run = { ...this.run, phase: "stopping" };
       }
-      if (this.durationElapsed()) this.cancel("publisher_complete");
+      if (this.lifetimeElapsed()) {
+        this.cancel(this.run.finalFlushUntil ? "failed" : "publisher_complete");
+      }
       await this.persist();
       this.armDeadline();
     } catch (error) {
@@ -463,9 +508,46 @@ export class MiningRunOwner {
 
   /** One authorization/check per batch. A concurrent stop may drain only this authorized batch. */
   async runBatch<T>(publish: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    return this.authorizeBatch(publish, false);
+  }
+
+  /** Opt-in only: one genuine terminal simulator batch, never an additional model step. */
+  async runFinalBatch<T>(
+    batch: { runId: string; timestamp: string },
+    publish: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    if (
+      !this.run.finalFlushUntil ||
+      this.finalBatchAdmitted ||
+      batch.runId !== this.run.runId ||
+      batch.timestamp !== this.run.stopAt ||
+      !this.durationElapsed()
+    ) {
+      throw new MiningCoordinationError(
+        "invalid",
+        "No final mining batch capability is available.",
+      );
+    }
+    return this.authorizeBatch(publish, true);
+  }
+
+  private async authorizeBatch<T>(
+    publish: (signal: AbortSignal) => Promise<T>,
+    final: boolean,
+  ): Promise<T> {
     return this.exclusive(async () => {
+      if (final) {
+        if (this.finalBatchAdmitted) {
+          throw new MiningCoordinationError(
+            "invalid",
+            "No final mining batch capability is available.",
+          );
+        }
+        // Reserve before refresh yields; a failed attempt never makes this capability reusable.
+        this.finalBatchAdmitted = true;
+      }
       await this.refresh();
-      if (this.signal.aborted || this.durationElapsed()) {
+      if (this.signal.aborted || (!final && this.durationElapsed())) {
         await this.complete("publisher_complete");
         throw new MiningCoordinationError(
           "cancelled",
@@ -489,7 +571,7 @@ export class MiningRunOwner {
         );
       }
       this.assertAuthority();
-      if (this.durationElapsed()) {
+      if ((!final && this.durationElapsed()) || this.lifetimeElapsed()) {
         this.cancel("publisher_complete");
         throw new MiningCoordinationError(
           "cancelled",

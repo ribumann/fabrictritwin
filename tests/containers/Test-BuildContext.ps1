@@ -20,12 +20,12 @@ try {
     $files = @(Get-ChildItem -LiteralPath $context -File -Recurse -Force)
     foreach ($file in $files) {
         $relative = [System.IO.Path]::GetRelativePath($context, $file.FullName).Replace('\', '/')
-        if ($relative -notmatch '^(package(-lock)?\.json|tsconfig\.base\.json|apps/[^/]+/(package\.json|tsconfig\.json|src/.+))$' -or
+        if ($relative -notmatch '^(package(-lock)?\.json|tsconfig\.base\.json|apps/[^/]+/(package\.json|tsconfig\.json|src/.+)|apps/cockpit/scripts/build-static\.mjs)$' -or
             $relative -match '(^|/)(\.env[^/]*|\.npmrc|\.git|node_modules|dist)(/|$)|\.(pem|key|pfx|p12|log)$') {
             throw "Unexpected file included in Docker context: $relative"
         }
     }
-    foreach ($required in @('package.json', 'package-lock.json', 'tsconfig.base.json')) {
+    foreach ($required in @('package.json', 'package-lock.json', 'tsconfig.base.json', 'apps/cockpit/scripts/build-static.mjs', 'apps/simulator/src/mining/plant-catalog.json', 'apps/simulator/src/mining/catalog-receipt.json')) {
         if (-not (Test-Path -LiteralPath (Join-Path $context $required))) { throw "Missing build input: $required" }
     }
     foreach ($app in @('simulator', 'cockpit', 'streaming-backend', 'mcp-tools')) {

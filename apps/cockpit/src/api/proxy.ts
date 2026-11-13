@@ -5,16 +5,40 @@ export interface StreamingBackendProxyOptions {
   streamingBackendBaseUrl: string;
   fetchImpl?: typeof fetch;
   buildAuthHeaders?: () => Promise<Record<string, string>>;
+  maxResponseBytes?: number;
 }
 
 async function relayUpstreamResponse(
   upstream: globalThis.Response,
   res: ExpressResponse,
+  maxResponseBytes?: number,
 ): Promise<void> {
   const contentType = upstream.headers.get("content-type") ?? "application/json";
   const retryAfter = upstream.headers.get("retry-after");
   if (retryAfter) res.setHeader("Retry-After", retryAfter);
-  const rawBody = await upstream.text();
+  let rawBody: string;
+  if (maxResponseBytes && upstream.body) {
+    const reader = upstream.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > maxResponseBytes) {
+          await reader.cancel();
+          throw new Error("Backend response exceeds the permitted byte limit.");
+        }
+        chunks.push(value);
+      }
+      rawBody = Buffer.concat(chunks).toString("utf8");
+    } finally {
+      reader.releaseLock();
+    }
+  } else {
+    rawBody = await upstream.text();
+  }
 
   if (contentType.includes("application/json")) {
     try {
@@ -45,7 +69,7 @@ export async function proxyStreamingBackendGet(
       headers,
       signal: AbortSignal.timeout(10_000),
     });
-    await relayUpstreamResponse(upstream, res);
+    await relayUpstreamResponse(upstream, res, options.maxResponseBytes);
   } catch (error) {
     res.status(502).json({
       error: {
@@ -79,7 +103,7 @@ export async function proxyStreamingBackendPost(
       body: JSON.stringify(requestBody),
       signal: AbortSignal.timeout(10_000),
     });
-    await relayUpstreamResponse(upstream, res);
+    await relayUpstreamResponse(upstream, res, options.maxResponseBytes);
   } catch (error) {
     res.status(502).json({
       error: {

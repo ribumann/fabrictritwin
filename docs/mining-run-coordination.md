@@ -1,7 +1,9 @@
 # Mining run coordination (source only)
 
-The backend exposes a gated, read-only status endpoint; the coordinator is **not
-wired to HTTP actions, a simulator sender, or deployment**.
+The backend exposes a gated, read-only status endpoint; the coordinator is not
+wired to HTTP actions, startup, or deployment. The
+[explicit default-off publisher runtime](mining-publisher-runtime.md) is a
+separately callable integration, including the opt-in bounded final-flush contract.
 It does not prove G3 authoritative hosted delivery or G8 live stop/ingestion. Existing
 triathlon locks, routes, simulator jobs and `DEMO_PROFILE` behavior are unchanged.
 No storage operation is performed merely by importing the module.
@@ -149,6 +151,6 @@ Local checks use shared fake storage across independent coordinator instances an
 mock SDK calls; no cloud writes, container reads or credentials are needed.
 See [runtime operations](live-runtime-operations.md) for existing release
 boundaries and [configuration](dependencies-and-configuration.md) for backend
-configuration context. Authorized write wiring, approved container/RBAC,
-hosted concurrency/failure tests, sender integration and Fabric ingestion proof
+configuration context. Authorized write wiring, runtime/auth activation, approved
+container/RBAC, hosted concurrency/failure tests and Fabric ingestion proof
 remain separate release gates.
