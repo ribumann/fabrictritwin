@@ -1,12 +1,14 @@
 import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import {
   D01_CATALOG_VERSION,
   D01_PLANT_CATALOG,
   D01_PUBLISH_PROFILE_VERSION,
 } from "@triathlon-twin/simulator/mining";
 import { createMiningReadRouter } from "../src/api/mining-read.js";
+import { resetMcpCallerJwksCacheForTests } from "../src/auth/mcp-caller.js";
 import { MiningRunCoordinator } from "../src/mining/run-coordinator.js";
 import {
   MiningCoordinationError,
@@ -79,6 +81,68 @@ function setup(principal: string | null = viewer) {
 }
 
 describe("approved mining read boundary", () => {
+  it("verifies the bearer signature and audience at the actual HTTP boundary", async () => {
+    const tenant = "44444444-4444-4444-8444-444444444444";
+    const client = "55555555-5555-4555-8555-555555555555";
+    const { privateKey, publicKey } = await generateKeyPair("RS256");
+    const publicJwk = await exportJWK(publicKey);
+    vi.stubEnv("ASSISTANT_AUTH_TENANT_ID", tenant);
+    vi.stubEnv("ASSISTANT_AUTH_CLIENT_ID", client);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              keys: [{ ...publicJwk, kid: "mining-test", alg: "RS256", use: "sig" }],
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+    resetMcpCallerJwksCacheForTests();
+    const status = vi.fn(async () => ({
+      runId,
+      admission: "accepted" as const,
+      phase: "publisher_complete" as const,
+      stopRequested: false,
+    }));
+    const app = express();
+    app.use(
+      "/api/mining",
+      createMiningReadRouter({
+        synthetic: false,
+        env: { ...env, ASSISTANT_AUTH_TENANT_ID: tenant, ASSISTANT_AUTH_CLIENT_ID: client },
+        status,
+      }),
+    );
+    const sign = (audience: string) =>
+      new SignJWT({ oid: viewer })
+        .setProtectedHeader({ alg: "RS256", kid: "mining-test" })
+        .setIssuer(`https://login.microsoftonline.com/${tenant}/v2.0`)
+        .setAudience(audience)
+        .setIssuedAt()
+        .setExpirationTime("1h")
+        .sign(privateKey);
+    try {
+      const bad = await request(app)
+        .get("/api/mining/runs/status")
+        .set("authorization", `Bearer ${await sign("wrong")}`);
+      expect(bad.status).toBe(401);
+      expect(status).not.toHaveBeenCalled();
+      const good = await request(app)
+        .get("/api/mining/runs/status")
+        .set("authorization", `Bearer ${await sign(client)}`);
+      expect(good.status).toBe(200);
+      expect(good.body.ingestionStatus).toBe("unknown");
+      expect(status).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      resetMcpCallerJwksCacheForTests();
+    }
+  });
+
   it("rejects unverified and unapproved viewers before reading durable state", async () => {
     for (const [principal, expected] of [
       [null, 401],

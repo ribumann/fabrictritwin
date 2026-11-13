@@ -25,6 +25,14 @@ context reports `readAvailable: false`, while data routes return explicit 503.
 Start, cancel and acknowledgement remain unavailable without delegated authorization.
 Do not enable these settings as a substitute for approving infrastructure or data access.
 
+The unmounted query transport additionally requires
+`MINING_EVENTHOUSE_QUERY_URI` and `MINING_EVENTHOUSE_DATABASE_NAME` to exactly
+match the existing `EVENTHOUSE_QUERY_URI` and `EVENTHOUSE_DATABASE_NAME`, plus
+`MINING_CURATED_SOURCE_VERSION=d01-validated-source-v1` and
+`MINING_CURATED_QUERY_VERSION=d01-g5-query-v1`. These values are configuration,
+not evidence of source readiness. No data route invokes this transport until the
+reviewed functions' readiness control rows and result schemas are connected.
+
 ## Prerequisites and configuration
 
 An authorized operator must first approve and provision one **private, dedicated**
