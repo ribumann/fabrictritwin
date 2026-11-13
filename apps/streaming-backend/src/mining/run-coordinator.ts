@@ -211,7 +211,19 @@ export class MiningRunCoordinator {
     const archived = await read(historyPath(runId));
     const plant = archived ? undefined : await read(PLANT_PATH);
     let run = archived ? parseRun(archived.value) : plant ? parsePlant(plant.value) : null;
-    if (run?.runId !== runId) run = null;
+    if (run && run.runId !== runId) {
+      if (archived) invalid("Mining history identity mismatch.");
+      run = null;
+    }
+    if (
+      run &&
+      (run.plantId !== admission.spec.plantId ||
+        run.durationSeconds !== admission.spec.durationSeconds ||
+        run.scenario !== admission.spec.scenario ||
+        run.seed !== admission.spec.seed)
+    ) {
+      invalid("Mining run does not match its admission.");
+    }
     if (
       run &&
       !terminal(run.phase) &&
