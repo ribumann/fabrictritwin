@@ -1,0 +1,5507 @@
+{
+  "schema_version": 1,
+  "plant_id": "D01",
+  "name": "Diamond recovery / three-line plant",
+  "abstraction": "process-module-with-logical-equipment-children",
+  "units": "meters",
+  "coordinates": "right-handed-y-up",
+  "axes": {
+    "x": "east",
+    "y": "up",
+    "z": "south"
+  },
+  "origin": "site-center-at-ground",
+  "site_size_m": [
+    100,
+    16,
+    75
+  ],
+  "scale_evidence": "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment.",
+  "source": {
+    "schema_version": 1,
+    "filename": "D01.png",
+    "sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+    "width": 1536,
+    "height": 1024,
+    "kind": "generated-photographic-scene",
+    "generator": "Copilot image_generation tool; underlying image model/version not exposed",
+    "publication_approved": true,
+    "prompt": "Create one high-resolution, photorealistic industrial drone photograph of a fictional modular diamond ore processing and recovery plant, specifically composed for extracting individual equipment and reconstructing a digital-twin DEMO. This is a plausible working industrial installation, NOT a CAD render, toy model, infographic, schematic, showroom, or isolated-object collage. No text, labels, numbers, logos or watermarks. No people. No diamonds drawn on machinery. Clear, soft late-morning daylight and short soft shadows; sharp deep focus across the entire site, natural steel/concrete textures, subtle realistic wear, limited dust and no haze. Neutral pale concrete paving and gravel, almost no vegetation, no foreground obstructions. All machinery and all corners of the site remain fully inside the picture with generous outer margin. Camera: high oblique bird's-eye drone view looking down about 65 degrees, from the south toward the north with east on image-right; restrained perspective, no fisheye, horizon not visible. The nearly rectangular plant is roughly 100 metres east-west by 75 metres north-south. The visual priority is a legible realistic MULTI-LINE PROCESS LAYOUT with separate machines, connected conveyors and a coherent pipe rack, enough empty paved space between machines for image segmentation. Do not pack tiny equipment into a dense tangle. Three clearly separated parallel processing rows run WEST/LEFT to EAST/RIGHT, the northern row in the upper part of the image, the middle row across the center and the southern row across the lower part. Give each row the same five distinguishable large modular stations in this left-to-right order: (1) a receiving/feed bin and compact covered jaw/cone crusher assembly on a rectangular steel platform; (2) a clearly visible horizontal cylindrical rotary scrubber/trommel on a low cradle, its long axis east-west; (3) a tilted vibrating wet-screen deck on a low steel support with water sprays and catch sump; (4) a dense-medium separation module with one prominent steel support tower holding conical cyclones above two low slurry tanks and pumps, with accessible yellow-railed stairs; (5) a lower drain-and-rinse screen and medium-recovery skid with tanks and a magnetic drum separator. Stations are connected by realistic narrow inclined belt conveyors; blue process-water pipes run neatly beside the rows. Each row has clear maintenance gaps, walkways and no equipment occluding its neighbor; the three rows must NOT fuse into one building. Shared services: one larger raw-ore receiving hopper and short distribution conveyor at the far west/left serving the three rows, with a small unobtrusive ore stockpile behind it; at the east/right, conveyors from each row lead into three separate compact CLOSED metal X-ray sorting enclosures, clearly visible immediately BEFORE a single low secure recovery/sorting/laboratory building near the east perimeter. Do not expose fictitious X-ray beams or internal sorting details. Keep the laboratory building small enough not to dominate the plant or hide the sorters. Place a single circular water-recovery thickener with a visible radial bridge and one adjacent clean-water tank in a separate service area along the north/rear boundary, connected to the rows by blue pipes. Include a small fenced coarse-tailings collection bay along the east/northeast boundary, clearly separate from the laboratory. Include one modest electrical/control hut along the south/front boundary. Keep most process equipment outdoors or on open steel skids so its shapes are actually visible. Use muted industrial blue and gray equipment with yellow safety rails; no excessive color coding or fictional decoration. The result should look like a carefully staged but credible real aerial site survey photograph: clean separation, readable material paths, consistent machine scale, grounded bases, enough visible structure for supervised crop extraction and no perfect floating 3D objects."
+  },
+  "modules": [
+    {
+      "id": "D01.A.crusher",
+      "label": "A / Crushing / feed preparation",
+      "kind": "crusher",
+      "line": "A",
+      "position": [
+        -27,
+        3.5,
+        -16
+      ],
+      "size": [
+        8,
+        7,
+        7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "crusher",
+      "ports": [
+        {
+          "id": "ore-in",
+          "direction": "in",
+          "material": "ore",
+          "local_position_m": [
+            -4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "crushed-ore-out",
+          "direction": "out",
+          "material": "crushed-ore",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-000"
+    },
+    {
+      "id": "D01.A.scrubber",
+      "label": "A / Rotary scrubber",
+      "kind": "scrubber",
+      "line": "A",
+      "position": [
+        -13,
+        2.5,
+        -16
+      ],
+      "size": [
+        12,
+        5,
+        7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "scrubber",
+      "ports": [
+        {
+          "id": "crushed-ore-in",
+          "direction": "in",
+          "material": "crushed-ore",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "washed-ore-out",
+          "direction": "out",
+          "material": "washed-ore",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "process-water-in",
+          "direction": "in",
+          "material": "process-water",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-001"
+    },
+    {
+      "id": "D01.A.screen",
+      "label": "A / Wet sizing screen",
+      "kind": "screen",
+      "line": "A",
+      "position": [
+        0,
+        2.5,
+        -16
+      ],
+      "size": [
+        10,
+        5,
+        7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "screen",
+      "ports": [
+        {
+          "id": "washed-ore-in",
+          "direction": "in",
+          "material": "washed-ore",
+          "local_position_m": [
+            -5.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sized-ore-out",
+          "direction": "out",
+          "material": "sized-ore",
+          "local_position_m": [
+            5.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "screen-fines-slurry-out",
+          "direction": "out",
+          "material": "screen-fines-slurry",
+          "local_position_m": [
+            5.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "process-water-in",
+          "direction": "in",
+          "material": "process-water",
+          "local_position_m": [
+            -5.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-002"
+    },
+    {
+      "id": "D01.A.dms",
+      "label": "A / Dense-medium separation",
+      "kind": "dms",
+      "line": "A",
+      "position": [
+        12,
+        6.0,
+        -16
+      ],
+      "size": [
+        8,
+        12,
+        8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "dms",
+      "ports": [
+        {
+          "id": "sized-ore-in",
+          "direction": "in",
+          "material": "sized-ore",
+          "local_position_m": [
+            -4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sinks-out",
+          "direction": "out",
+          "material": "sinks",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "floats-out",
+          "direction": "out",
+          "material": "floats",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "ferrosilicon-medium-in",
+          "direction": "in",
+          "material": "ferrosilicon-medium",
+          "local_position_m": [
+            -4.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-003"
+    },
+    {
+      "id": "D01.A.medium",
+      "label": "A / Drain / rinse / medium recovery",
+      "kind": "medium",
+      "line": "A",
+      "position": [
+        25,
+        3.0,
+        -16
+      ],
+      "size": [
+        12,
+        6,
+        8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "medium",
+      "ports": [
+        {
+          "id": "sinks-in",
+          "direction": "in",
+          "material": "sinks",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "floats-in",
+          "direction": "in",
+          "material": "floats",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "concentrate-out",
+          "direction": "out",
+          "material": "concentrate",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "washed-tailings-out",
+          "direction": "out",
+          "material": "washed-tailings",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "wash-effluent-out",
+          "direction": "out",
+          "material": "wash-effluent",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "ferrosilicon-medium-out",
+          "direction": "out",
+          "material": "ferrosilicon-medium",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "process-water-in",
+          "direction": "in",
+          "material": "process-water",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-004"
+    },
+    {
+      "id": "D01.A.sorter",
+      "label": "A / Enclosed X-ray sorting",
+      "kind": "sorter",
+      "line": "A",
+      "position": [
+        37,
+        2.0,
+        -16
+      ],
+      "size": [
+        6,
+        4,
+        5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "sorter",
+      "ports": [
+        {
+          "id": "concentrate-in",
+          "direction": "in",
+          "material": "concentrate",
+          "local_position_m": [
+            -3.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sorter-rejects-out",
+          "direction": "out",
+          "material": "sorter-rejects",
+          "local_position_m": [
+            3.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "recovered-product-out",
+          "direction": "out",
+          "material": "recovered-product",
+          "local_position_m": [
+            3.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-005"
+    },
+    {
+      "id": "D01.B.crusher",
+      "label": "B / Crushing / feed preparation",
+      "kind": "crusher",
+      "line": "B",
+      "position": [
+        -27,
+        3.5,
+        0
+      ],
+      "size": [
+        8,
+        7,
+        7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "crusher",
+      "ports": [
+        {
+          "id": "ore-in",
+          "direction": "in",
+          "material": "ore",
+          "local_position_m": [
+            -4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "crushed-ore-out",
+          "direction": "out",
+          "material": "crushed-ore",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-000"
+    },
+    {
+      "id": "D01.B.scrubber",
+      "label": "B / Rotary scrubber",
+      "kind": "scrubber",
+      "line": "B",
+      "position": [
+        -13,
+        2.5,
+        0
+      ],
+      "size": [
+        12,
+        5,
+        7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "scrubber",
+      "ports": [
+        {
+          "id": "crushed-ore-in",
+          "direction": "in",
+          "material": "crushed-ore",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "washed-ore-out",
+          "direction": "out",
+          "material": "washed-ore",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "process-water-in",
+          "direction": "in",
+          "material": "process-water",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-001"
+    },
+    {
+      "id": "D01.B.screen",
+      "label": "B / Wet sizing screen",
+      "kind": "screen",
+      "line": "B",
+      "position": [
+        0,
+        2.5,
+        0
+      ],
+      "size": [
+        10,
+        5,
+        7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "screen",
+      "ports": [
+        {
+          "id": "washed-ore-in",
+          "direction": "in",
+          "material": "washed-ore",
+          "local_position_m": [
+            -5.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sized-ore-out",
+          "direction": "out",
+          "material": "sized-ore",
+          "local_position_m": [
+            5.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "screen-fines-slurry-out",
+          "direction": "out",
+          "material": "screen-fines-slurry",
+          "local_position_m": [
+            5.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "process-water-in",
+          "direction": "in",
+          "material": "process-water",
+          "local_position_m": [
+            -5.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-002"
+    },
+    {
+      "id": "D01.B.dms",
+      "label": "B / Dense-medium separation",
+      "kind": "dms",
+      "line": "B",
+      "position": [
+        12,
+        6.0,
+        0
+      ],
+      "size": [
+        8,
+        12,
+        8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "dms",
+      "ports": [
+        {
+          "id": "sized-ore-in",
+          "direction": "in",
+          "material": "sized-ore",
+          "local_position_m": [
+            -4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sinks-out",
+          "direction": "out",
+          "material": "sinks",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "floats-out",
+          "direction": "out",
+          "material": "floats",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "ferrosilicon-medium-in",
+          "direction": "in",
+          "material": "ferrosilicon-medium",
+          "local_position_m": [
+            -4.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-003"
+    },
+    {
+      "id": "D01.B.medium",
+      "label": "B / Drain / rinse / medium recovery",
+      "kind": "medium",
+      "line": "B",
+      "position": [
+        25,
+        3.0,
+        0
+      ],
+      "size": [
+        12,
+        6,
+        8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "medium",
+      "ports": [
+        {
+          "id": "sinks-in",
+          "direction": "in",
+          "material": "sinks",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "floats-in",
+          "direction": "in",
+          "material": "floats",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "concentrate-out",
+          "direction": "out",
+          "material": "concentrate",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "washed-tailings-out",
+          "direction": "out",
+          "material": "washed-tailings",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "wash-effluent-out",
+          "direction": "out",
+          "material": "wash-effluent",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "ferrosilicon-medium-out",
+          "direction": "out",
+          "material": "ferrosilicon-medium",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "process-water-in",
+          "direction": "in",
+          "material": "process-water",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-004"
+    },
+    {
+      "id": "D01.B.sorter",
+      "label": "B / Enclosed X-ray sorting",
+      "kind": "sorter",
+      "line": "B",
+      "position": [
+        37,
+        2.0,
+        0
+      ],
+      "size": [
+        6,
+        4,
+        5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "sorter",
+      "ports": [
+        {
+          "id": "concentrate-in",
+          "direction": "in",
+          "material": "concentrate",
+          "local_position_m": [
+            -3.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sorter-rejects-out",
+          "direction": "out",
+          "material": "sorter-rejects",
+          "local_position_m": [
+            3.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "recovered-product-out",
+          "direction": "out",
+          "material": "recovered-product",
+          "local_position_m": [
+            3.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-005"
+    },
+    {
+      "id": "D01.C.crusher",
+      "label": "C / Crushing / feed preparation",
+      "kind": "crusher",
+      "line": "C",
+      "position": [
+        -27,
+        3.5,
+        16
+      ],
+      "size": [
+        8,
+        7,
+        7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "crusher",
+      "ports": [
+        {
+          "id": "ore-in",
+          "direction": "in",
+          "material": "ore",
+          "local_position_m": [
+            -4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "crushed-ore-out",
+          "direction": "out",
+          "material": "crushed-ore",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-000"
+    },
+    {
+      "id": "D01.C.scrubber",
+      "label": "C / Rotary scrubber",
+      "kind": "scrubber",
+      "line": "C",
+      "position": [
+        -13,
+        2.5,
+        16
+      ],
+      "size": [
+        12,
+        5,
+        7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "scrubber",
+      "ports": [
+        {
+          "id": "crushed-ore-in",
+          "direction": "in",
+          "material": "crushed-ore",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "washed-ore-out",
+          "direction": "out",
+          "material": "washed-ore",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "process-water-in",
+          "direction": "in",
+          "material": "process-water",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-001"
+    },
+    {
+      "id": "D01.C.screen",
+      "label": "C / Wet sizing screen",
+      "kind": "screen",
+      "line": "C",
+      "position": [
+        0,
+        2.5,
+        16
+      ],
+      "size": [
+        10,
+        5,
+        7
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "screen",
+      "ports": [
+        {
+          "id": "washed-ore-in",
+          "direction": "in",
+          "material": "washed-ore",
+          "local_position_m": [
+            -5.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sized-ore-out",
+          "direction": "out",
+          "material": "sized-ore",
+          "local_position_m": [
+            5.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "screen-fines-slurry-out",
+          "direction": "out",
+          "material": "screen-fines-slurry",
+          "local_position_m": [
+            5.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "process-water-in",
+          "direction": "in",
+          "material": "process-water",
+          "local_position_m": [
+            -5.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-002"
+    },
+    {
+      "id": "D01.C.dms",
+      "label": "C / Dense-medium separation",
+      "kind": "dms",
+      "line": "C",
+      "position": [
+        12,
+        6.0,
+        16
+      ],
+      "size": [
+        8,
+        12,
+        8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "dms",
+      "ports": [
+        {
+          "id": "sized-ore-in",
+          "direction": "in",
+          "material": "sized-ore",
+          "local_position_m": [
+            -4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sinks-out",
+          "direction": "out",
+          "material": "sinks",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "floats-out",
+          "direction": "out",
+          "material": "floats",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "ferrosilicon-medium-in",
+          "direction": "in",
+          "material": "ferrosilicon-medium",
+          "local_position_m": [
+            -4.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-003"
+    },
+    {
+      "id": "D01.C.medium",
+      "label": "C / Drain / rinse / medium recovery",
+      "kind": "medium",
+      "line": "C",
+      "position": [
+        25,
+        3.0,
+        16
+      ],
+      "size": [
+        12,
+        6,
+        8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "medium",
+      "ports": [
+        {
+          "id": "sinks-in",
+          "direction": "in",
+          "material": "sinks",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "floats-in",
+          "direction": "in",
+          "material": "floats",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "concentrate-out",
+          "direction": "out",
+          "material": "concentrate",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "washed-tailings-out",
+          "direction": "out",
+          "material": "washed-tailings",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "wash-effluent-out",
+          "direction": "out",
+          "material": "wash-effluent",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "ferrosilicon-medium-out",
+          "direction": "out",
+          "material": "ferrosilicon-medium",
+          "local_position_m": [
+            6.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "process-water-in",
+          "direction": "in",
+          "material": "process-water",
+          "local_position_m": [
+            -6.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-004"
+    },
+    {
+      "id": "D01.C.sorter",
+      "label": "C / Enclosed X-ray sorting",
+      "kind": "sorter",
+      "line": "C",
+      "position": [
+        37,
+        2.0,
+        16
+      ],
+      "size": [
+        6,
+        4,
+        5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "sorter",
+      "ports": [
+        {
+          "id": "concentrate-in",
+          "direction": "in",
+          "material": "concentrate",
+          "local_position_m": [
+            -3.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sorter-rejects-out",
+          "direction": "out",
+          "material": "sorter-rejects",
+          "local_position_m": [
+            3.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "recovered-product-out",
+          "direction": "out",
+          "material": "recovered-product",
+          "local_position_m": [
+            3.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-005"
+    },
+    {
+      "id": "D01.shared.hopper",
+      "label": "Shared raw-feed hopper",
+      "kind": "hopper",
+      "line": "shared",
+      "position": [
+        -44,
+        3.8,
+        0
+      ],
+      "size": [
+        8,
+        7.6,
+        8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "hopper",
+      "ports": [
+        {
+          "id": "ore-out",
+          "direction": "out",
+          "material": "ore",
+          "local_position_m": [
+            4.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-006"
+    },
+    {
+      "id": "D01.shared.thickener",
+      "label": "Water-recovery thickener",
+      "kind": "thickener",
+      "line": "shared",
+      "position": [
+        -7,
+        3.0,
+        -29
+      ],
+      "size": [
+        16,
+        6,
+        16
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "thickener",
+      "ports": [
+        {
+          "id": "screen-fines-slurry-in",
+          "direction": "in",
+          "material": "screen-fines-slurry",
+          "local_position_m": [
+            -8.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "wash-effluent-in",
+          "direction": "in",
+          "material": "wash-effluent",
+          "local_position_m": [
+            -8.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "recovered-water-out",
+          "direction": "out",
+          "material": "recovered-water",
+          "local_position_m": [
+            8.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "thickener-underflow-out",
+          "direction": "out",
+          "material": "thickener-underflow",
+          "local_position_m": [
+            8.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-007"
+    },
+    {
+      "id": "D01.shared.water",
+      "label": "Process-water tank",
+      "kind": "water",
+      "line": "shared",
+      "position": [
+        8,
+        3.5,
+        -28
+      ],
+      "size": [
+        6,
+        7,
+        6
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "water",
+      "ports": [
+        {
+          "id": "process-water-out",
+          "direction": "out",
+          "material": "process-water",
+          "local_position_m": [
+            3.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "recovered-water-in",
+          "direction": "in",
+          "material": "recovered-water",
+          "local_position_m": [
+            -3.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-008"
+    },
+    {
+      "id": "D01.shared.lab",
+      "label": "Secure recovery / inspection lab",
+      "kind": "lab",
+      "line": "shared",
+      "position": [
+        47,
+        3.0,
+        0
+      ],
+      "size": [
+        6,
+        6,
+        11
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "lab",
+      "ports": [
+        {
+          "id": "recovered-product-in",
+          "direction": "in",
+          "material": "recovered-product",
+          "local_position_m": [
+            -3.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-009"
+    },
+    {
+      "id": "D01.shared.control",
+      "label": "Electrical / control hut",
+      "kind": "control",
+      "line": "shared",
+      "position": [
+        -5,
+        2.2,
+        31
+      ],
+      "size": [
+        8,
+        4.4,
+        5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "control",
+      "ports": [],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-010"
+    },
+    {
+      "id": "D01.shared.tailings",
+      "label": "Tailings handling zone",
+      "kind": "tailings",
+      "line": "shared",
+      "position": [
+        39,
+        2.0,
+        -29
+      ],
+      "size": [
+        14,
+        4,
+        12
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "visible": true,
+      "appearance_concept": "tailings",
+      "ports": [
+        {
+          "id": "washed-tailings-in",
+          "direction": "in",
+          "material": "washed-tailings",
+          "local_position_m": [
+            -7.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "sorter-rejects-in",
+          "direction": "in",
+          "material": "sorter-rejects",
+          "local_position_m": [
+            -7.0,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "thickener-underflow-in",
+          "direction": "in",
+          "material": "thickener-underflow",
+          "local_position_m": [
+            -7.0,
+            0,
+            0
+          ]
+        }
+      ],
+      "geometry_evidence": "manual-module-reconstruction-from-synthetic-reference",
+      "appearance_asset_id": "D01-splat-object-011"
+    }
+  ],
+  "equipment": [
+    {
+      "id": "D01.A.crusher.feeder",
+      "module_id": "D01.A.crusher",
+      "name": "feeder",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.crusher.crusher-drive",
+      "module_id": "D01.A.crusher",
+      "name": "crusher-drive",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.crusher.bearing",
+      "module_id": "D01.A.crusher",
+      "name": "bearing",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.scrubber.drum-drive",
+      "module_id": "D01.A.scrubber",
+      "name": "drum-drive",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.scrubber.wash-pump",
+      "module_id": "D01.A.scrubber",
+      "name": "wash-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.screen.exciter",
+      "module_id": "D01.A.screen",
+      "name": "exciter",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.screen.spray-manifold",
+      "module_id": "D01.A.screen",
+      "name": "spray-manifold",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.dms.feed-pump",
+      "module_id": "D01.A.dms",
+      "name": "feed-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.dms.density-meter",
+      "module_id": "D01.A.dms",
+      "name": "density-meter",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.dms.cyclone-bank",
+      "module_id": "D01.A.dms",
+      "name": "cyclone-bank",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.medium.magnetic-separator",
+      "module_id": "D01.A.medium",
+      "name": "magnetic-separator",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.medium.medium-pump",
+      "module_id": "D01.A.medium",
+      "name": "medium-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.medium.rinse-screen",
+      "module_id": "D01.A.medium",
+      "name": "rinse-screen",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.medium.level-sensor",
+      "module_id": "D01.A.medium",
+      "name": "level-sensor",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.sorter.feed-belt",
+      "module_id": "D01.A.sorter",
+      "name": "feed-belt",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.sorter.xray-enclosure",
+      "module_id": "D01.A.sorter",
+      "name": "xray-enclosure",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.A.sorter.reject-actuator",
+      "module_id": "D01.A.sorter",
+      "name": "reject-actuator",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.crusher.feeder",
+      "module_id": "D01.B.crusher",
+      "name": "feeder",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.crusher.crusher-drive",
+      "module_id": "D01.B.crusher",
+      "name": "crusher-drive",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.crusher.bearing",
+      "module_id": "D01.B.crusher",
+      "name": "bearing",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.scrubber.drum-drive",
+      "module_id": "D01.B.scrubber",
+      "name": "drum-drive",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.scrubber.wash-pump",
+      "module_id": "D01.B.scrubber",
+      "name": "wash-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.screen.exciter",
+      "module_id": "D01.B.screen",
+      "name": "exciter",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.screen.spray-manifold",
+      "module_id": "D01.B.screen",
+      "name": "spray-manifold",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.dms.feed-pump",
+      "module_id": "D01.B.dms",
+      "name": "feed-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.dms.density-meter",
+      "module_id": "D01.B.dms",
+      "name": "density-meter",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.dms.cyclone-bank",
+      "module_id": "D01.B.dms",
+      "name": "cyclone-bank",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.medium.magnetic-separator",
+      "module_id": "D01.B.medium",
+      "name": "magnetic-separator",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.medium.medium-pump",
+      "module_id": "D01.B.medium",
+      "name": "medium-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.medium.rinse-screen",
+      "module_id": "D01.B.medium",
+      "name": "rinse-screen",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.medium.level-sensor",
+      "module_id": "D01.B.medium",
+      "name": "level-sensor",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.sorter.feed-belt",
+      "module_id": "D01.B.sorter",
+      "name": "feed-belt",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.sorter.xray-enclosure",
+      "module_id": "D01.B.sorter",
+      "name": "xray-enclosure",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.B.sorter.reject-actuator",
+      "module_id": "D01.B.sorter",
+      "name": "reject-actuator",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.crusher.feeder",
+      "module_id": "D01.C.crusher",
+      "name": "feeder",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.crusher.crusher-drive",
+      "module_id": "D01.C.crusher",
+      "name": "crusher-drive",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.crusher.bearing",
+      "module_id": "D01.C.crusher",
+      "name": "bearing",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.scrubber.drum-drive",
+      "module_id": "D01.C.scrubber",
+      "name": "drum-drive",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.scrubber.wash-pump",
+      "module_id": "D01.C.scrubber",
+      "name": "wash-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.screen.exciter",
+      "module_id": "D01.C.screen",
+      "name": "exciter",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.screen.spray-manifold",
+      "module_id": "D01.C.screen",
+      "name": "spray-manifold",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.dms.feed-pump",
+      "module_id": "D01.C.dms",
+      "name": "feed-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.dms.density-meter",
+      "module_id": "D01.C.dms",
+      "name": "density-meter",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.dms.cyclone-bank",
+      "module_id": "D01.C.dms",
+      "name": "cyclone-bank",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.medium.magnetic-separator",
+      "module_id": "D01.C.medium",
+      "name": "magnetic-separator",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.medium.medium-pump",
+      "module_id": "D01.C.medium",
+      "name": "medium-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.medium.rinse-screen",
+      "module_id": "D01.C.medium",
+      "name": "rinse-screen",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.medium.level-sensor",
+      "module_id": "D01.C.medium",
+      "name": "level-sensor",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.sorter.feed-belt",
+      "module_id": "D01.C.sorter",
+      "name": "feed-belt",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.sorter.xray-enclosure",
+      "module_id": "D01.C.sorter",
+      "name": "xray-enclosure",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.C.sorter.reject-actuator",
+      "module_id": "D01.C.sorter",
+      "name": "reject-actuator",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.hopper.level-sensor",
+      "module_id": "D01.shared.hopper",
+      "name": "level-sensor",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.hopper.distributor",
+      "module_id": "D01.shared.hopper",
+      "name": "distributor",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.thickener.rake-drive",
+      "module_id": "D01.shared.thickener",
+      "name": "rake-drive",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.thickener.underflow-pump",
+      "module_id": "D01.shared.thickener",
+      "name": "underflow-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.thickener.level-sensor",
+      "module_id": "D01.shared.thickener",
+      "name": "level-sensor",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.water.level-sensor",
+      "module_id": "D01.shared.water",
+      "name": "level-sensor",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.water.supply-pump",
+      "module_id": "D01.shared.water",
+      "name": "supply-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.lab.product-scale",
+      "module_id": "D01.shared.lab",
+      "name": "product-scale",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.lab.secure-inventory",
+      "module_id": "D01.shared.lab",
+      "name": "secure-inventory",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.control.plc",
+      "module_id": "D01.shared.control",
+      "name": "plc",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.control.power-meter",
+      "module_id": "D01.shared.control",
+      "name": "power-meter",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.tailings.sump-pump",
+      "module_id": "D01.shared.tailings",
+      "name": "sump-pump",
+      "geometry": "logical-child-no-independent-geometry"
+    },
+    {
+      "id": "D01.shared.tailings.inventory",
+      "module_id": "D01.shared.tailings",
+      "name": "inventory",
+      "geometry": "logical-child-no-independent-geometry"
+    }
+  ],
+  "streams": [
+    {
+      "id": "process-A-feed",
+      "source": {
+        "module_id": "D01.shared.hopper",
+        "port_id": "ore-out"
+      },
+      "target": {
+        "module_id": "D01.A.crusher",
+        "port_id": "ore-in"
+      },
+      "material": "ore",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.5,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-A-crush",
+      "source": {
+        "module_id": "D01.A.crusher",
+        "port_id": "crushed-ore-out"
+      },
+      "target": {
+        "module_id": "D01.A.scrubber",
+        "port_id": "crushed-ore-in"
+      },
+      "material": "crushed-ore",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          -23.0,
+          3.5,
+          -16.0
+        ],
+        [
+          -23.0,
+          3.5,
+          -16.0
+        ],
+        [
+          -19.0,
+          3.5,
+          -16.0
+        ],
+        [
+          -19.0,
+          2.5,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-A-wash",
+      "source": {
+        "module_id": "D01.A.scrubber",
+        "port_id": "washed-ore-out"
+      },
+      "target": {
+        "module_id": "D01.A.screen",
+        "port_id": "washed-ore-in"
+      },
+      "material": "washed-ore",
+      "transport": "chute",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          -7.0,
+          2.5,
+          -16.0
+        ],
+        [
+          -7.0,
+          2.5,
+          -16.0
+        ],
+        [
+          -5.0,
+          2.5,
+          -16.0
+        ],
+        [
+          -5.0,
+          2.5,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-A-size",
+      "source": {
+        "module_id": "D01.A.screen",
+        "port_id": "sized-ore-out"
+      },
+      "target": {
+        "module_id": "D01.A.dms",
+        "port_id": "sized-ore-in"
+      },
+      "material": "sized-ore",
+      "transport": "chute",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          5.0,
+          2.5,
+          -16.0
+        ],
+        [
+          5.0,
+          6.0,
+          -16.0
+        ],
+        [
+          8.0,
+          6.0,
+          -16.0
+        ],
+        [
+          8.0,
+          6.0,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-A-sinks",
+      "source": {
+        "module_id": "D01.A.dms",
+        "port_id": "sinks-out"
+      },
+      "target": {
+        "module_id": "D01.A.medium",
+        "port_id": "sinks-in"
+      },
+      "material": "sinks",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          16.0,
+          6.0,
+          -16.0
+        ],
+        [
+          16.0,
+          6.0,
+          -16.0
+        ],
+        [
+          19.0,
+          6.0,
+          -16.0
+        ],
+        [
+          19.0,
+          3.0,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-A-floats",
+      "source": {
+        "module_id": "D01.A.dms",
+        "port_id": "floats-out"
+      },
+      "target": {
+        "module_id": "D01.A.medium",
+        "port_id": "floats-in"
+      },
+      "material": "floats",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          16.0,
+          6.0,
+          -16.0
+        ],
+        [
+          16.0,
+          6.0,
+          -16.0
+        ],
+        [
+          19.0,
+          6.0,
+          -16.0
+        ],
+        [
+          19.0,
+          3.0,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-A-concentrate",
+      "source": {
+        "module_id": "D01.A.medium",
+        "port_id": "concentrate-out"
+      },
+      "target": {
+        "module_id": "D01.A.sorter",
+        "port_id": "concentrate-in"
+      },
+      "material": "concentrate",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          34.0,
+          3.0,
+          -16.0
+        ],
+        [
+          34.0,
+          2.0,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-A-reject",
+      "source": {
+        "module_id": "D01.A.medium",
+        "port_id": "washed-tailings-out"
+      },
+      "target": {
+        "module_id": "D01.shared.tailings",
+        "port_id": "washed-tailings-in"
+      },
+      "material": "washed-tailings",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          32.0,
+          3.0,
+          -16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "process-A-sorter-reject",
+      "source": {
+        "module_id": "D01.A.sorter",
+        "port_id": "sorter-rejects-out"
+      },
+      "target": {
+        "module_id": "D01.shared.tailings",
+        "port_id": "sorter-rejects-in"
+      },
+      "material": "sorter-rejects",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          40.0,
+          2.0,
+          -16.0
+        ],
+        [
+          40.0,
+          2.0,
+          -16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "process-A-product",
+      "source": {
+        "module_id": "D01.A.sorter",
+        "port_id": "recovered-product-out"
+      },
+      "target": {
+        "module_id": "D01.shared.lab",
+        "port_id": "recovered-product-in"
+      },
+      "material": "recovered-product",
+      "transport": "secure-transfer",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          40.0,
+          2.0,
+          -16.0
+        ],
+        [
+          40.0,
+          3.0,
+          -16.0
+        ],
+        [
+          44.0,
+          3.0,
+          -16.0
+        ],
+        [
+          44.0,
+          3.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-A-fines",
+      "source": {
+        "module_id": "D01.A.screen",
+        "port_id": "screen-fines-slurry-out"
+      },
+      "target": {
+        "module_id": "D01.shared.thickener",
+        "port_id": "screen-fines-slurry-in"
+      },
+      "material": "screen-fines-slurry",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          5.0,
+          2.5,
+          -16.0
+        ],
+        [
+          5.0,
+          0.6,
+          -16.0
+        ],
+        [
+          -15.0,
+          0.6,
+          -16.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-A-effluent",
+      "source": {
+        "module_id": "D01.A.medium",
+        "port_id": "wash-effluent-out"
+      },
+      "target": {
+        "module_id": "D01.shared.thickener",
+        "port_id": "wash-effluent-in"
+      },
+      "material": "wash-effluent",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          31.0,
+          0.6,
+          -16.0
+        ],
+        [
+          -15.0,
+          0.6,
+          -16.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-A-medium-recycle",
+      "source": {
+        "module_id": "D01.A.medium",
+        "port_id": "ferrosilicon-medium-out"
+      },
+      "target": {
+        "module_id": "D01.A.dms",
+        "port_id": "ferrosilicon-medium-in"
+      },
+      "material": "ferrosilicon-medium",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          -16.0
+        ],
+        [
+          31.0,
+          0.6,
+          -16.0
+        ],
+        [
+          8.0,
+          0.6,
+          -16.0
+        ],
+        [
+          8.0,
+          6.0,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-A-scrubber-water",
+      "source": {
+        "module_id": "D01.shared.water",
+        "port_id": "process-water-out"
+      },
+      "target": {
+        "module_id": "D01.A.scrubber",
+        "port_id": "process-water-in"
+      },
+      "material": "process-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          2.5,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-A-screen-water",
+      "source": {
+        "module_id": "D01.shared.water",
+        "port_id": "process-water-out"
+      },
+      "target": {
+        "module_id": "D01.A.screen",
+        "port_id": "process-water-in"
+      },
+      "material": "process-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          2.5,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-A-medium-water",
+      "source": {
+        "module_id": "D01.shared.water",
+        "port_id": "process-water-out"
+      },
+      "target": {
+        "module_id": "D01.A.medium",
+        "port_id": "process-water-in"
+      },
+      "material": "process-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          3.0,
+          -16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-feed",
+      "source": {
+        "module_id": "D01.shared.hopper",
+        "port_id": "ore-out"
+      },
+      "target": {
+        "module_id": "D01.B.crusher",
+        "port_id": "ore-in"
+      },
+      "material": "ore",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.5,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-crush",
+      "source": {
+        "module_id": "D01.B.crusher",
+        "port_id": "crushed-ore-out"
+      },
+      "target": {
+        "module_id": "D01.B.scrubber",
+        "port_id": "crushed-ore-in"
+      },
+      "material": "crushed-ore",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          -23.0,
+          3.5,
+          0.0
+        ],
+        [
+          -23.0,
+          3.5,
+          0.0
+        ],
+        [
+          -19.0,
+          3.5,
+          0.0
+        ],
+        [
+          -19.0,
+          2.5,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-wash",
+      "source": {
+        "module_id": "D01.B.scrubber",
+        "port_id": "washed-ore-out"
+      },
+      "target": {
+        "module_id": "D01.B.screen",
+        "port_id": "washed-ore-in"
+      },
+      "material": "washed-ore",
+      "transport": "chute",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          -7.0,
+          2.5,
+          0.0
+        ],
+        [
+          -7.0,
+          2.5,
+          0.0
+        ],
+        [
+          -5.0,
+          2.5,
+          0.0
+        ],
+        [
+          -5.0,
+          2.5,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-size",
+      "source": {
+        "module_id": "D01.B.screen",
+        "port_id": "sized-ore-out"
+      },
+      "target": {
+        "module_id": "D01.B.dms",
+        "port_id": "sized-ore-in"
+      },
+      "material": "sized-ore",
+      "transport": "chute",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          5.0,
+          2.5,
+          0.0
+        ],
+        [
+          5.0,
+          6.0,
+          0.0
+        ],
+        [
+          8.0,
+          6.0,
+          0.0
+        ],
+        [
+          8.0,
+          6.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-sinks",
+      "source": {
+        "module_id": "D01.B.dms",
+        "port_id": "sinks-out"
+      },
+      "target": {
+        "module_id": "D01.B.medium",
+        "port_id": "sinks-in"
+      },
+      "material": "sinks",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          16.0,
+          6.0,
+          0.0
+        ],
+        [
+          16.0,
+          6.0,
+          0.0
+        ],
+        [
+          19.0,
+          6.0,
+          0.0
+        ],
+        [
+          19.0,
+          3.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-floats",
+      "source": {
+        "module_id": "D01.B.dms",
+        "port_id": "floats-out"
+      },
+      "target": {
+        "module_id": "D01.B.medium",
+        "port_id": "floats-in"
+      },
+      "material": "floats",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          16.0,
+          6.0,
+          0.0
+        ],
+        [
+          16.0,
+          6.0,
+          0.0
+        ],
+        [
+          19.0,
+          6.0,
+          0.0
+        ],
+        [
+          19.0,
+          3.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-concentrate",
+      "source": {
+        "module_id": "D01.B.medium",
+        "port_id": "concentrate-out"
+      },
+      "target": {
+        "module_id": "D01.B.sorter",
+        "port_id": "concentrate-in"
+      },
+      "material": "concentrate",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          34.0,
+          3.0,
+          0.0
+        ],
+        [
+          34.0,
+          2.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-reject",
+      "source": {
+        "module_id": "D01.B.medium",
+        "port_id": "washed-tailings-out"
+      },
+      "target": {
+        "module_id": "D01.shared.tailings",
+        "port_id": "washed-tailings-in"
+      },
+      "material": "washed-tailings",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          32.0,
+          3.0,
+          0.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-sorter-reject",
+      "source": {
+        "module_id": "D01.B.sorter",
+        "port_id": "sorter-rejects-out"
+      },
+      "target": {
+        "module_id": "D01.shared.tailings",
+        "port_id": "sorter-rejects-in"
+      },
+      "material": "sorter-rejects",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          40.0,
+          2.0,
+          0.0
+        ],
+        [
+          40.0,
+          2.0,
+          0.0
+        ],
+        [
+          32.0,
+          2.0,
+          0.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "process-B-product",
+      "source": {
+        "module_id": "D01.B.sorter",
+        "port_id": "recovered-product-out"
+      },
+      "target": {
+        "module_id": "D01.shared.lab",
+        "port_id": "recovered-product-in"
+      },
+      "material": "recovered-product",
+      "transport": "secure-transfer",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          40.0,
+          2.0,
+          0.0
+        ],
+        [
+          40.0,
+          3.0,
+          0.0
+        ],
+        [
+          44.0,
+          3.0,
+          0.0
+        ],
+        [
+          44.0,
+          3.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-B-fines",
+      "source": {
+        "module_id": "D01.B.screen",
+        "port_id": "screen-fines-slurry-out"
+      },
+      "target": {
+        "module_id": "D01.shared.thickener",
+        "port_id": "screen-fines-slurry-in"
+      },
+      "material": "screen-fines-slurry",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          5.0,
+          2.5,
+          0.0
+        ],
+        [
+          5.0,
+          0.6,
+          0.0
+        ],
+        [
+          -15.0,
+          0.6,
+          0.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-B-effluent",
+      "source": {
+        "module_id": "D01.B.medium",
+        "port_id": "wash-effluent-out"
+      },
+      "target": {
+        "module_id": "D01.shared.thickener",
+        "port_id": "wash-effluent-in"
+      },
+      "material": "wash-effluent",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          31.0,
+          0.6,
+          0.0
+        ],
+        [
+          -15.0,
+          0.6,
+          0.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-B-medium-recycle",
+      "source": {
+        "module_id": "D01.B.medium",
+        "port_id": "ferrosilicon-medium-out"
+      },
+      "target": {
+        "module_id": "D01.B.dms",
+        "port_id": "ferrosilicon-medium-in"
+      },
+      "material": "ferrosilicon-medium",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          0.0
+        ],
+        [
+          31.0,
+          0.6,
+          0.0
+        ],
+        [
+          8.0,
+          0.6,
+          0.0
+        ],
+        [
+          8.0,
+          6.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-B-scrubber-water",
+      "source": {
+        "module_id": "D01.shared.water",
+        "port_id": "process-water-out"
+      },
+      "target": {
+        "module_id": "D01.B.scrubber",
+        "port_id": "process-water-in"
+      },
+      "material": "process-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          2.5,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-B-screen-water",
+      "source": {
+        "module_id": "D01.shared.water",
+        "port_id": "process-water-out"
+      },
+      "target": {
+        "module_id": "D01.B.screen",
+        "port_id": "process-water-in"
+      },
+      "material": "process-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          2.5,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-B-medium-water",
+      "source": {
+        "module_id": "D01.shared.water",
+        "port_id": "process-water-out"
+      },
+      "target": {
+        "module_id": "D01.B.medium",
+        "port_id": "process-water-in"
+      },
+      "material": "process-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          3.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-feed",
+      "source": {
+        "module_id": "D01.shared.hopper",
+        "port_id": "ore-out"
+      },
+      "target": {
+        "module_id": "D01.C.crusher",
+        "port_id": "ore-in"
+      },
+      "material": "ore",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -40.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.8,
+          0.0
+        ],
+        [
+          -31.0,
+          3.5,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-crush",
+      "source": {
+        "module_id": "D01.C.crusher",
+        "port_id": "crushed-ore-out"
+      },
+      "target": {
+        "module_id": "D01.C.scrubber",
+        "port_id": "crushed-ore-in"
+      },
+      "material": "crushed-ore",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          -23.0,
+          3.5,
+          16.0
+        ],
+        [
+          -23.0,
+          3.5,
+          16.0
+        ],
+        [
+          -19.0,
+          3.5,
+          16.0
+        ],
+        [
+          -19.0,
+          2.5,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-wash",
+      "source": {
+        "module_id": "D01.C.scrubber",
+        "port_id": "washed-ore-out"
+      },
+      "target": {
+        "module_id": "D01.C.screen",
+        "port_id": "washed-ore-in"
+      },
+      "material": "washed-ore",
+      "transport": "chute",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          -7.0,
+          2.5,
+          16.0
+        ],
+        [
+          -7.0,
+          2.5,
+          16.0
+        ],
+        [
+          -5.0,
+          2.5,
+          16.0
+        ],
+        [
+          -5.0,
+          2.5,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-size",
+      "source": {
+        "module_id": "D01.C.screen",
+        "port_id": "sized-ore-out"
+      },
+      "target": {
+        "module_id": "D01.C.dms",
+        "port_id": "sized-ore-in"
+      },
+      "material": "sized-ore",
+      "transport": "chute",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          5.0,
+          2.5,
+          16.0
+        ],
+        [
+          5.0,
+          6.0,
+          16.0
+        ],
+        [
+          8.0,
+          6.0,
+          16.0
+        ],
+        [
+          8.0,
+          6.0,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-sinks",
+      "source": {
+        "module_id": "D01.C.dms",
+        "port_id": "sinks-out"
+      },
+      "target": {
+        "module_id": "D01.C.medium",
+        "port_id": "sinks-in"
+      },
+      "material": "sinks",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          16.0,
+          6.0,
+          16.0
+        ],
+        [
+          16.0,
+          6.0,
+          16.0
+        ],
+        [
+          19.0,
+          6.0,
+          16.0
+        ],
+        [
+          19.0,
+          3.0,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-floats",
+      "source": {
+        "module_id": "D01.C.dms",
+        "port_id": "floats-out"
+      },
+      "target": {
+        "module_id": "D01.C.medium",
+        "port_id": "floats-in"
+      },
+      "material": "floats",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          16.0,
+          6.0,
+          16.0
+        ],
+        [
+          16.0,
+          6.0,
+          16.0
+        ],
+        [
+          19.0,
+          6.0,
+          16.0
+        ],
+        [
+          19.0,
+          3.0,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-concentrate",
+      "source": {
+        "module_id": "D01.C.medium",
+        "port_id": "concentrate-out"
+      },
+      "target": {
+        "module_id": "D01.C.sorter",
+        "port_id": "concentrate-in"
+      },
+      "material": "concentrate",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          34.0,
+          3.0,
+          16.0
+        ],
+        [
+          34.0,
+          2.0,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-reject",
+      "source": {
+        "module_id": "D01.C.medium",
+        "port_id": "washed-tailings-out"
+      },
+      "target": {
+        "module_id": "D01.shared.tailings",
+        "port_id": "washed-tailings-in"
+      },
+      "material": "washed-tailings",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          32.0,
+          3.0,
+          16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-sorter-reject",
+      "source": {
+        "module_id": "D01.C.sorter",
+        "port_id": "sorter-rejects-out"
+      },
+      "target": {
+        "module_id": "D01.shared.tailings",
+        "port_id": "sorter-rejects-in"
+      },
+      "material": "sorter-rejects",
+      "transport": "belt",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          40.0,
+          2.0,
+          16.0
+        ],
+        [
+          40.0,
+          2.0,
+          16.0
+        ],
+        [
+          32.0,
+          2.0,
+          16.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "process-C-product",
+      "source": {
+        "module_id": "D01.C.sorter",
+        "port_id": "recovered-product-out"
+      },
+      "target": {
+        "module_id": "D01.shared.lab",
+        "port_id": "recovered-product-in"
+      },
+      "material": "recovered-product",
+      "transport": "secure-transfer",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": true,
+      "route_points_m": [
+        [
+          40.0,
+          2.0,
+          16.0
+        ],
+        [
+          40.0,
+          3.0,
+          16.0
+        ],
+        [
+          44.0,
+          3.0,
+          16.0
+        ],
+        [
+          44.0,
+          3.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-C-fines",
+      "source": {
+        "module_id": "D01.C.screen",
+        "port_id": "screen-fines-slurry-out"
+      },
+      "target": {
+        "module_id": "D01.shared.thickener",
+        "port_id": "screen-fines-slurry-in"
+      },
+      "material": "screen-fines-slurry",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          5.0,
+          2.5,
+          16.0
+        ],
+        [
+          5.0,
+          0.6,
+          16.0
+        ],
+        [
+          -15.0,
+          0.6,
+          16.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-C-effluent",
+      "source": {
+        "module_id": "D01.C.medium",
+        "port_id": "wash-effluent-out"
+      },
+      "target": {
+        "module_id": "D01.shared.thickener",
+        "port_id": "wash-effluent-in"
+      },
+      "material": "wash-effluent",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          31.0,
+          0.6,
+          16.0
+        ],
+        [
+          -15.0,
+          0.6,
+          16.0
+        ],
+        [
+          -15.0,
+          3.0,
+          -29.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-C-medium-recycle",
+      "source": {
+        "module_id": "D01.C.medium",
+        "port_id": "ferrosilicon-medium-out"
+      },
+      "target": {
+        "module_id": "D01.C.dms",
+        "port_id": "ferrosilicon-medium-in"
+      },
+      "material": "ferrosilicon-medium",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          31.0,
+          3.0,
+          16.0
+        ],
+        [
+          31.0,
+          0.6,
+          16.0
+        ],
+        [
+          8.0,
+          0.6,
+          16.0
+        ],
+        [
+          8.0,
+          6.0,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-C-scrubber-water",
+      "source": {
+        "module_id": "D01.shared.water",
+        "port_id": "process-water-out"
+      },
+      "target": {
+        "module_id": "D01.C.scrubber",
+        "port_id": "process-water-in"
+      },
+      "material": "process-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -19.0,
+          2.5,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-C-screen-water",
+      "source": {
+        "module_id": "D01.shared.water",
+        "port_id": "process-water-out"
+      },
+      "target": {
+        "module_id": "D01.C.screen",
+        "port_id": "process-water-in"
+      },
+      "material": "process-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          0.6,
+          -28.0
+        ],
+        [
+          -5.0,
+          2.5,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-C-medium-water",
+      "source": {
+        "module_id": "D01.shared.water",
+        "port_id": "process-water-out"
+      },
+      "target": {
+        "module_id": "D01.C.medium",
+        "port_id": "process-water-in"
+      },
+      "material": "process-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          11.0,
+          3.5,
+          -28.0
+        ],
+        [
+          11.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          0.6,
+          -28.0
+        ],
+        [
+          19.0,
+          3.0,
+          16.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-water-return",
+      "source": {
+        "module_id": "D01.shared.thickener",
+        "port_id": "recovered-water-out"
+      },
+      "target": {
+        "module_id": "D01.shared.water",
+        "port_id": "recovered-water-in"
+      },
+      "material": "recovered-water",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          1.0,
+          3.0,
+          -29.0
+        ],
+        [
+          1.0,
+          0.6,
+          -29.0
+        ],
+        [
+          5.0,
+          0.6,
+          -29.0
+        ],
+        [
+          5.0,
+          3.5,
+          -28.0
+        ]
+      ]
+    },
+    {
+      "id": "utility-thickener-underflow",
+      "source": {
+        "module_id": "D01.shared.thickener",
+        "port_id": "thickener-underflow-out"
+      },
+      "target": {
+        "module_id": "D01.shared.tailings",
+        "port_id": "thickener-underflow-in"
+      },
+      "material": "thickener-underflow",
+      "transport": "pipe",
+      "evidence": "authored-process-assumption",
+      "visible_by_default": false,
+      "route_points_m": [
+        [
+          1.0,
+          3.0,
+          -29.0
+        ],
+        [
+          1.0,
+          0.6,
+          -29.0
+        ],
+        [
+          32.0,
+          0.6,
+          -29.0
+        ],
+        [
+          32.0,
+          2.0,
+          -29.0
+        ]
+      ]
+    }
+  ],
+  "telemetry_tags": [
+    {
+      "id": "D01.A.crusher.motor_current",
+      "module_id": "D01.A.crusher",
+      "equipment_id": "D01.A.crusher.crusher-drive",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.crusher.bearing_temperature",
+      "module_id": "D01.A.crusher",
+      "equipment_id": "D01.A.crusher.bearing",
+      "metric": "bearing_temperature",
+      "value_type": "double",
+      "unit": "Cel",
+      "simulation_envelope": [
+        15,
+        110
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.crusher.vibration_rms",
+      "module_id": "D01.A.crusher",
+      "equipment_id": "D01.A.crusher.bearing",
+      "metric": "vibration_rms",
+      "value_type": "double",
+      "unit": "mm/s",
+      "simulation_envelope": [
+        0,
+        20
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.crusher.ore_flow",
+      "module_id": "D01.A.crusher",
+      "equipment_id": "D01.A.crusher.feeder",
+      "metric": "ore_flow",
+      "value_type": "double",
+      "unit": "t/h",
+      "simulation_envelope": [
+        0,
+        150
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.scrubber.motor_current",
+      "module_id": "D01.A.scrubber",
+      "equipment_id": "D01.A.scrubber.drum-drive",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.scrubber.water_flow",
+      "module_id": "D01.A.scrubber",
+      "equipment_id": "D01.A.scrubber.wash-pump",
+      "metric": "water_flow",
+      "value_type": "double",
+      "unit": "m3/h",
+      "simulation_envelope": [
+        0,
+        300
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.screen.vibration_rms",
+      "module_id": "D01.A.screen",
+      "equipment_id": "D01.A.screen.exciter",
+      "metric": "vibration_rms",
+      "value_type": "double",
+      "unit": "mm/s",
+      "simulation_envelope": [
+        0,
+        20
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.screen.water_flow",
+      "module_id": "D01.A.screen",
+      "equipment_id": "D01.A.screen.spray-manifold",
+      "metric": "water_flow",
+      "value_type": "double",
+      "unit": "m3/h",
+      "simulation_envelope": [
+        0,
+        300
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.dms.medium_density",
+      "module_id": "D01.A.dms",
+      "equipment_id": "D01.A.dms.density-meter",
+      "metric": "medium_density",
+      "value_type": "double",
+      "unit": "kg/m3",
+      "simulation_envelope": [
+        2000,
+        3500
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.dms.feed_pressure",
+      "module_id": "D01.A.dms",
+      "equipment_id": "D01.A.dms.feed-pump",
+      "metric": "feed_pressure",
+      "value_type": "double",
+      "unit": "kPa",
+      "simulation_envelope": [
+        0,
+        600
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.dms.motor_current",
+      "module_id": "D01.A.dms",
+      "equipment_id": "D01.A.dms.feed-pump",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.medium.motor_current",
+      "module_id": "D01.A.medium",
+      "equipment_id": "D01.A.medium.magnetic-separator",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.medium.level",
+      "module_id": "D01.A.medium",
+      "equipment_id": "D01.A.medium.level-sensor",
+      "metric": "level",
+      "value_type": "double",
+      "unit": "%",
+      "simulation_envelope": [
+        0,
+        100
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.sorter.ore_flow",
+      "module_id": "D01.A.sorter",
+      "equipment_id": "D01.A.sorter.feed-belt",
+      "metric": "ore_flow",
+      "value_type": "double",
+      "unit": "t/h",
+      "simulation_envelope": [
+        0,
+        150
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.A.sorter.motor_current",
+      "module_id": "D01.A.sorter",
+      "equipment_id": "D01.A.sorter.feed-belt",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.crusher.motor_current",
+      "module_id": "D01.B.crusher",
+      "equipment_id": "D01.B.crusher.crusher-drive",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.crusher.bearing_temperature",
+      "module_id": "D01.B.crusher",
+      "equipment_id": "D01.B.crusher.bearing",
+      "metric": "bearing_temperature",
+      "value_type": "double",
+      "unit": "Cel",
+      "simulation_envelope": [
+        15,
+        110
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.crusher.vibration_rms",
+      "module_id": "D01.B.crusher",
+      "equipment_id": "D01.B.crusher.bearing",
+      "metric": "vibration_rms",
+      "value_type": "double",
+      "unit": "mm/s",
+      "simulation_envelope": [
+        0,
+        20
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.crusher.ore_flow",
+      "module_id": "D01.B.crusher",
+      "equipment_id": "D01.B.crusher.feeder",
+      "metric": "ore_flow",
+      "value_type": "double",
+      "unit": "t/h",
+      "simulation_envelope": [
+        0,
+        150
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.scrubber.motor_current",
+      "module_id": "D01.B.scrubber",
+      "equipment_id": "D01.B.scrubber.drum-drive",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.scrubber.water_flow",
+      "module_id": "D01.B.scrubber",
+      "equipment_id": "D01.B.scrubber.wash-pump",
+      "metric": "water_flow",
+      "value_type": "double",
+      "unit": "m3/h",
+      "simulation_envelope": [
+        0,
+        300
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.screen.vibration_rms",
+      "module_id": "D01.B.screen",
+      "equipment_id": "D01.B.screen.exciter",
+      "metric": "vibration_rms",
+      "value_type": "double",
+      "unit": "mm/s",
+      "simulation_envelope": [
+        0,
+        20
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.screen.water_flow",
+      "module_id": "D01.B.screen",
+      "equipment_id": "D01.B.screen.spray-manifold",
+      "metric": "water_flow",
+      "value_type": "double",
+      "unit": "m3/h",
+      "simulation_envelope": [
+        0,
+        300
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.dms.medium_density",
+      "module_id": "D01.B.dms",
+      "equipment_id": "D01.B.dms.density-meter",
+      "metric": "medium_density",
+      "value_type": "double",
+      "unit": "kg/m3",
+      "simulation_envelope": [
+        2000,
+        3500
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.dms.feed_pressure",
+      "module_id": "D01.B.dms",
+      "equipment_id": "D01.B.dms.feed-pump",
+      "metric": "feed_pressure",
+      "value_type": "double",
+      "unit": "kPa",
+      "simulation_envelope": [
+        0,
+        600
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.dms.motor_current",
+      "module_id": "D01.B.dms",
+      "equipment_id": "D01.B.dms.feed-pump",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.medium.motor_current",
+      "module_id": "D01.B.medium",
+      "equipment_id": "D01.B.medium.magnetic-separator",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.medium.level",
+      "module_id": "D01.B.medium",
+      "equipment_id": "D01.B.medium.level-sensor",
+      "metric": "level",
+      "value_type": "double",
+      "unit": "%",
+      "simulation_envelope": [
+        0,
+        100
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.sorter.ore_flow",
+      "module_id": "D01.B.sorter",
+      "equipment_id": "D01.B.sorter.feed-belt",
+      "metric": "ore_flow",
+      "value_type": "double",
+      "unit": "t/h",
+      "simulation_envelope": [
+        0,
+        150
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.B.sorter.motor_current",
+      "module_id": "D01.B.sorter",
+      "equipment_id": "D01.B.sorter.feed-belt",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.crusher.motor_current",
+      "module_id": "D01.C.crusher",
+      "equipment_id": "D01.C.crusher.crusher-drive",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.crusher.bearing_temperature",
+      "module_id": "D01.C.crusher",
+      "equipment_id": "D01.C.crusher.bearing",
+      "metric": "bearing_temperature",
+      "value_type": "double",
+      "unit": "Cel",
+      "simulation_envelope": [
+        15,
+        110
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.crusher.vibration_rms",
+      "module_id": "D01.C.crusher",
+      "equipment_id": "D01.C.crusher.bearing",
+      "metric": "vibration_rms",
+      "value_type": "double",
+      "unit": "mm/s",
+      "simulation_envelope": [
+        0,
+        20
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.crusher.ore_flow",
+      "module_id": "D01.C.crusher",
+      "equipment_id": "D01.C.crusher.feeder",
+      "metric": "ore_flow",
+      "value_type": "double",
+      "unit": "t/h",
+      "simulation_envelope": [
+        0,
+        150
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.scrubber.motor_current",
+      "module_id": "D01.C.scrubber",
+      "equipment_id": "D01.C.scrubber.drum-drive",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.scrubber.water_flow",
+      "module_id": "D01.C.scrubber",
+      "equipment_id": "D01.C.scrubber.wash-pump",
+      "metric": "water_flow",
+      "value_type": "double",
+      "unit": "m3/h",
+      "simulation_envelope": [
+        0,
+        300
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.screen.vibration_rms",
+      "module_id": "D01.C.screen",
+      "equipment_id": "D01.C.screen.exciter",
+      "metric": "vibration_rms",
+      "value_type": "double",
+      "unit": "mm/s",
+      "simulation_envelope": [
+        0,
+        20
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.screen.water_flow",
+      "module_id": "D01.C.screen",
+      "equipment_id": "D01.C.screen.spray-manifold",
+      "metric": "water_flow",
+      "value_type": "double",
+      "unit": "m3/h",
+      "simulation_envelope": [
+        0,
+        300
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.dms.medium_density",
+      "module_id": "D01.C.dms",
+      "equipment_id": "D01.C.dms.density-meter",
+      "metric": "medium_density",
+      "value_type": "double",
+      "unit": "kg/m3",
+      "simulation_envelope": [
+        2000,
+        3500
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.dms.feed_pressure",
+      "module_id": "D01.C.dms",
+      "equipment_id": "D01.C.dms.feed-pump",
+      "metric": "feed_pressure",
+      "value_type": "double",
+      "unit": "kPa",
+      "simulation_envelope": [
+        0,
+        600
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.dms.motor_current",
+      "module_id": "D01.C.dms",
+      "equipment_id": "D01.C.dms.feed-pump",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.medium.motor_current",
+      "module_id": "D01.C.medium",
+      "equipment_id": "D01.C.medium.magnetic-separator",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.medium.level",
+      "module_id": "D01.C.medium",
+      "equipment_id": "D01.C.medium.level-sensor",
+      "metric": "level",
+      "value_type": "double",
+      "unit": "%",
+      "simulation_envelope": [
+        0,
+        100
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.sorter.ore_flow",
+      "module_id": "D01.C.sorter",
+      "equipment_id": "D01.C.sorter.feed-belt",
+      "metric": "ore_flow",
+      "value_type": "double",
+      "unit": "t/h",
+      "simulation_envelope": [
+        0,
+        150
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.C.sorter.motor_current",
+      "module_id": "D01.C.sorter",
+      "equipment_id": "D01.C.sorter.feed-belt",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.hopper.level",
+      "module_id": "D01.shared.hopper",
+      "equipment_id": "D01.shared.hopper.level-sensor",
+      "metric": "level",
+      "value_type": "double",
+      "unit": "%",
+      "simulation_envelope": [
+        0,
+        100
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.hopper.ore_flow",
+      "module_id": "D01.shared.hopper",
+      "equipment_id": "D01.shared.hopper.distributor",
+      "metric": "ore_flow",
+      "value_type": "double",
+      "unit": "t/h",
+      "simulation_envelope": [
+        0,
+        150
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.thickener.level",
+      "module_id": "D01.shared.thickener",
+      "equipment_id": "D01.shared.thickener.level-sensor",
+      "metric": "level",
+      "value_type": "double",
+      "unit": "%",
+      "simulation_envelope": [
+        0,
+        100
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.thickener.motor_current",
+      "module_id": "D01.shared.thickener",
+      "equipment_id": "D01.shared.thickener.rake-drive",
+      "metric": "motor_current",
+      "value_type": "double",
+      "unit": "A",
+      "simulation_envelope": [
+        0,
+        250
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.thickener.water_flow",
+      "module_id": "D01.shared.thickener",
+      "equipment_id": "D01.shared.thickener.underflow-pump",
+      "metric": "water_flow",
+      "value_type": "double",
+      "unit": "m3/h",
+      "simulation_envelope": [
+        0,
+        300
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.water.level",
+      "module_id": "D01.shared.water",
+      "equipment_id": "D01.shared.water.level-sensor",
+      "metric": "level",
+      "value_type": "double",
+      "unit": "%",
+      "simulation_envelope": [
+        0,
+        100
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.water.water_flow",
+      "module_id": "D01.shared.water",
+      "equipment_id": "D01.shared.water.supply-pump",
+      "metric": "water_flow",
+      "value_type": "double",
+      "unit": "m3/h",
+      "simulation_envelope": [
+        0,
+        300
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.lab.product_mass",
+      "module_id": "D01.shared.lab",
+      "equipment_id": "D01.shared.lab.product-scale",
+      "metric": "product_mass",
+      "value_type": "double",
+      "unit": "g",
+      "simulation_envelope": [
+        0,
+        1000
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.control.power",
+      "module_id": "D01.shared.control",
+      "equipment_id": "D01.shared.control.power-meter",
+      "metric": "power",
+      "value_type": "double",
+      "unit": "kW",
+      "simulation_envelope": [
+        0,
+        500
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.tailings.level",
+      "module_id": "D01.shared.tailings",
+      "equipment_id": "D01.shared.tailings.inventory",
+      "metric": "level",
+      "value_type": "double",
+      "unit": "%",
+      "simulation_envelope": [
+        0,
+        100
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    },
+    {
+      "id": "D01.shared.tailings.water_flow",
+      "module_id": "D01.shared.tailings",
+      "equipment_id": "D01.shared.tailings.sump-pump",
+      "metric": "water_flow",
+      "value_type": "double",
+      "unit": "m3/h",
+      "simulation_envelope": [
+        0,
+        300
+      ],
+      "envelope_evidence": "fictional-demo-values-not-operating-limits",
+      "suggested_interval_ms": 1000
+    }
+  ],
+  "reconstruction": {
+    "method": "reviewed-boxes+sam2+idol",
+    "independent_idol_generations": 12,
+    "reconstructed_concepts": 12,
+    "gaussian_module_placements": 24,
+    "authored_mesh_fallbacks": 0,
+    "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+    "layout": "authored-metric-assumptions-not-surveyed",
+    "display": {
+      "fit": "uniform-aspect-fit-visible-four-sigma-bounds-grounded-inside-authored-module-envelope",
+      "idol_sdk_rotation_x_radians": 3.141592653589793,
+      "asset_uri_prefix": "/api/assets/plant/",
+      "public_uri_prefix": "/plant/",
+      "quality_report_uri": "/demo/quality.json"
+    },
+    "report": {
+      "trial_id": "D01",
+      "variant": "optimized",
+      "status": "succeeded",
+      "failure_reason": null,
+      "expected_objects": 24,
+      "detected_objects": 12,
+      "usable_crops": 12,
+      "rejected": [],
+      "objects": [
+        {
+          "node_id": "object-000",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 340.544,
+            "peak_device_memory_mib_sampled": 9293,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-001",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.115,
+            "peak_device_memory_mib_sampled": 9293,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-002",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 231.119,
+            "peak_device_memory_mib_sampled": 9289,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-003",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.061,
+            "peak_device_memory_mib_sampled": 9295,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-004",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.053,
+            "peak_device_memory_mib_sampled": 9295,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-005",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.064,
+            "peak_device_memory_mib_sampled": 9293,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-006",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.062,
+            "peak_device_memory_mib_sampled": 9293,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-007",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.066,
+            "peak_device_memory_mib_sampled": 9295,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-008",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.065,
+            "peak_device_memory_mib_sampled": 9295,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-009",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.072,
+            "peak_device_memory_mib_sampled": 9291,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-010",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.054,
+            "peak_device_memory_mib_sampled": 9289,
+            "sample_interval_seconds": 2
+          }
+        },
+        {
+          "node_id": "object-011",
+          "status": "succeeded",
+          "timing": {
+            "seconds": 229.077,
+            "peak_device_memory_mib_sampled": 9291,
+            "sample_interval_seconds": 2
+          }
+        }
+      ],
+      "cache_hits": 0,
+      "cache_misses": 12,
+      "resumed": 0,
+      "independent_generations": 12,
+      "settings": {
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "count": 32768,
+        "steps": 50,
+        "seed": 42,
+        "attention_backend": "sdpa",
+        "compile": "0",
+        "crop_policy": "rgba-min32-alpha256-v1"
+      },
+      "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+      "supervision": "manual-reviewed-boxes",
+      "objects_succeeded": 12,
+      "objects_failed": 0,
+      "published_instances": 24,
+      "seconds_this_run": 2889.177
+    }
+  },
+  "assumptions": [
+    "Authored simulation dimensions and topology, not camera-calibrated measurements or recovered hidden equipment.",
+    "Photograph is synthetic. Back faces, internal components and pipe routing are authored.",
+    "Grizzly / oversize handling is contained in the feed-preparation module; oversize is not presumed barren waste.",
+    "DMS sinks and floats both pass through drain / rinse and medium recovery before product or tailings.",
+    "The photograph does not establish XRT versus XRL. The demo assumes enclosed XRT recovery; XRF elemental analysis is not the selected sorting principle.",
+    "Lab cleaning, inspection and security are logical functions, not recovered internal machinery.",
+    "Tailings handling includes assumed downstream dewatering / containment, not an engineering design.",
+    "No throughput, diamond recovery percentage, water balance, safety interlock or operating setpoint is certified."
+  ],
+  "references": [
+    {
+      "title": "SGS Bateman diamond recovery modular plants",
+      "url": "https://www.sgs.com/-/media/sgscorp/documents/corporate/brochures/sgs-nr-diamond-recovery-en.cdn.en-MU.pdf"
+    },
+    {
+      "title": "TOMRA diamond sorting technology and flowsheets",
+      "url": "https://www.tomra.com/en-gb/mining/media-center/news/2021/tomra-new-diamond-microsite"
+    }
+  ],
+  "telemetry_event_contract": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "timestamp",
+      "plant_id",
+      "module_id",
+      "equipment_id",
+      "tag_id",
+      "value",
+      "unit",
+      "quality"
+    ],
+    "properties": {
+      "timestamp": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "plant_id": {
+        "const": "D01"
+      },
+      "module_id": {
+        "enum": [
+          "D01.A.crusher",
+          "D01.A.scrubber",
+          "D01.A.screen",
+          "D01.A.dms",
+          "D01.A.medium",
+          "D01.A.sorter",
+          "D01.B.crusher",
+          "D01.B.scrubber",
+          "D01.B.screen",
+          "D01.B.dms",
+          "D01.B.medium",
+          "D01.B.sorter",
+          "D01.C.crusher",
+          "D01.C.scrubber",
+          "D01.C.screen",
+          "D01.C.dms",
+          "D01.C.medium",
+          "D01.C.sorter",
+          "D01.shared.hopper",
+          "D01.shared.thickener",
+          "D01.shared.water",
+          "D01.shared.lab",
+          "D01.shared.control",
+          "D01.shared.tailings"
+        ]
+      },
+      "equipment_id": {
+        "enum": [
+          "D01.A.crusher.feeder",
+          "D01.A.crusher.crusher-drive",
+          "D01.A.crusher.bearing",
+          "D01.A.scrubber.drum-drive",
+          "D01.A.scrubber.wash-pump",
+          "D01.A.screen.exciter",
+          "D01.A.screen.spray-manifold",
+          "D01.A.dms.feed-pump",
+          "D01.A.dms.density-meter",
+          "D01.A.dms.cyclone-bank",
+          "D01.A.medium.magnetic-separator",
+          "D01.A.medium.medium-pump",
+          "D01.A.medium.rinse-screen",
+          "D01.A.medium.level-sensor",
+          "D01.A.sorter.feed-belt",
+          "D01.A.sorter.xray-enclosure",
+          "D01.A.sorter.reject-actuator",
+          "D01.B.crusher.feeder",
+          "D01.B.crusher.crusher-drive",
+          "D01.B.crusher.bearing",
+          "D01.B.scrubber.drum-drive",
+          "D01.B.scrubber.wash-pump",
+          "D01.B.screen.exciter",
+          "D01.B.screen.spray-manifold",
+          "D01.B.dms.feed-pump",
+          "D01.B.dms.density-meter",
+          "D01.B.dms.cyclone-bank",
+          "D01.B.medium.magnetic-separator",
+          "D01.B.medium.medium-pump",
+          "D01.B.medium.rinse-screen",
+          "D01.B.medium.level-sensor",
+          "D01.B.sorter.feed-belt",
+          "D01.B.sorter.xray-enclosure",
+          "D01.B.sorter.reject-actuator",
+          "D01.C.crusher.feeder",
+          "D01.C.crusher.crusher-drive",
+          "D01.C.crusher.bearing",
+          "D01.C.scrubber.drum-drive",
+          "D01.C.scrubber.wash-pump",
+          "D01.C.screen.exciter",
+          "D01.C.screen.spray-manifold",
+          "D01.C.dms.feed-pump",
+          "D01.C.dms.density-meter",
+          "D01.C.dms.cyclone-bank",
+          "D01.C.medium.magnetic-separator",
+          "D01.C.medium.medium-pump",
+          "D01.C.medium.rinse-screen",
+          "D01.C.medium.level-sensor",
+          "D01.C.sorter.feed-belt",
+          "D01.C.sorter.xray-enclosure",
+          "D01.C.sorter.reject-actuator",
+          "D01.shared.hopper.level-sensor",
+          "D01.shared.hopper.distributor",
+          "D01.shared.thickener.rake-drive",
+          "D01.shared.thickener.underflow-pump",
+          "D01.shared.thickener.level-sensor",
+          "D01.shared.water.level-sensor",
+          "D01.shared.water.supply-pump",
+          "D01.shared.lab.product-scale",
+          "D01.shared.lab.secure-inventory",
+          "D01.shared.control.plc",
+          "D01.shared.control.power-meter",
+          "D01.shared.tailings.sump-pump",
+          "D01.shared.tailings.inventory"
+        ]
+      },
+      "tag_id": {
+        "enum": [
+          "D01.A.crusher.motor_current",
+          "D01.A.crusher.bearing_temperature",
+          "D01.A.crusher.vibration_rms",
+          "D01.A.crusher.ore_flow",
+          "D01.A.scrubber.motor_current",
+          "D01.A.scrubber.water_flow",
+          "D01.A.screen.vibration_rms",
+          "D01.A.screen.water_flow",
+          "D01.A.dms.medium_density",
+          "D01.A.dms.feed_pressure",
+          "D01.A.dms.motor_current",
+          "D01.A.medium.motor_current",
+          "D01.A.medium.level",
+          "D01.A.sorter.ore_flow",
+          "D01.A.sorter.motor_current",
+          "D01.B.crusher.motor_current",
+          "D01.B.crusher.bearing_temperature",
+          "D01.B.crusher.vibration_rms",
+          "D01.B.crusher.ore_flow",
+          "D01.B.scrubber.motor_current",
+          "D01.B.scrubber.water_flow",
+          "D01.B.screen.vibration_rms",
+          "D01.B.screen.water_flow",
+          "D01.B.dms.medium_density",
+          "D01.B.dms.feed_pressure",
+          "D01.B.dms.motor_current",
+          "D01.B.medium.motor_current",
+          "D01.B.medium.level",
+          "D01.B.sorter.ore_flow",
+          "D01.B.sorter.motor_current",
+          "D01.C.crusher.motor_current",
+          "D01.C.crusher.bearing_temperature",
+          "D01.C.crusher.vibration_rms",
+          "D01.C.crusher.ore_flow",
+          "D01.C.scrubber.motor_current",
+          "D01.C.scrubber.water_flow",
+          "D01.C.screen.vibration_rms",
+          "D01.C.screen.water_flow",
+          "D01.C.dms.medium_density",
+          "D01.C.dms.feed_pressure",
+          "D01.C.dms.motor_current",
+          "D01.C.medium.motor_current",
+          "D01.C.medium.level",
+          "D01.C.sorter.ore_flow",
+          "D01.C.sorter.motor_current",
+          "D01.shared.hopper.level",
+          "D01.shared.hopper.ore_flow",
+          "D01.shared.thickener.level",
+          "D01.shared.thickener.motor_current",
+          "D01.shared.thickener.water_flow",
+          "D01.shared.water.level",
+          "D01.shared.water.water_flow",
+          "D01.shared.lab.product_mass",
+          "D01.shared.control.power",
+          "D01.shared.tailings.level",
+          "D01.shared.tailings.water_flow"
+        ]
+      },
+      "value": {
+        "type": "number"
+      },
+      "unit": {
+        "type": "string"
+      },
+      "quality": {
+        "enum": [
+          "good",
+          "uncertain",
+          "bad"
+        ]
+      }
+    },
+    "$comment": "Consumers must join tag_id to telemetry_tags and verify module_id, equipment_id and unit match that tag. Schema enums alone cannot enforce those cross-field relationships."
+  },
+  "appearance_assets": [
+    {
+      "id": "D01-splat-object-000",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-000.ply",
+      "sha256": "488a5a43c53e18f995fa11a087139850bf7f9ac66b5fa3c4b59692e32c68585c",
+      "node_id": null,
+      "provenance": {
+        "sha256": "488a5a43c53e18f995fa11a087139850bf7f9ac66b5fa3c4b59692e32c68585c",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.26603829860687256,
+            -0.14059823751449585,
+            -0.21310675144195557
+          ],
+          "max": [
+            0.2423419952392578,
+            0.13523352146148682,
+            0.21503591537475586
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-000",
+        "crop_sha256": "fe55f5501e9de681837ea44fdd6cf5b57156d90185e765da13b84c0223e6e78d",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          291,
+          634,
+          166,
+          178
+        ],
+        "cache_key": "da323eefdbb7cc8d8b8522a22e1bdfbd75f227cd60ccee17989a89aead5c6304",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-crusher",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-001",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-001.ply",
+      "sha256": "1258bd8d75f6185f6b1e845efe322d94b6ad7f2da98abcfa37c60d26ec041101",
+      "node_id": null,
+      "provenance": {
+        "sha256": "1258bd8d75f6185f6b1e845efe322d94b6ad7f2da98abcfa37c60d26ec041101",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.06569662690162659,
+            -0.09367460012435913,
+            -0.18105986714363098
+          ],
+          "max": [
+            0.13379234075546265,
+            0.09548398852348328,
+            0.1862439513206482
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-001",
+        "crop_sha256": "bdf7d79b8cebd2b162da2c0d1f33c98b28f5cac803937c846ae0b6d506281da2",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          453,
+          663,
+          196,
+          129
+        ],
+        "cache_key": "34745d7cf03a08a3b9d326ca82daf2ffbdf54bca25cb370c15c80f3bf41568b8",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-scrubber",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-002",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-002.ply",
+      "sha256": "858169e89f6e3f338f0dfab7887b90a93bb6f68062fdcf7a23ac2e591a753fd7",
+      "node_id": null,
+      "provenance": {
+        "sha256": "858169e89f6e3f338f0dfab7887b90a93bb6f68062fdcf7a23ac2e591a753fd7",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.18035027384757996,
+            -0.08622562885284424,
+            -0.16249388456344604
+          ],
+          "max": [
+            0.1790543794631958,
+            0.09394568204879761,
+            0.15910977125167847
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-002",
+        "crop_sha256": "390c7ddaca783672296484ee8594644ad2dfa032ab2619d5b84e8d9533475ad8",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          665,
+          691,
+          162,
+          127
+        ],
+        "cache_key": "3bd59d1b23932534011ea95802fec7e28c47a6357e7cda97d86fb8603de963a7",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-screen",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-003",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-003.ply",
+      "sha256": "4bbe4c40cbd24d9cb0f4d9271a2ae42458ccaa48d5d6f38f08325efdd37aa8c3",
+      "node_id": null,
+      "provenance": {
+        "sha256": "4bbe4c40cbd24d9cb0f4d9271a2ae42458ccaa48d5d6f38f08325efdd37aa8c3",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.4393696188926697,
+            -0.12670111656188965,
+            -0.3146076500415802
+          ],
+          "max": [
+            0.4968118667602539,
+            0.1327163577079773,
+            0.33540087938308716
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-003",
+        "crop_sha256": "b5232c169742fc213c54649683a8eac74e85fa188516c261dc0bdf37b38fa16f",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          823,
+          613,
+          123,
+          222
+        ],
+        "cache_key": "d956d4070651d1a0ef1ac0b5ebc736df059cadb0d1856dda54b026a36a278c1a",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-dms",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-004",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-004.ply",
+      "sha256": "198d1319f3e4ca046079c64031e8fb5a36567b42568c57662df1e1a508733463",
+      "node_id": null,
+      "provenance": {
+        "sha256": "198d1319f3e4ca046079c64031e8fb5a36567b42568c57662df1e1a508733463",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.2766459584236145,
+            -0.12036091089248657,
+            -0.22008493542671204
+          ],
+          "max": [
+            0.22663837671279907,
+            0.10926246643066406,
+            0.2410457730293274
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-004",
+        "crop_sha256": "b3710e156fe1b386b41185b7e5e1d8f58730cf97989be74773e1cc0e9fd12de2",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          956,
+          646,
+          225,
+          178
+        ],
+        "cache_key": "73d722ef351d3faf3cf921b782ed1ad60920302f9837ca67f5eec0b4e52bf4aa",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-medium",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-005",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-005.ply",
+      "sha256": "b910ef24a5b757c191e9e40f8fe3630a19ea7c8a505263e652c535ac876d5d10",
+      "node_id": null,
+      "provenance": {
+        "sha256": "b910ef24a5b757c191e9e40f8fe3630a19ea7c8a505263e652c535ac876d5d10",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.5001978278160095,
+            -0.06954294443130493,
+            -0.10786283016204834
+          ],
+          "max": [
+            0.5004653930664062,
+            0.0725145936012268,
+            0.11288201808929443
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-005",
+        "crop_sha256": "14c2e079888562e27250a57255336cb724b32b3d4bdea700c95065e6c142ed52",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          1259,
+          701,
+          111,
+          110
+        ],
+        "cache_key": "732217d9dad8dfc34eeff86cb86bca30c3106c9bc0699ecc5b5130cfa4e15e62",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-sorter",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-006",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-006.ply",
+      "sha256": "0fcbd35f7fb398aded84520a0a50384aacdf7a0b788c714c398d7fec70987bae",
+      "node_id": null,
+      "provenance": {
+        "sha256": "0fcbd35f7fb398aded84520a0a50384aacdf7a0b788c714c398d7fec70987bae",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.5030264854431152,
+            -0.15961945056915283,
+            -0.15511339902877808
+          ],
+          "max": [
+            0.4991917610168457,
+            0.17176109552383423,
+            0.15551525354385376
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-006",
+        "crop_sha256": "d8a7887102abf2ef90fb29aee93e6fff206dc43cbd6192f856597d677e6506e5",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          23,
+          391,
+          169,
+          210
+        ],
+        "cache_key": "8edf9f97f92491420cd6682c9d04b0c91d352948b2c0132242eb38685bdb8251",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-hopper",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-007",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-007.ply",
+      "sha256": "86851fda505ef1ef38a9b57e8030eeeafecabe096430d0696d728de80f8efcdf",
+      "node_id": null,
+      "provenance": {
+        "sha256": "86851fda505ef1ef38a9b57e8030eeeafecabe096430d0696d728de80f8efcdf",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.4007062315940857,
+            -0.07545351982116699,
+            -0.2602199912071228
+          ],
+          "max": [
+            0.39497655630111694,
+            0.06772002577781677,
+            0.25495004653930664
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-007",
+        "crop_sha256": "0b27d362ec1b876be78c783d8a26872470a49f7dd5145e4cb71dac3a9ef6ef20",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          520,
+          27,
+          278,
+          158
+        ],
+        "cache_key": "d9f40e1bf7b14007886ab47d5b56262d21d543b423a2fe9720d9825ffb56967d",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-thickener",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-008",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-008.ply",
+      "sha256": "e579f7c18f21cd121780c8b4a1764f07a80916f533e462033173866d133ddce2",
+      "node_id": null,
+      "provenance": {
+        "sha256": "e579f7c18f21cd121780c8b4a1764f07a80916f533e462033173866d133ddce2",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.039684563875198364,
+            -0.093547523021698,
+            -0.07726410031318665
+          ],
+          "max": [
+            0.11838304996490479,
+            0.10045799612998962,
+            0.07513374090194702
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-008",
+        "crop_sha256": "e564ef85c6e605c4ba407e6b54b282700721837da270242411a382dad9603b90",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          818,
+          36,
+          106,
+          135
+        ],
+        "cache_key": "db33792f456994ea4deab7ed2c564a30621369a280c43f69dbc41e5e775c31e5",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-water",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-009",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-009.ply",
+      "sha256": "32072973982f18db4b049e4dd1614fa96dcefd4114a9d40246a1f18facb7d142",
+      "node_id": null,
+      "provenance": {
+        "sha256": "32072973982f18db4b049e4dd1614fa96dcefd4114a9d40246a1f18facb7d142",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.3390966057777405,
+            -0.06942129135131836,
+            -0.28089189529418945
+          ],
+          "max": [
+            0.38236451148986816,
+            0.06734892725944519,
+            0.27551788091659546
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-009",
+        "crop_sha256": "d0c358e4b488e72236366ce872f436fdd096a02c377b37ff3d136e96868ef582",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          1377,
+          357,
+          148,
+          182
+        ],
+        "cache_key": "86f83f5c36657c1a8cc11be05d7c8dfc19db67f9ca77f79d7ff0933a0463aa00",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-lab",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-010",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-010.ply",
+      "sha256": "a59d628bca6e5d7839366b0a917d4a2162e42171916bd2dd8d21801d20736749",
+      "node_id": null,
+      "provenance": {
+        "sha256": "a59d628bca6e5d7839366b0a917d4a2162e42171916bd2dd8d21801d20736749",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.0838228166103363,
+            -0.07636314630508423,
+            -0.12397277355194092
+          ],
+          "max": [
+            0.13788717985153198,
+            0.07326659560203552,
+            0.11750316619873047
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-010",
+        "crop_sha256": "bba1f9bdbab3d0b0cbd83fe4fd714ba2cfdf83b19614f40c76526e7d7c22894d",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          548,
+          844,
+          126,
+          82
+        ],
+        "cache_key": "d304079fb0f3e0e728eee2895406446005dae158329aac1ba3d8d26d38f09900",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-control",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    },
+    {
+      "id": "D01-splat-object-011",
+      "kind": "ply",
+      "uri": "/api/assets/plant/splats/object-011.ply",
+      "sha256": "6a082110f1b66ca15cb86b73c232fa48a212b5f9418512ecdbe74bddc6cca6d5",
+      "node_id": null,
+      "provenance": {
+        "sha256": "6a082110f1b66ca15cb86b73c232fa48a212b5f9418512ecdbe74bddc6cca6d5",
+        "gaussian_count": 32768,
+        "bounds": {
+          "min": [
+            -0.49872881174087524,
+            -0.035005033016204834,
+            -0.2312130331993103
+          ],
+          "max": [
+            0.49106061458587646,
+            0.035698920488357544,
+            0.2350757122039795
+          ]
+        },
+        "coordinates": "right-handed-y-up",
+        "model": "speridlabs/idol",
+        "mode": "real",
+        "steps": 50,
+        "seed": 42,
+        "model_pins": {
+          "SCENE_IDOL_MODEL_REVISION": "2731c2291fc65a797c5cb627a5e5526fc1490902",
+          "SCENE_DINOV3_REVISION": "c807c9eeea853df70aec4069e6f56b28ddc82acc",
+          "SCENE_FLUX2_REVISION": "26afe3a78bb242c0a8bb181dcc8937bb16e5c66c",
+          "SCENE_DETECTOR_REVISION": "a2bb814dd30d776dcf7e30523b00659f4f141c71",
+          "SCENE_SEGMENTER_REVISION": "ee5bba1d82bb8749febdf90f45e84b687142ba03"
+        },
+        "sdk_revision": "8db700349a5570aac390e4780fa32e3eed6b587a",
+        "trial_id": "D01",
+        "variant": "optimized",
+        "parent_node_id": "object-011",
+        "crop_sha256": "0a2a5e895b9ee8decbe0a0b74831787bad162e37cf179f28ca4798bad94a3650",
+        "source_sha256": "968f33dbfb0b1f8fd2e90fad0676b1a81caf03f25ebb11dc596b3b9405a61628",
+        "bbox_pixels": [
+          1224,
+          81,
+          210,
+          185
+        ],
+        "cache_key": "8420baf6203ebe6f61cab94551866c4bcbf9ca34bb489da2a2506e9bfc1ff5f4",
+        "reused": false,
+        "reusable_asset_id": "D01-concept-tailings",
+        "instance": true,
+        "layout": "manual-relative-not-metric"
+      }
+    }
+  ],
+  "scene_sha256": "8775f03b538ddb14449ab42cd2a9987076784ee84478674867a7eb53854d13c5"
+}

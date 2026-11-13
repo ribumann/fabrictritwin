@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json && node scripts/build-static.mjs",
     "start": "node dist/index.js",
     "prepare:mining-assets": "node scripts/prepare-mining-assets.mjs",
+    "prepare:reconstructed-assets": "node scripts/prepare-reconstructed-assets.mjs",
     "predev": "node scripts/build-static.mjs",
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
@@ -16,6 +17,7 @@
   },
   "dependencies": {
     "@azure/identity": "^4.13.2",
+    "@sparkjsdev/spark": "2.4.0",
     "@triathlon-twin/simulator": "file:../simulator",
     "express": "^5.2.1",
     "powerbi-client": "^2.23.1",

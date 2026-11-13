@@ -106,8 +106,15 @@ export async function createPlant3D(container, catalog, select) {
   const THREE = await import("three");
   const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
   const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const {
+    fitModelToNode,
+    fitSplatToNode,
+    readBoundedBytes,
+    sha256Hex,
+    splatFit,
+  } = await import("./appearance.js");
+  const renderer = new THREE.WebGLRenderer({ antialias: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0xeef1f9);
   container.replaceChildren(renderer.domElement);
   const scene = new THREE.Scene();
@@ -123,36 +130,20 @@ export async function createPlant3D(container, catalog, select) {
   scene.add(grid);
   const loader = new GLTFLoader();
   const models = new Map();
+  const targets = new Map();
   const statusBoxes = new Map();
   const templates = new Map();
-  // Twelve pinned authored concepts are reused for the twenty-four catalog placements.
-  await Promise.all(
-    [...new Set(catalog.modules.map((module) => module.appearance_concept))].map(
-      async (concept) => {
-        const gltf = await loader.loadAsync(
-          `/mining/plant/modules/${encodeURIComponent(concept)}.glb`,
-        );
-        templates.set(concept, gltf.scene);
-      },
-    ),
-  );
   for (const module of catalog.modules) {
-    const object = templates.get(module.appearance_concept).clone(true);
-    const bounds = new THREE.Box3().setFromObject(object);
-    const size = bounds.getSize(new THREE.Vector3());
-    if (![size.x, size.y, size.z].every((value) => value > 0))
-      throw new Error("Invalid authored mesh bounds.");
-    const center = bounds.getCenter(new THREE.Vector3());
-    object.position.sub(center);
-    const placement = new THREE.Group();
-    placement.add(object);
-    placement.scale.set(module.size[0] / size.x, module.size[1] / size.y, module.size[2] / size.z);
-    placement.rotation.set(...module.rotation);
-    placement.position.set(...module.position);
-    placement.userData.moduleId = module.id;
-    scene.add(placement);
-    models.set(module.id, placement);
-    const statusBox = new THREE.BoxHelper(placement, 0x64748b);
+    const target = new THREE.Mesh(
+      new THREE.BoxGeometry(...module.size),
+      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true, opacity: 0 }),
+    );
+    target.rotation.set(...module.rotation);
+    target.position.set(...module.position);
+    target.userData.moduleId = module.id;
+    scene.add(target);
+    targets.set(module.id, target);
+    const statusBox = new THREE.BoxHelper(target, 0x64748b);
     statusBox.visible = false;
     scene.add(statusBox);
     statusBoxes.set(module.id, statusBox);
@@ -183,13 +174,29 @@ export async function createPlant3D(container, catalog, select) {
     scene.add(group);
     streams.push({ stream, group });
   }
-  let selected = null;
   const selection = new THREE.BoxHelper(undefined, 0x4f46e5);
   selection.visible = false;
   scene.add(selection);
   let enabled = true;
+  let disposed = false;
+  let activeMode = null;
+  let visualRoot = null;
+  let sparkRenderer = null;
+  let appearanceController = null;
+  let appearanceGeneration = 0;
+  const splatMeshes = new Set();
+  const splatSources = new Set();
+  let selectedModuleId = null;
+  let currentLines = new Set(catalog.modules.map((module) => module.line));
+  let currentUtilities = false;
+  let currentStatuses = new Map();
+  let currentTopology = new Set();
   const render = () => {
-    if (enabled) renderer.render(scene, camera);
+    if (enabled && !disposed) renderer.render(scene, camera);
+  };
+  const updateLoop = () => {
+    renderer.setAnimationLoop(enabled && activeMode === "reconstructed" ? render : null);
+    if (enabled && activeMode !== "reconstructed") render();
   };
   const resize = () => {
     const width = container.clientWidth,
@@ -206,10 +213,10 @@ export async function createPlant3D(container, catalog, select) {
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   let down;
-  renderer.domElement.addEventListener("pointerdown", (event) => {
+  const onPointerDown = (event) => {
     down = [event.clientX, event.clientY];
-  });
-  renderer.domElement.addEventListener("pointerup", (event) => {
+  };
+  const onPointerUp = (event) => {
     if (!down || Math.hypot(event.clientX - down[0], event.clientY - down[1]) > 5) return;
     const rect = renderer.domElement.getBoundingClientRect();
     pointer.set(
@@ -218,51 +225,230 @@ export async function createPlant3D(container, catalog, select) {
     );
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObjects(
-      [...models.values()].filter((object) => object.visible),
-      true,
+      [...targets.values()].filter((object) => object.visible),
+      false,
     )[0];
-    let node = hit?.object;
-    while (node && !node.userData.moduleId) node = node.parent;
-    if (node) select(node.userData.moduleId);
-  });
-  resize();
-  return {
-    update(lines, utilities, moduleId, statuses = new Map(), topology = new Set()) {
-      for (const module of catalog.modules) models.get(module.id).visible = lines.has(module.line);
-      const colors = { warning: 0xb45309, high: 0xdc2626, stopped: 0x5b6479 };
-      for (const module of catalog.modules) {
-        const status = statuses.get(module.id),
-          box = statusBoxes.get(module.id);
-        box.visible = lines.has(module.line) && (!!colors[status] || topology.has(module.id));
-        box.material.color.setHex(
-          topology.has(module.id) ? 0x2563eb : (colors[status] ?? 0x64748b),
-        );
+    if (hit?.object.userData.moduleId) select(hit.object.userData.moduleId);
+  };
+  renderer.domElement.addEventListener("pointerdown", onPointerDown);
+  renderer.domElement.addEventListener("pointerup", onPointerUp);
+
+  function releaseVisual() {
+    if (visualRoot) {
+      scene.remove(visualRoot);
+      visualRoot.clear();
+      visualRoot = null;
+    }
+    for (const mesh of splatMeshes) {
+      if (!splatSources.has(mesh)) {
+        mesh.splats = undefined;
+        mesh.dispose();
       }
-      for (const { stream, group } of streams)
-        group.visible =
-          (utilities || stream.visible_by_default) &&
-          models.get(stream.source.module_id).visible &&
-          models.get(stream.target.module_id).visible;
-      selected = models.get(moduleId);
-      selection.visible = !!selected?.visible;
-      if (selected) selection.setFromObject(selected);
-      resize();
+    }
+    for (const source of splatSources) source.dispose();
+    splatMeshes.clear();
+    splatSources.clear();
+    if (sparkRenderer) {
+      scene.remove(sparkRenderer);
+      sparkRenderer.dispose();
+      sparkRenderer = null;
+    }
+    models.clear();
+  }
+
+  function assertCurrent(generation, signal) {
+    if (disposed || signal.aborted || generation !== appearanceGeneration)
+      throw new DOMException("Appearance change was canceled.", "AbortError");
+  }
+
+  async function loadClean(generation, signal, root) {
+    const concepts = [...new Set(catalog.modules.map((module) => module.appearance_concept))];
+    await Promise.all(
+      concepts.map(async (concept) => {
+        if (templates.has(concept)) return;
+        const gltf = await loader.loadAsync(
+          `/mining/plant/modules/${encodeURIComponent(concept)}.glb`,
+        );
+        templates.set(concept, gltf.scene);
+      }),
+    );
+    assertCurrent(generation, signal);
+    for (const module of catalog.modules) {
+      const object = templates.get(module.appearance_concept).clone(true);
+      const placement = fitModelToNode(THREE, object, module);
+      placement.userData.moduleId = module.id;
+      root.add(placement);
+      models.set(module.id, placement);
+    }
+  }
+
+  async function loadReconstructed(generation, signal, root, bundle, showScreenedOut) {
+    if (!bundle?.assetsById || !bundle?.moduleBindings)
+      throw new Error("Pinned reconstructed asset manifest is unavailable.");
+    const { SparkRenderer, SplatMesh } = await import("@sparkjsdev/spark");
+    assertCurrent(generation, signal);
+    sparkRenderer = new SparkRenderer({ renderer, onDirty: render });
+    scene.add(sparkRenderer);
+    for (const asset of bundle.assetsById.values()) {
+      const placements = [...bundle.moduleBindings.values()].filter(
+        ({ module, asset: binding }) => binding.id === asset.id && splatFit(asset, module, showScreenedOut),
+      );
+      if (!placements.length) continue;
+      const expectedPath = `/mining/plant/reconstructed/splats/${asset.localPath.split("/").at(-1)}`;
+      if (asset.localPath !== expectedPath)
+        throw new Error("Reconstructed asset path is outside the pinned local package.");
+      const response = await fetch(expectedPath, {
+        signal,
+        credentials: "same-origin",
+        cache: "force-cache",
+        redirect: "error",
+      });
+      if (!response.ok) throw new Error(`Reconstructed asset request failed (${response.status}).`);
+      const bytes = await readBoundedBytes(response, 8 * 1_048_576, signal);
+      if (await sha256Hex(bytes) !== asset.sha256)
+        throw new Error(`Reconstructed asset integrity check failed for ${asset.id}.`);
+      let source;
+      for (const [index, { module }] of placements.entries()) {
+        assertCurrent(generation, signal);
+        const mesh = index === 0
+          ? new SplatMesh({ fileBytes: bytes, fileName: expectedPath })
+          : new SplatMesh({ splats: source.splats });
+        splatMeshes.add(mesh);
+        if (index === 0) {
+          source = mesh;
+          splatSources.add(mesh);
+        }
+        await mesh.initialized;
+        assertCurrent(generation, signal);
+        fitSplatToNode(THREE, mesh, asset, module, showScreenedOut);
+        mesh.userData.moduleId = module.id;
+        root.add(mesh);
+        models.set(module.id, mesh);
+      }
+    }
+  }
+
+  function update(lines, utilities, moduleId, statuses = new Map(), topology = new Set()) {
+    currentLines = new Set(lines);
+    currentUtilities = utilities;
+    currentStatuses = new Map(statuses);
+    currentTopology = new Set(topology);
+    selectedModuleId = moduleId;
+    for (const module of catalog.modules) {
+      const visible = lines.has(module.line);
+      const target = targets.get(module.id);
+      target.visible = visible;
+      const model = models.get(module.id);
+      if (model) model.visible = visible;
+      const status = statuses.get(module.id);
+      const box = statusBoxes.get(module.id);
+      const colors = { warning: 0xb45309, high: 0xdc2626, stopped: 0x5b6479 };
+      box.visible = visible && (!!colors[status] || topology.has(module.id) || selectedModuleId === module.id);
+      box.material.color.setHex(
+        topology.has(module.id)
+          ? 0x2563eb
+          : selectedModuleId === module.id
+            ? 0x4f46e5
+            : (colors[status] ?? 0x64748b),
+      );
+      if (box.visible) box.setFromObject(target);
+    }
+    for (const { stream, group } of streams)
+      group.visible =
+        (utilities || stream.visible_by_default) &&
+        targets.get(stream.source.module_id).visible &&
+        targets.get(stream.target.module_id).visible;
+    const selected = targets.get(moduleId);
+    selection.visible = !!selected?.visible;
+    if (selected) selection.setFromObject(selected);
+    resize();
+  }
+
+  resize();
+  const viewer = {
+    get renderedModuleCount() {
+      return models.size;
+    },
+    update,
+    async setVisualMode(mode, bundle, showScreenedOut = false, externalSignal) {
+      if (disposed) throw new Error("Plant renderer is disposed.");
+      if (!["clean", "reconstructed"].includes(mode))
+        throw new Error("Unknown plant appearance mode.");
+      if (mode === activeMode && models.size === catalog.modules.length) return;
+      appearanceController?.abort();
+      const controller = new AbortController();
+      appearanceController = controller;
+      if (externalSignal) {
+        if (externalSignal.aborted) controller.abort();
+        else externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
+      }
+      const generation = ++appearanceGeneration;
+      releaseVisual();
+      activeMode = mode;
+      const root = new THREE.Group();
+      visualRoot = root;
+      scene.add(root);
+      try {
+        if (mode === "clean") await loadClean(generation, controller.signal, root);
+        else await loadReconstructed(generation, controller.signal, root, bundle, showScreenedOut);
+        assertCurrent(generation, controller.signal);
+        update(currentLines, currentUtilities, selectedModuleId, currentStatuses, currentTopology);
+        updateLoop();
+      } catch (error) {
+        if (generation === appearanceGeneration) releaseVisual();
+        throw error;
+      }
     },
     setEnabled(value) {
       enabled = value;
       controls.enabled = value;
+      updateLoop();
       if (enabled) resize();
     },
     dispose() {
+      disposed = true;
+      appearanceGeneration++;
+      appearanceController?.abort();
+      renderer.setAnimationLoop(null);
+      releaseVisual();
       observer.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointerup", onPointerUp);
+      controls.removeEventListener("change", render);
       controls.dispose();
-      scene.traverse((object) => {
-        object.geometry?.dispose();
-        if (Array.isArray(object.material))
-          object.material.forEach((material) => material.dispose());
-        else object.material?.dispose();
-      });
+      disposeThreeResources([scene, ...templates.values()]);
       renderer.dispose();
     },
   };
+  try {
+    await viewer.setVisualMode("clean");
+    return viewer;
+  } catch (error) {
+    viewer.dispose();
+    throw error;
+  }
+}
+
+function disposeThreeResources(roots) {
+  const geometries = new Set();
+  const materials = new Set();
+  const textures = new Set();
+  for (const root of roots) {
+    root.traverse((object) => {
+      if (object.geometry) geometries.add(object.geometry);
+      for (const material of Array.isArray(object.material)
+        ? object.material
+        : object.material
+          ? [object.material]
+          : []) {
+        materials.add(material);
+        for (const value of Object.values(material)) {
+          if (value?.isTexture) textures.add(value);
+        }
+      }
+    });
+  }
+  for (const geometry of geometries) geometry.dispose();
+  for (const material of materials) material.dispose();
+  for (const texture of textures) texture.dispose();
 }
