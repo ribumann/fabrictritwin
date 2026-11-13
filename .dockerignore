@@ -11,6 +11,7 @@ apps/*/*
 !apps/*/src/
 !apps/*/src/**
 !apps/cockpit/scripts/
+apps/cockpit/scripts/*
 !apps/cockpit/scripts/build-static.mjs
 
 # These exclusions must follow the source allowlist.
