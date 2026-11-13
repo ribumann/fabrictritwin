@@ -17,6 +17,7 @@ import { configuredMiningCuratedProvider } from "./mining/read/runtime.js";
 import { createMiningCancelRouter } from "./api/mining-cancel.js";
 import { createMiningStartRouter } from "./api/mining-start.js";
 import { MiningPublisherHost } from "./mining/publisher-host.js";
+import { createBackendShutdown } from "./services/backend-shutdown.js";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
@@ -59,31 +60,52 @@ app.get("/healthz", (_req, res) => {
 const streamServer = attachStreamServer(server, { synthetic });
 alertListener?.start();
 const closeServer = server.close.bind(server);
-server.close = (callback) => {
-  runtime?.close();
-  alertListener?.stop();
-  if (runtime) {
-    // Upgraded WebSockets otherwise keep server.close() waiting indefinitely.
+const shutdown = createBackendShutdown({
+  closePublisher: () => miningPublisherHost?.close(),
+  stopBackgroundServices: () => {
+    runtime?.close();
+    alertListener?.stop();
+  },
+  terminateStreams: () => {
     for (const client of streamServer.clients) client.terminate();
-  }
-  return closeServer((error) => {
-    if (error) {
-      callback?.(error);
-      return;
-    }
-    Promise.resolve(miningPublisherHost?.close())
-      .then(() => callback?.())
-      .catch((cause: unknown) => {
-        console.error("[streaming-backend] Mining publisher host shutdown failed", cause);
-        callback?.(cause instanceof Error ? cause : new Error(String(cause)));
-      });
-  });
+  },
+  closeHttp: () =>
+    new Promise<void>((resolve, reject) => {
+      closeServer((cause) => (cause ? reject(cause) : resolve()));
+    }),
+});
+
+server.close = (callback) => {
+  void shutdown().then(
+    () => callback?.(),
+    (cause: unknown) => {
+      const error = cause instanceof Error ? cause : new Error(String(cause));
+      if (callback) callback(error);
+      else console.error("[streaming-backend] Shutdown failed", cause);
+    },
+  );
+  return server;
 };
+
+function handleShutdownSignal(signal: NodeJS.Signals): void {
+  console.log(`[streaming-backend] received ${signal}; shutting down`);
+  void shutdown().then(
+    () => {
+      console.log("[streaming-backend] shutdown complete");
+    },
+    (cause: unknown) => {
+      console.error("[streaming-backend] Shutdown failed", cause);
+      process.exitCode = 1;
+    },
+  );
+}
 
 // Compare via pathToFileURL (not a raw `file://` template string) so this also
 // matches on Windows, where process.argv[1] is a drive-letter path with
 // backslashes rather than a URL-encoded POSIX path.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.once("SIGTERM", () => handleShutdownSignal("SIGTERM"));
+  process.once("SIGINT", () => handleShutdownSignal("SIGINT"));
   server.listen(port, () => {
     console.log(`[streaming-backend] listening on port ${port}`);
   });
