@@ -213,6 +213,15 @@ It reads container and scoped role metadata, including pagination; a denied or
 ambiguous read is a blocker, not evidence that a resource is absent. All targets
 are in the explicitly configured resource group in public Azure.
 
+Public Actions logs retain only fixed diagnostic stage labels for script
+invocation, ARM/storage token validation, account/backend/UAMI metadata,
+container ARM lookup, Blob HEAD, scoped RBAC inspection and the exact assignment
+lookup. The last label identifies the read/validation boundary reached, not a
+successful read or an absent resource; scoped RBAC inspection includes pagination.
+Raw exceptions, service bodies, tokens, private target identifiers and plan state
+remain suppressed. Use private Azure audit records to investigate a stopped
+operation; diagnostics do not authorize retries, permission changes or apply.
+
 An approved apply may create only the missing dedicated private container and
 grant `Storage Blob Data Contributor` to that UAMI **at that container scope**.
 The [Blob Create Container API](https://learn.microsoft.com/en-us/rest/api/storageservices/create-container)

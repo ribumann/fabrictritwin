@@ -95,6 +95,7 @@ function Get-Digest($Value) {
 $assignmentHash = Get-Digest "$($containerId.ToLowerInvariant())|$IdentityPrincipalId|$roleId"
 $assignmentName = [guid]::ParseExact($assignmentHash.Substring(0,32), 'N').ToString()
 $assignmentId = "$containerId/providers/Microsoft.Authorization/roleAssignments/$assignmentName"
+Write-Information 'Mining bootstrap read stage: ARM token validation.' -InformationAction Continue
 $context = Get-RuntimeArmContext -SubscriptionId $SubscriptionId -TenantId $TenantId
 function Assert-CallerToken([string]$Token) {
     try {
@@ -107,6 +108,7 @@ function Assert-CallerToken([string]$Token) {
         $claims.idtyp -eq 'user' -or $claims.scp) { throw 'Token is not the explicitly approved deployment caller.' }
 }
 Assert-CallerToken $context.Headers.Authorization.Substring(7)
+Write-Information 'Mining bootstrap read stage: storage token validation.' -InformationAction Continue
 $storageToken = Get-RuntimeAccessToken -SubscriptionId $SubscriptionId -TenantId $TenantId -Resource 'https://storage.azure.com/'
 Assert-CallerToken $storageToken
 
@@ -134,6 +136,8 @@ function Assert-Role($Role) {
 }
 
 function Get-State {
+    # Fixed labels only; the last marker identifies the read/validation boundary, not success.
+    Write-Information 'Mining bootstrap read stage: account metadata.' -InformationAction Continue
     $account = Read-Arm $storageId '2023-05-01'
     if ($account.id -ine $storageId -or $account.kind -cne 'StorageV2' -or
         $account.properties.provisioningState -cne 'Succeeded' -or
@@ -142,7 +146,9 @@ function Get-State {
         $account.properties.primaryEndpoints.blob -cne $blobEndpoint) {
         throw 'Storage target, readiness, private-access policy or public-Azure endpoint mismatch.'
     }
+    Write-Information 'Mining bootstrap read stage: backend metadata.' -InformationAction Continue
     $app = Read-Arm $appId '2024-03-01'
+    Write-Information 'Mining bootstrap read stage: UAMI metadata.' -InformationAction Continue
     $identity = Read-Arm $identityId '2023-01-31'
     $attached = $app.identity.userAssignedIdentities
     if ($app.id -ine $appId -or $app.properties.provisioningState -cne 'Succeeded' -or
@@ -152,11 +158,13 @@ function Get-State {
         $attached[$identityId].clientId -ine "$IdentityClientId" -or $attached[$identityId].principalId -ine "$IdentityPrincipalId") {
         throw 'Backend or explicitly selected attached UAMI validation failed; no principal fallback is allowed.'
     }
+    Write-Information 'Mining bootstrap read stage: container ARM lookup.' -InformationAction Continue
     $container = Read-Arm $containerId '2023-05-01' -Optional
     if ($container -and ($container.id -ine $containerId -or $container.properties.publicAccess -cne 'None' -or
         $container.properties.deleted -eq $true)) {
         throw 'Existing container is not the exact live private target; it will never be rewritten.'
     }
+    Write-Information 'Mining bootstrap read stage: blob HEAD.' -InformationAction Continue
     $blob = Invoke-Blob HEAD
     if (($container -and [int]$blob.StatusCode -ne 200) -or
         (-not $container -and ([int]$blob.StatusCode -ne 404 -or
@@ -167,6 +175,7 @@ function Get-State {
     $roles = @()
     $next = $null
     $seen = [System.Collections.Generic.HashSet[string]]::new()
+    Write-Information 'Mining bootstrap read stage: scoped RBAC inspection.' -InformationAction Continue
     do {
         try {
             $page = Invoke-RuntimeArm -Context $context -ResourceId "$containerId/providers/Microsoft.Authorization/roleAssignments" `
@@ -177,6 +186,7 @@ function Get-State {
         $next = $page.nextLink
         if ($next -and -not $seen.Add($next)) { throw 'Repeated RBAC continuation; inspection is incomplete.' }
     } while ($next)
+    Write-Information 'Mining bootstrap read stage: exact RBAC assignment lookup.' -InformationAction Continue
     $deterministic = Read-Arm $assignmentId '2022-04-01' -Optional
     if ($deterministic) { Assert-Role $deterministic }
     $matching = @($roles | Where-Object {

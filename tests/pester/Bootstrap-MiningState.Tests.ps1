@@ -1,6 +1,11 @@
 #Requires -Version 7.0
 BeforeAll {
     $script:Bootstrap = Join-Path $PSScriptRoot '..' '..' 'scripts' 'deploy' 'bootstrap-mining-state.ps1'
+    $script:ReadStages = @(
+        'ARM token validation', 'storage token validation', 'account metadata', 'backend metadata',
+        'UAMI metadata', 'container ARM lookup', 'blob HEAD', 'scoped RBAC inspection',
+        'exact RBAC assignment lookup'
+    ) | ForEach-Object { "Mining bootstrap read stage: $_." }
     $script:Parameters = @{
         SubscriptionId = '11111111-1111-1111-1111-111111111111'
         TenantId = '22222222-2222-2222-2222-222222222222'
@@ -44,6 +49,7 @@ BeforeAll {
             }
             Container = $null; Roles = @(); Reads = 0; BlobStatus = 0; RoleFailure = $false; BlobFailure = $false
             DriftAt = 0; Denied = $false; Conflict = $false; MissingRole = $false; Collision = $false
+            FailedRead = ''; FailedToken = ''; FailedReadMode = 'transport'
         }
     }
     function New-Role {
@@ -74,6 +80,13 @@ Describe 'Protected mining-state bootstrap' {
         $global:MiningFixture = New-MiningFixture
         Mock az {
             $global:LASTEXITCODE = 0
+            if (($global:MiningFixture.FailedToken -eq 'account' -and $args -contains 'show') -or
+                ($global:MiningFixture.FailedToken -eq 'ARM' -and $args -contains 'get-access-token' -and
+                    $args -contains 'https://management.azure.com/') -or
+                ($global:MiningFixture.FailedToken -eq 'storage' -and $args -contains 'https://storage.azure.com/')) {
+                $global:LASTEXITCODE = 1
+                return 'private token response header.payload.signature'
+            }
             if ($args -contains 'show') {
                 return @{ id = $global:MiningFixture.Parameters.SubscriptionId; tenantId = $global:MiningFixture.Parameters.TenantId } | ConvertTo-Json
             }
@@ -84,6 +97,13 @@ Describe 'Protected mining-state bootstrap' {
         Mock Invoke-WebRequest {
             param($Method, $Uri, $Headers, $Body)
             $f = $global:MiningFixture
+            if ($f.FailedRead -and $Uri -match $f.FailedRead) {
+                if ($f.FailedReadMode -ne 'transport') {
+                    $status = if ($f.FailedReadMode -eq 'denied') { 403 } else { 200 }
+                    return @{ StatusCode = $status; Content = "private response body $Uri $($Headers.Authorization) private-never-print" }
+                }
+                throw "private transport details $Uri $($Headers.Authorization) private-never-print"
+            }
             if ($Uri -like 'https://examplestate.blob.core.windows.net/*') {
                 if ($Method -eq 'HEAD') {
                     if ($f.BlobStatus) { return @{ StatusCode = $f.BlobStatus; Headers = @{} } }
@@ -127,11 +147,44 @@ Describe 'Protected mining-state bootstrap' {
     }
 
     It 'previews without writes and emits no private target/configuration values' {
-        $result = & $script:Bootstrap @script:Parameters
+        $result = & $script:Bootstrap @script:Parameters -InformationVariable markers
+        ($markers.MessageData -join "`n") | Should -BeExactly ($script:ReadStages -join "`n")
         $result.Status | Should -Be 'Preview'
         $result.Digest | Should -Match '^[a-f0-9]{64}$'
         $result.Overlay | Should -Be 'Deferred'
         ($result | ConvertTo-Json) | Should -Not -Match 'examplestate|private-never-print|66666666|rg-example'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -notin @('GET','HEAD') }
+    }
+
+    It 'stops at the exact failed read marker without leaking raw details' -ForEach @(
+        @{ Index = 0; Token = 'account'; Target = '' },
+        @{ Index = 0; Token = 'ARM'; Target = '' },
+        @{ Index = 1; Token = 'storage'; Target = '' },
+        @{ Index = 2; Token = ''; Target = '/storageAccounts/examplestate\?' },
+        @{ Index = 2; Token = ''; Target = '/storageAccounts/examplestate\?'; Mode = 'denied' },
+        @{ Index = 2; Token = ''; Target = '/storageAccounts/examplestate\?'; Mode = 'invalidJson' },
+        @{ Index = 3; Token = ''; Target = '/containerApps/example-streaming-backend\?' },
+        @{ Index = 4; Token = ''; Target = '/userAssignedIdentities/example-backend\?' },
+        @{ Index = 5; Token = ''; Target = '/containers/mining-private\?' },
+        @{ Index = 6; Token = ''; Target = '^https://examplestate\.blob\.core\.windows\.net/' },
+        @{ Index = 7; Token = ''; Target = '/roleAssignments\?' },
+        @{ Index = 8; Token = ''; Target = '/roleAssignments/[a-f0-9-]{36}\?' }
+    ) {
+        $global:MiningFixture.FailedRead = $Target
+        $global:MiningFixture.FailedToken = $Token
+        if ($Mode) { $global:MiningFixture.FailedReadMode = $Mode }
+        $failure = $null
+        $result = $null
+        try { $result = & $script:Bootstrap @script:Parameters -InformationVariable markers }
+        catch { $failure = $_.Exception.Message }
+        $failure | Should -Not -BeNullOrEmpty
+        $result | Should -BeNullOrEmpty
+        ($markers.MessageData -join "`n") | Should -BeExactly ($script:ReadStages[0..$Index] -join "`n")
+        "$failure`n$($markers.MessageData -join "`n")" | Should -Not -Match (
+            'private transport|private response body|private token response|private-never-print|header\.|Bearer|' +
+            '/subscriptions/|examplestate|rg-example|example-backend|example-streaming-backend|' +
+            '[a-f0-9]{8}-[a-f0-9-]{27}|test-external-window'
+        )
         Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -notin @('GET','HEAD') }
     }
 
@@ -345,6 +398,21 @@ Describe 'Mining bootstrap workflow boundary' {
         $script:OidcProof = Get-Content (Join-Path $PSScriptRoot '..' '..' '.github' 'workflows' 'mining-bootstrap-oidc-proof.yml') -Raw
         $validation = [regex]::Match($script:Workflow, '(?ms)^        run: \|\r?\n(.*?)(?=^      -|\z)').Groups[1].Value
         $script:WorkflowValidation = [scriptblock]::Create($validation)
+    }
+    It 'keeps the public invocation failure static even for raw script exceptions' {
+        $blocks = [regex]::Matches($script:Workflow, '(?ms)^        run: \|\r?\n(.*?)(?=^      -|\z)')
+        $invocation = $blocks[-1].Groups[1].Value -replace '(?m)^          ', ''
+        # Execute the actual wrapper without a child script or process exit.
+        $invocation = $invocation.Replace(
+            '$result = ./scripts/deploy/bootstrap-mining-state.ps1 @parameters',
+            'throw "private token response header.payload.signature /subscriptions/private-target private-never-print"'
+        ).Replace('exit 1', 'return')
+        $output = & ([scriptblock]::Create($invocation)) *>&1
+        ($output -join "`n") | Should -BeExactly (
+            "Mining bootstrap stage: script invocation.`n" +
+            '::error::Mining-state operation stopped. Outcome may be partial; inspect private Azure audit records before a new preview. No retry or rollback.'
+        )
+        ($output -join "`n") | Should -Not -Match 'private token response|header\.|/subscriptions/|private-never-print'
     }
     It 'provides an exact, read-only OIDC proof for the dedicated Mining environment' {
         $script:OidcProof | Should -Match "github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'"
