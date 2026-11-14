@@ -35,7 +35,7 @@ const sourceBaseCommit = '4d1f93b6d1cc7e940d24f73621742329c112197d';
 const sourceFiles = historicalSourceFiles.map((source) => ({
   ...source,
   sha256: ({
-    'infra/fabric/eventhouse/MiningValidation.kql': '7618627f390b9ca75dfb34d9fef0534f81bf773356089d5bad07b8cb504b6f8a',
+    'infra/fabric/eventhouse/MiningValidation.kql': '0ba0f1c5fcb85522f4281c6d11a71358623fc4589ca042ed89c3db2b52cad6ae',
     'infra/fabric/eventhouse/MiningQueries.kql': '818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a',
     'infra/fabric/eventhouse/MiningSchema.kql': '2d780c59767ae0937914aeb3e36c48182ad2d913720ad199526e1858e62dbdec',
   })[source.path] ?? source.sha256,

@@ -258,6 +258,11 @@ Describe 'Offline mining source and query contracts (static checks only)' {
         $script:ValidationText | Should -Not -Match 'gettype\(event\["run_id"\]\) == "string"'
     }
 
+    It 'accepts Kusto dynamic doubles while retaining numeric type and finiteness checks' {
+        $script:ValidationText | Should -Match 'gettype\(event\["value"\]\) in \("int", "long", "real", "double"\)'
+        $script:ValidationText | Should -Match 'value_ok = isfinite\(value\)'
+    }
+
     It 'uses the supported two-argument bin form for integral sequence validation' {
         ([regex]::Matches(
             $script:ValidationText,
