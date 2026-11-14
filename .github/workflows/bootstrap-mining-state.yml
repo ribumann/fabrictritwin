@@ -128,9 +128,10 @@ jobs:
             AcknowledgeNonAtomicUpdate = ($env:ACKNOWLEDGE_NON_ATOMIC_UPDATE -ceq 'true')
           }
           if ($parameters.Apply) { $parameters.ApprovedDigest = $env:INPUT_DIGEST }
+          Write-Output 'Mining bootstrap stage: script invocation.'
           try { $result = ./scripts/deploy/bootstrap-mining-state.ps1 @parameters }
           catch {
-            # Keep private target metadata and service bodies out of public logs.
+            # Fixed read-stage markers survive; exceptions, targets and service bodies do not.
             Write-Output '::error::Mining-state operation stopped. Outcome may be partial; inspect private Azure audit records before a new preview. No retry or rollback.'
             exit 1
           }
