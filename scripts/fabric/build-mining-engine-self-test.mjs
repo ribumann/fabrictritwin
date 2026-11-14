@@ -34,9 +34,11 @@ const sourceRevision = 'd01-kql-coverage-bins-v5';
 const sourceBaseCommit = '4d1f93b6d1cc7e940d24f73621742329c112197d';
 const sourceFiles = historicalSourceFiles.map((source) => ({
   ...source,
-  sha256: source.path === 'infra/fabric/eventhouse/MiningQueries.kql'
-    ? '818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a'
-    : source.sha256,
+  sha256: ({
+    'infra/fabric/eventhouse/MiningValidation.kql': '8ed380084a1a1975fa4883e66085a6581ae5cce0321c661b37bcf050f6398170',
+    'infra/fabric/eventhouse/MiningQueries.kql': '818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a',
+    'infra/fabric/eventhouse/MiningSchema.kql': '2d780c59767ae0937914aeb3e36c48182ad2d913720ad199526e1858e62dbdec',
+  })[source.path] ?? source.sha256,
 }));
 const catalogVersion = `sha256:${sourceFiles[2].sha256}`;
 const runId = 'd0100000-0000-4000-8000-000000000001';

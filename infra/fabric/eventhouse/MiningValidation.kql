@@ -1,6 +1,7 @@
 // Read-only validation/classification contract. These functions do not write
-// to curated or quarantine tables. Materialization remains gated until both
-// raw timestamp preservation and exclusive-writer approval are verified.
+// to curated or quarantine tables. Kusto may parse ISO timestamps inside a
+// dynamic value as datetime; timestamp_raw retains the canonical source lexeme.
+// Materialization remains gated on timestamp proof and exclusive-writer approval.
 .create-or-alter function with (folder = "Mining/Validation") mining_SourceReadiness()
 {
     let manifest =
@@ -111,7 +112,7 @@
         gettype(event["run_id"]) == "string" and gettype(event["event_id"]) == "string" and
         gettype(event["sequence"]) in ("int", "long") and
         gettype(event["interval_seconds"]) in ("int", "long") and
-        gettype(event["timestamp"]) == "string" and
+        gettype(event["timestamp"]) in ("string", "datetime") and
         gettype(event["plant_id"]) == "string" and gettype(event["module_id"]) == "string" and
         gettype(event["equipment_id"]) == "string" and gettype(event["tag_id"]) == "string" and
         gettype(event["value"]) in ("int", "long", "real") and
@@ -222,7 +223,7 @@
         gettype(event["schema_version"]) in ("int", "long") and
         gettype(event["run_id"]) == "string" and gettype(event["event_id"]) == "string" and
         gettype(event["sequence"]) in ("int", "long") and
-        gettype(event["timestamp"]) == "string" and
+        gettype(event["timestamp"]) in ("string", "datetime") and
         gettype(event["plant_id"]) == "string" and gettype(event["scope_id"]) == "string" and
         gettype(event["scheduled_running"]) == "bool" and gettype(event["state"]) == "string"
     | extend identity_ok = event_type == "PlantStateEvent" and schema_version == 2 and

@@ -62,7 +62,7 @@
   "sourceFiles": [
     {
       "path": "infra/fabric/eventhouse/MiningValidation.kql",
-      "sha256": "e733da5365075ea850588f1bf57ff3bc3ff7a2055fa3217149c5f4d26b94e0df"
+      "sha256": "8ed380084a1a1975fa4883e66085a6581ae5cce0321c661b37bcf050f6398170"
     },
     {
       "path": "infra/fabric/eventhouse/MiningQueries.kql",
@@ -78,7 +78,7 @@
     },
     {
       "path": "infra/fabric/eventhouse/MiningSchema.kql",
-      "sha256": "d8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1"
+      "sha256": "2d780c59767ae0937914aeb3e36c48182ad2d913720ad199526e1858e62dbdec"
     }
   ],
   "fixture": {
