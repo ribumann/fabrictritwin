@@ -36,7 +36,7 @@ const sourceFiles = historicalSourceFiles.map((source) => ({
   ...source,
   sha256: ({
     'infra/fabric/eventhouse/MiningValidation.kql': '0ba0f1c5fcb85522f4281c6d11a71358623fc4589ca042ed89c3db2b52cad6ae',
-    'infra/fabric/eventhouse/MiningQueries.kql': '818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a',
+    'infra/fabric/eventhouse/MiningQueries.kql': 'ba3fdff7ca680f8fb8a915d47b0db42302356fea1596b87ec786b697e5dadf26',
     'infra/fabric/eventhouse/MiningSchema.kql': '2d780c59767ae0937914aeb3e36c48182ad2d913720ad199526e1858e62dbdec',
   })[source.path] ?? source.sha256,
 }));
@@ -530,12 +530,17 @@ function buildFixture(catalog) {
     toscalar(_selftest_CompareRows | where line_id == "A" and tag_id == "D01.A.crusher.ore_flow" and value == 12.0 and unit == "t/h" and good_count == 2 and coverage == 1.0 | count) == 1 and
     toscalar(_selftest_CompareRows | where line_id == "B" and tag_id == "D01.B.crusher.ore_flow" and value == 14.0 and unit == "t/h" and good_count == 2 and coverage == 1.0 | count) == 1 and
     toscalar(_selftest_CompareRows | where line_id == "C" and tag_id == "D01.C.crusher.ore_flow" and value == 16.0 and unit == "t/h" and good_count == 2 and coverage == 1.0 | count) == 1;`,
+    `let _selftest_ControlMatch =
+    toscalar(_selftest_PlantLatest("invalid", _selftest_RunId, _selftest_AsOf) | where status == "INVALID_REQUEST" and run_id == _selftest_RunId and as_of_utc == _selftest_AsOf | count) == 1 and
+    toscalar(_selftest_PlantSummary("invalid", _selftest_RunId, _selftest_WindowStart, _selftest_WindowEnd) | where status == "INVALID_REQUEST" and run_id == _selftest_RunId and window_start_utc == _selftest_WindowStart and window_end_utc == _selftest_WindowEnd | count) == 1 and
+    toscalar(_selftest_AssetTrend("D01", _selftest_RunId, "D01.A.crusher", "feed", _selftest_WindowStart - 1h, _selftest_WindowStart - 59m, 1) | where status == "NO_DATA" and run_id == _selftest_RunId and metric_family == "feed" and module_id == "D01.A.crusher" | count) == 1 and
+    toscalar(_selftest_CompareLines("D01", _selftest_RunId, "feed", _selftest_WindowStart - 1h, _selftest_WindowStart - 59m, 1) | where status == "NO_DATA" and run_id == _selftest_RunId and metric_family == "feed" | count) == 1;`,
     `print
     self_test_passed = _selftest_SummaryRow == "OK" and _selftest_TrendRow == "OK" and
         _selftest_IncidentRow == "OK" and _selftest_RetryCopies == 2 and
         _selftest_RetryReceivedAtMatches and
         _selftest_LatestMatch and _selftest_SummaryMatch and _selftest_TrendMatch and
-        _selftest_IncidentMatch and _selftest_CompareMatch and
+        _selftest_IncidentMatch and _selftest_CompareMatch and _selftest_ControlMatch and
         toscalar(_selftest_LatestTags | count) == 56 and
         toscalar(_selftest_LatestTags | where status == "OK" | count) == 11 and
         toscalar(_selftest_LatestStates | where status == "OK" | count) == 4 and

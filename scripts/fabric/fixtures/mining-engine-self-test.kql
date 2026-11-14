@@ -506,7 +506,7 @@ let source_status = toscalar(_selftest_SourceReadiness() | project status);
             scheduled_running = iff(event_conflict, bool(null), scheduled_running), coverage = real(null);
     let blocked =
         print status = iff(not(request_ok), "INVALID_REQUEST", source_status),
-            plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "contract",
+            plant_id = "D01", run_id = requested_run_id, as_of_utc = as_of_utc, row_kind = "contract",
             module_id = "", equipment_id = "", scope_id = "", tagId = "", seriesId = "", metric = "",
             value = real(null), unit = "", quality = "", event_time = datetime(null),
             received_at = datetime(null), age_seconds = long(null), state = "",
@@ -786,7 +786,7 @@ let source_status = toscalar(_selftest_SourceReadiness() | project status);
     let blocked =
         print status = case(not(identity_ok), "INVALID_REQUEST",
             not(window_ok), "INVALID_WINDOW", source_status),
-            plant_id = "D01", run_id, window_start_utc, window_end_utc,
+            plant_id = "D01", run_id = run_id, window_start_utc = window_start_utc, window_end_utc = window_end_utc,
             line_a_feed_tph = real(null), line_b_feed_tph = real(null), line_c_feed_tph = real(null),
             plant_feed_tph = real(null), processed_tonnes = real(null), running_lines = long(null),
             gross_process_water_m3_per_t = real(null), whole_plant_energy_kwh_per_t = real(null),
@@ -910,7 +910,7 @@ let source_status = toscalar(_selftest_SourceReadiness() | project status);
             event_count == 0, "NO_DATA",
             row_count > 1000, "TOO_MANY_ROWS",
             "OK"),
-            plant_id = "D01", run_id, module_id = requested_module_id, tagId = "", seriesId = "",
+            plant_id = "D01", run_id = run_id, module_id = requested_module_id, tagId = "", seriesId = "",
             metric_family = requested_metric_family, bin_start_utc = datetime(null), value = real(null), unit = "",
             good_count = long(null), non_good_count = long(null), coverage = real(null),
             source_qualities = dynamic(null),
@@ -1105,8 +1105,8 @@ let source_status = toscalar(_selftest_SourceReadiness() | project status);
             event_count == 0, "NO_DATA",
             row_count > 1000, "TOO_MANY_ROWS",
             "OK"),
-            plant_id = "D01", run_id, line_id = "", module_id = "",
-            tag_id = "", metric = "", metric_family,
+            plant_id = "D01", run_id = run_id, line_id = "", module_id = "",
+            tag_id = "", metric = "", metric_family = metric_family,
             bin_start_utc = datetime(null), value = real(null), unit = "",
             good_count = long(null), non_good_count = long(null), late_count = long(null),
             source_qualities = dynamic(null),
@@ -1148,12 +1148,17 @@ let _selftest_CompareMatch =
     toscalar(_selftest_CompareRows | where line_id == "A" and tag_id == "D01.A.crusher.ore_flow" and value == 12.0 and unit == "t/h" and good_count == 2 and coverage == 1.0 | count) == 1 and
     toscalar(_selftest_CompareRows | where line_id == "B" and tag_id == "D01.B.crusher.ore_flow" and value == 14.0 and unit == "t/h" and good_count == 2 and coverage == 1.0 | count) == 1 and
     toscalar(_selftest_CompareRows | where line_id == "C" and tag_id == "D01.C.crusher.ore_flow" and value == 16.0 and unit == "t/h" and good_count == 2 and coverage == 1.0 | count) == 1;
+let _selftest_ControlMatch =
+    toscalar(_selftest_PlantLatest("invalid", _selftest_RunId, _selftest_AsOf) | where status == "INVALID_REQUEST" and run_id == _selftest_RunId and as_of_utc == _selftest_AsOf | count) == 1 and
+    toscalar(_selftest_PlantSummary("invalid", _selftest_RunId, _selftest_WindowStart, _selftest_WindowEnd) | where status == "INVALID_REQUEST" and run_id == _selftest_RunId and window_start_utc == _selftest_WindowStart and window_end_utc == _selftest_WindowEnd | count) == 1 and
+    toscalar(_selftest_AssetTrend("D01", _selftest_RunId, "D01.A.crusher", "feed", _selftest_WindowStart - 1h, _selftest_WindowStart - 59m, 1) | where status == "NO_DATA" and run_id == _selftest_RunId and metric_family == "feed" and module_id == "D01.A.crusher" | count) == 1 and
+    toscalar(_selftest_CompareLines("D01", _selftest_RunId, "feed", _selftest_WindowStart - 1h, _selftest_WindowStart - 59m, 1) | where status == "NO_DATA" and run_id == _selftest_RunId and metric_family == "feed" | count) == 1;
 print
     self_test_passed = _selftest_SummaryRow == "OK" and _selftest_TrendRow == "OK" and
         _selftest_IncidentRow == "OK" and _selftest_RetryCopies == 2 and
         _selftest_RetryReceivedAtMatches and
         _selftest_LatestMatch and _selftest_SummaryMatch and _selftest_TrendMatch and
-        _selftest_IncidentMatch and _selftest_CompareMatch and
+        _selftest_IncidentMatch and _selftest_CompareMatch and _selftest_ControlMatch and
         toscalar(_selftest_LatestTags | count) == 56 and
         toscalar(_selftest_LatestTags | where status == "OK" | count) == 11 and
         toscalar(_selftest_LatestStates | where status == "OK" | count) == 4 and

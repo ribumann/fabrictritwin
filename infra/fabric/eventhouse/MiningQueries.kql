@@ -123,7 +123,7 @@
             scheduled_running = iff(event_conflict, bool(null), scheduled_running), coverage = real(null);
     let blocked =
         print status = iff(not(request_ok), "INVALID_REQUEST", source_status),
-            plant_id = "D01", run_id = requested_run_id, as_of_utc, row_kind = "contract",
+            plant_id = "D01", run_id = requested_run_id, as_of_utc = as_of_utc, row_kind = "contract",
             module_id = "", equipment_id = "", scope_id = "", tagId = "", seriesId = "", metric = "",
             value = real(null), unit = "", quality = "", event_time = datetime(null),
             received_at = datetime(null), age_seconds = long(null), state = "",
@@ -406,7 +406,7 @@
     let blocked =
         print status = case(not(identity_ok), "INVALID_REQUEST",
             not(window_ok), "INVALID_WINDOW", source_status),
-            plant_id = "D01", run_id, window_start_utc, window_end_utc,
+            plant_id = "D01", run_id = run_id, window_start_utc = window_start_utc, window_end_utc = window_end_utc,
             line_a_feed_tph = real(null), line_b_feed_tph = real(null), line_c_feed_tph = real(null),
             plant_feed_tph = real(null), processed_tonnes = real(null), running_lines = long(null),
             gross_process_water_m3_per_t = real(null), whole_plant_energy_kwh_per_t = real(null),
@@ -534,7 +534,7 @@
             event_count == 0, "NO_DATA",
             row_count > 1000, "TOO_MANY_ROWS",
             "OK"),
-            plant_id = "D01", run_id, module_id = requested_module_id, tagId = "", seriesId = "",
+            plant_id = "D01", run_id = run_id, module_id = requested_module_id, tagId = "", seriesId = "",
             metric_family = requested_metric_family, bin_start_utc = datetime(null), value = real(null), unit = "",
             good_count = long(null), non_good_count = long(null), coverage = real(null),
             source_qualities = dynamic(null),
@@ -736,8 +736,8 @@
             event_count == 0, "NO_DATA",
             row_count > 1000, "TOO_MANY_ROWS",
             "OK"),
-            plant_id = "D01", run_id, line_id = "", module_id = "",
-            tag_id = "", metric = "", metric_family,
+            plant_id = "D01", run_id = run_id, line_id = "", module_id = "",
+            tag_id = "", metric = "", metric_family = metric_family,
             bin_start_utc = datetime(null), value = real(null), unit = "",
             good_count = long(null), non_good_count = long(null), late_count = long(null),
             source_qualities = dynamic(null),
