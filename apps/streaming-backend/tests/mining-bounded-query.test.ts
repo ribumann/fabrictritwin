@@ -120,6 +120,7 @@ describe("bounded mining query transport", () => {
       metric: "vibration",
       binMinutes: 5,
     });
+
     expect(
       f.request.mock.calls
         .filter((_, i) => i % 3 === 2)
@@ -130,6 +131,21 @@ describe("bounded mining query transport", () => {
       expect.stringContaining("mining_PlantSummary(plant, run, start, end)"),
       expect.stringContaining("mining_AssetTrend(plant, run, module, metric, start, end, bin)"),
     ]);
+  });
+
+  it("uses bounded fixed queries for source readiness and run-scoped incident observations", async () => {
+    const f = fixture();
+    const scope = { runId: input.runId, maxRows: 1000 };
+    await f.query({ ...scope, kind: "source-readiness" });
+    await f.query({ ...scope, kind: "incident-observations", asOf: input.end });
+    const requests = f.request.mock.calls
+      .filter((_, i) => i % 3 === 2)
+      .map((call) => JSON.parse(String(call[1]?.body)));
+    expect(requests[0].csl).toContain("mining_SourceReadiness()");
+    expect(requests[1].csl).toContain("union withsource=source mining_ValidatedTelemetry, mining_ValidatedState");
+    expect(requests[1].csl).toContain("where run_id == run and timestamp <= asof");
+    expect(requests[1].csl).not.toContain(input.runId);
+    expect(requests[1].properties.Parameters.run).toBe(`'${input.runId}'`);
   });
 
   it("rejects foreign targets, invalid identity endpoints and invalid inputs before I/O", async () => {

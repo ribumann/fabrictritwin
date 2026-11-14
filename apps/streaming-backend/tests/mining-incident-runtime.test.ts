@@ -143,6 +143,16 @@ function fixture() {
 }
 
 describe("durable fenced mining incident processing", () => {
+  it("passes committed observations to the source after recovery without replaying them as new", async () => {
+    const { dependencies, source } = fixture();
+    const initial = await MiningIncidentRuntime.open(run, "fresh", dependencies);
+    await initial.processMinute(iso(0));
+    await initial.close();
+    const recovered = await MiningIncidentRuntime.open(run, "recover", dependencies);
+    await recovered.processMinute(iso(1));
+    expect(vi.mocked(source.read).mock.calls[1]![0].committed).toEqual(observations(0));
+    await recovered.close();
+  });
   it("writes and replays a schema-2 journal only with the exact prospective binding", async () => {
     const { dependencies, store } = fixture();
     const input = {

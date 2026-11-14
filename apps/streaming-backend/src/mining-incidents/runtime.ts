@@ -48,6 +48,7 @@ export interface MiningIncidentSource {
   read(input: {
     runId: string;
     asOf: string;
+    committed: readonly Observation[];
     signal: AbortSignal;
   }): Promise<{ observations: readonly Observation[]; receivedAt: string }>;
 }
@@ -425,7 +426,14 @@ export class MiningIncidentRuntime {
       if (minute !== this.state.lastMinute + 1)
         invalid("Incident processing cannot skip a minute.");
       const batch = await this.io((signal) =>
-        this.dependencies.source.read({ runId: this.run.runId, asOf, signal }),
+        this.dependencies.source.read({
+          runId: this.run.runId,
+          asOf,
+          committed: this.journal.flatMap((command) =>
+            command.kind === "observe" ? [structuredClone(command.observation)] : [],
+          ),
+          signal,
+        }),
       );
       this.alive();
       if (

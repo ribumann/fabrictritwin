@@ -17,6 +17,8 @@ interface Scope {
 type Query =
   | (Scope & { kind: "latest"; asOf: string })
   | (Scope & { kind: "incidents"; asOf: string })
+  | (Scope & { kind: "incident-observations"; asOf: string })
+  | (Scope & { kind: "source-readiness" })
   | (Scope & { kind: "summary"; start: string; end: string })
   | (Scope & {
       kind: "trend";
@@ -350,6 +352,13 @@ async function prepare(
   properties.setParameter("plant", "'D01'");
   properties.setParameter("run", `'${input.runId}'`);
   const head = "declare query_parameters(plant:string, run:string";
+  if (input.kind === "source-readiness") {
+    return `${head}); mining_SourceReadiness()`;
+  }
+  if (input.kind === "incident-observations") {
+    properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
+    return `${head}, asof:datetime); union withsource=source mining_ValidatedTelemetry, mining_ValidatedState | where run_id == run and timestamp <= asof | project source, plant_id, run_id, event_id, sequence, timestamp, received_at, tag_id, value, unit, quality, interval_seconds, scope_id, scheduled_running, state, catalog_version, profile_version, source_contract_version, module_id, equipment_id | order by timestamp asc, sequence asc`;
+  }
   if (input.kind === "latest" || input.kind === "incidents") {
     properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
     const name = input.kind === "latest" ? "mining_PlantLatest" : "mining_ActiveIncidents";
