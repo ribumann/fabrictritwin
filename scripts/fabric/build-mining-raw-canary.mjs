@@ -67,8 +67,7 @@ union
 | summarize copies = count(),
     matching_id_copies = countif(tostring(event["event_id"]) == expected_event_id),
     exact_timestamp_copies = countif(
-      gettype(event["timestamp"]) == "string" and
-      tostring(event["timestamp"]) == expected_timestamp and
+      todatetime(event["timestamp"]) == todatetime(expected_timestamp) and
       timestamp_raw == expected_timestamp),
     received_copies = countif(isnotnull(ingestion_time()))
   by table_name;
