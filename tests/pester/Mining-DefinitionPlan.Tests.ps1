@@ -179,6 +179,62 @@ Describe 'Offline mining source and query contracts (static checks only)' {
         $script:QueriesText = Get-Content -LiteralPath (Join-Path $root 'MiningQueries.kql') -Raw
     }
 
+    Describe 'Mining materialization policy' {
+        BeforeAll {
+            $root = Join-Path $PSScriptRoot '..\..\infra\fabric\eventhouse'
+            $schema = Get-Content -LiteralPath (Join-Path $root 'MiningSchema.kql') -Raw
+            $policyLines = @(Get-Content -LiteralPath (Join-Path $root 'MiningMaterialization.kql') |
+                Where-Object { $_ -match '^\.alter table .* policy update ' })
+            $script:policies = @()
+            foreach ($line in $policyLines) {
+                $match = [regex]::Match($line, "^\.alter table (\w+) policy update @'(.+)'$")
+                if (-not $match.Success) { throw 'Invalid update-policy command.' }
+                $target = $match.Groups[1].Value
+                $definition = [regex]::Match($schema, "(?m)^\.create table $target \(([^)]+)\)")
+                if (-not $definition.Success) { throw "Missing target schema: $target" }
+                $columns = @($definition.Groups[1].Value.Split(',') | ForEach-Object {
+                    $_.Trim().Split(':')[0]
+                })
+                foreach ($policy in @($match.Groups[2].Value | ConvertFrom-Json)) {
+                    $script:policies += [pscustomobject]@{
+                        Target = $target
+                        Columns = $columns
+                        Policy = $policy
+                    }
+                }
+            }
+        }
+
+        It 'projects each classifier result in the exact target schema order' {
+            $script:policies | Should -HaveCount 4
+            foreach ($entry in $script:policies) {
+                $projection = [regex]::Match($entry.Policy.Query, '\| project (.+)$')
+                $projection.Success | Should -BeTrue
+                $actual = @($projection.Groups[1].Value.Split(',') | ForEach-Object {
+                    $_.Trim().Split('=')[0]
+                })
+                ($actual -join ',') | Should -BeExactly ($entry.Columns -join ',')
+            }
+        }
+
+        It 'routes each source to its classifier without blocking raw ingestion' {
+            foreach ($entry in $script:policies) {
+                $entry.Policy.IsEnabled | Should -BeTrue
+                $entry.Policy.IsTransactional | Should -BeFalse
+                $expected = if ($entry.Policy.Source -eq 'mining_TelemetryRaw') {
+                    'mining_ClassifyTelemetry()'
+                } elseif ($entry.Policy.Source -eq 'mining_PlantStateEvents') {
+                    'mining_ClassifyState()'
+                } else {
+                    throw "Unexpected source: $($entry.Policy.Source)"
+                }
+                $entry.Policy.Query.StartsWith($expected) | Should -BeTrue
+                $disposition = if ($entry.Target -eq 'mining_Quarantine') { 'QUARANTINED' } else { 'ACCEPTED' }
+                $entry.Policy.Query | Should -Match "disposition == `"$disposition`""
+            }
+        }
+    }
+
     It 'gates curated dispositions on timestamp proof and exclusive writer approval' {
         $script:ValidationText | Should -Match 'd01-validated-source-v1'
         $script:ValidationText | Should -Match 'BLOCKED_RAW_TIMESTAMP_PROOF'
