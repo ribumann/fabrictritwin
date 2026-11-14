@@ -114,14 +114,14 @@ Set environment variables (identifiers, never client secrets):
 | `AZURE_DEPLOY_REGISTRY_NAME` | Existing public-Azure ACR name |
 
 Use GitHub issuer `https://token.actions.githubusercontent.com` and audience
-`api://AzureADTokenExchange`. Before granting deployment rights, confirm the
-new environment's actual subject with a trusted, read-only OIDC canary. This
-repository has observed immutable-ID subjects; the expected subject for the new
-environment is
+`api://AzureADTokenExchange`. This repository has observed immutable-ID
+subjects; the configured subject for `azure-deploy` is
 `repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-deploy`.
-That expectation is **not yet a verified azure-deploy token**. Never use a
-wildcard or a name-only replacement, and never broaden the existing
-`azure-canary` Reader identity.
+The read-only `azure-deploy-oidc-proof` succeeded on 14 November 2026: it
+confirmed token exchange and resource-group read for that environment. This
+does not prove app-write or registry permissions, and it does not verify the
+separate Mining bootstrap identity. Never use a wildcard or a name-only
+replacement, and never broaden the existing `azure-canary` Reader identity.
 
 Minimum proposed grants, subject to administrator/provider verification:
 
@@ -185,14 +185,19 @@ operator approval requirements; a digest pins content but does not certify it.
 
 ## Protected mining private-state bootstrap (separate release item)
 
-`Prepare private mining state` is manual, main-only and uses the same protected
-`azure-deploy` environment and deployment concurrency group. **This source change
-does not authorize a dispatch or any cloud write.** Keep
+`Prepare private mining state` is manual, main-only and uses the dedicated
+`azure-mining-bootstrap` environment and a separate OIDC identity. It shares
+the app-deployment concurrency group to avoid overlapping backend metadata
+reads, but does not reuse the app image deployment identity or its
+`azure-deploy` environment. **This source change does not authorize a dispatch
+or any cloud write.** Keep
 `MINING_STATE_BOOTSTRAP_ENABLED` unset or `false` until native environment
 protection, private target review and explicit write authorization are complete.
 The unattended app-release exception does not apply here. Require independent
 reviewers, no self-approval/bypass and main-only deployment branches as described
-above; do not enable this on a repository plan that cannot enforce those controls.
+above; protect `main` with required CI and independent review, and do not enable
+this lane until the dedicated environment and identity are verified. The
+repository's current app-release settings are not a substitute for these controls.
 The reusable script also rejects non-WhatIf apply outside the expected main
 workflow context. Local use is preview-only. Context checks prevent accidental
 misuse; native GitHub protections and narrowly federated Azure authorization,
@@ -221,13 +226,18 @@ least-privilege audit of the estate.
 
 ### Protected environment variables
 
-Reuse `AZURE_DEPLOY_CLIENT_ID`, `AZURE_DEPLOY_TENANT_ID`,
-`AZURE_DEPLOY_SUBSCRIPTION_ID` and `AZURE_DEPLOY_RESOURCE_GROUP`. Do not put
+Use a **separate, dedicated** OIDC service principal for this lane; do not reuse
+the app-image deployment identity or its `AZURE_DEPLOY_*` variables. Do not put
 actual target identifiers, snapshots or private plan files in public source,
-issues, PRs or Actions artifacts. Additional **environment-level** variables:
+issues, PRs or Actions artifacts. Configure these **environment-level**
+variables on `azure-mining-bootstrap`:
 
 | Variable | Required value |
 | --- | --- |
+| `MINING_STATE_DEPLOY_CLIENT_ID` | Dedicated mining-bootstrap deployment identity client ID |
+| `MINING_STATE_DEPLOY_TENANT_ID` | Target resource directory |
+| `MINING_STATE_DEPLOY_SUBSCRIPTION_ID` | Explicit approved subscription |
+| `MINING_STATE_DEPLOY_RESOURCE_GROUP` | Existing resource group containing the selected storage account and backend |
 | `MINING_STATE_CALLER_PRINCIPAL_ID` | Exact object ID of the deployment service principal, not the backend |
 | `MINING_STATE_ACTOR_ID` | Numeric GitHub account ID of the authorized dispatching operator |
 | `MINING_STATE_STORAGE_ACCOUNT` | Explicit existing StorageV2 account name |
@@ -241,13 +251,20 @@ issues, PRs or Actions artifacts. Additional **environment-level** variables:
 | `MINING_STATE_EXCLUSIVE_WRITER_WINDOW_ID` | Private reference to the externally recorded, approved exclusive-writer window; not a lock |
 | `MINING_STATE_ACKNOWLEDGE_NON_ATOMIC_UPDATE` | Exact `true` acknowledges non-atomic writes and the operator's external exclusion responsibility |
 
-Both preview and apply require environment approval. The workflow verifies the
-actual immutable-ID OIDC subject for `azure-deploy`, issuer, audience, repository
-and owner IDs, actor ID, main ref, exact workflow path and source SHA before login.
-Azure tokens must match the pinned deployment caller as well as tenant. The
-environment subject expectation still needs actual canary verification; this
-change does not prove a federated exchange or grant any rights. Reruns are
-rejected: use a new dispatch, approvals and fresh preview after inspection.
+Configure `azure-mining-bootstrap` with an independent required reviewer,
+no self-approval or administrator bypass where available, and `main` as its
+only deployment branch. Both preview and apply must pass that environment's
+review gate. The workflow verifies the exact immutable-ID OIDC subject
+`repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap`,
+issuer, audience, repository and owner IDs, actor ID, main ref, exact workflow
+path and source SHA before login. Configure that subject on the dedicated
+identity and run the manual
+`.github/workflows/mining-bootstrap-oidc-proof.yml` first. That workflow checks
+the exact claims and reads only the configured resource group; it does not
+verify Blob reachability or write permissions. The existing `azure-deploy`
+proof does not verify this new environment or identity. Azure tokens must match
+the pinned deployment caller as well as tenant. Reruns are rejected: use a new
+dispatch, approvals and fresh preview after inspection.
 
 ### Permission and network review before authorization
 

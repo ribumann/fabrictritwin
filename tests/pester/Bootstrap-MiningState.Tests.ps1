@@ -342,12 +342,29 @@ Describe 'Protected mining-state bootstrap' {
 Describe 'Mining bootstrap workflow boundary' {
     BeforeAll {
         $script:Workflow = Get-Content (Join-Path $PSScriptRoot '..' '..' '.github' 'workflows' 'bootstrap-mining-state.yml') -Raw
+        $script:OidcProof = Get-Content (Join-Path $PSScriptRoot '..' '..' '.github' 'workflows' 'mining-bootstrap-oidc-proof.yml') -Raw
         $validation = [regex]::Match($script:Workflow, '(?ms)^        run: \|\r?\n(.*?)(?=^      -|\z)').Groups[1].Value
         $script:WorkflowValidation = [scriptblock]::Create($validation)
     }
+    It 'provides an exact, read-only OIDC proof for the dedicated Mining environment' {
+        $script:OidcProof | Should -Match "github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'"
+        $script:OidcProof | Should -Match 'environment: azure-mining-bootstrap'
+        $script:OidcProof | Should -Match "claims.sub -cne 'repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap'"
+        $script:OidcProof | Should -Match 'workflow_ref -cne ''ribumann/fabrictritwin/.github/workflows/mining-bootstrap-oidc-proof.yml@refs/heads/main'''
+        $script:OidcProof | Should -Match 'id-token: write'
+        $script:OidcProof | Should -Match 'az group show'
+        $script:OidcProof | Should -Not -Match 'az storage|roleAssignments|BOOTSTRAP_ENABLED|Apply'
+        $script:OidcProof | Should -Not -Match '(?m)^\s+(push|pull_request|pull_request_target|schedule|workflow_run):'
+    }
     It 'uses a manual, main-only protected OIDC job and no public plan artifacts' {
         $script:Workflow | Should -Match "github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'"
-        $script:Workflow | Should -Match 'environment: azure-deploy'
+        $script:Workflow | Should -Match 'environment: azure-mining-bootstrap'
+        $script:Workflow | Should -Match 'CLIENT_ID: \$\{\{ vars.MINING_STATE_DEPLOY_CLIENT_ID \}\}'
+        $script:Workflow | Should -Match 'TENANT_ID: \$\{\{ vars.MINING_STATE_DEPLOY_TENANT_ID \}\}'
+        $script:Workflow | Should -Match 'SUBSCRIPTION_ID: \$\{\{ vars.MINING_STATE_DEPLOY_SUBSCRIPTION_ID \}\}'
+        $script:Workflow | Should -Match 'RESOURCE_GROUP: \$\{\{ vars.MINING_STATE_DEPLOY_RESOURCE_GROUP \}\}'
+        $script:Workflow | Should -Not -Match 'vars\.AZURE_DEPLOY_'
+        $script:Workflow | Should -Match "claims.sub -cne 'repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap'"
         $script:Workflow | Should -Match 'default: false'
         $script:Workflow | Should -Match 'MINING_STATE_APPROVED_DIGEST'
         $script:Workflow | Should -Match 'MINING_STATE_BOOTSTRAP_ENABLED'

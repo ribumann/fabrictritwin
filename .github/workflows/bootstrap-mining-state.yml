@@ -24,7 +24,7 @@ concurrency:
 jobs:
   bootstrap:
     if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
-    environment: azure-deploy
+    environment: azure-mining-bootstrap
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -32,10 +32,10 @@ jobs:
       id-token: write
     env:
       AZURE_CORE_OUTPUT: none
-      CLIENT_ID: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
-      TENANT_ID: ${{ vars.AZURE_DEPLOY_TENANT_ID }}
-      SUBSCRIPTION_ID: ${{ vars.AZURE_DEPLOY_SUBSCRIPTION_ID }}
-      RESOURCE_GROUP: ${{ vars.AZURE_DEPLOY_RESOURCE_GROUP }}
+      CLIENT_ID: ${{ vars.MINING_STATE_DEPLOY_CLIENT_ID }}
+      TENANT_ID: ${{ vars.MINING_STATE_DEPLOY_TENANT_ID }}
+      SUBSCRIPTION_ID: ${{ vars.MINING_STATE_DEPLOY_SUBSCRIPTION_ID }}
+      RESOURCE_GROUP: ${{ vars.MINING_STATE_DEPLOY_RESOURCE_GROUP }}
       CALLER_PRINCIPAL_ID: ${{ vars.MINING_STATE_CALLER_PRINCIPAL_ID }}
       STORAGE_ACCOUNT: ${{ vars.MINING_STATE_STORAGE_ACCOUNT }}
       CONTAINER: ${{ vars.MINING_STATE_CONTAINER }}
@@ -95,7 +95,7 @@ jobs:
               $payload.Length + (4 - $payload.Length % 4) % 4, '='))) | ConvertFrom-Json
             if ($claims.iss -cne 'https://token.actions.githubusercontent.com' -or
                 $claims.aud -cne 'api://AzureADTokenExchange' -or
-                $claims.sub -cne 'repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-deploy' -or
+                $claims.sub -cne 'repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap' -or
                 $claims.repository_id -cne '1449513330' -or $claims.repository_owner_id -cne '46997953' -or
                 $claims.ref -cne 'refs/heads/main' -or $claims.sha -cne $env:SOURCE_REVISION -or
                 $claims.actor_id -cne $env:EXPECTED_ACTOR_ID -or $claims.event_name -cne 'workflow_dispatch' -or

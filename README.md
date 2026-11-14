@@ -110,8 +110,11 @@ generate or display simulated mining data.
 
 End-to-end mining still requires an explicit sole-writer decision and approval
 for a private run-state Blob container with narrowly scoped access for the
-backend identity. Those gates are not satisfied by the account-free synthetic
-triathlon demo or by the raw canary. See the [mining architecture and dated
+backend identity. Its bootstrap also requires a separately protected
+`azure-mining-bootstrap` environment and dedicated OIDC identity; the
+unattended app-image deployment environment is not sufficient. Those gates are
+not satisfied by the account-free synthetic triathlon demo or by the raw
+canary. See the [mining architecture and dated
 evidence](docs/release-architecture.md#isolated-d01-mining-path-readiness-gated)
 and the [dependency and permission inventory](docs/dependencies-and-configuration.md).
 
