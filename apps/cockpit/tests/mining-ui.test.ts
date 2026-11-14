@@ -127,6 +127,26 @@ describe("mining request lifecycle", () => {
     expect(refresh).toHaveBeenCalledTimes(4);
     polling.stop();
   });
+  it("uses the browser timer receiver when starting and stopping polling", () => {
+    const schedule = vi.fn(function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      return 1;
+    });
+    const cancel = vi.fn(function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+    });
+    vi.stubGlobal("setInterval", schedule);
+    vi.stubGlobal("clearInterval", cancel);
+    try {
+      const polling = new MiningPolling(vi.fn());
+      polling.update({ mode: "live", hidden: false, connected: true });
+      polling.stop();
+      expect(schedule).toHaveBeenCalledTimes(2);
+      expect(cancel).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 describe("unknown and catalog selection semantics", () => {
   it("accepts an absent current hold without weakening the evidence window", () => {
