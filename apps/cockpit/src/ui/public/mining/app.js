@@ -117,12 +117,11 @@ function drawPlant() {
   list.replaceChildren();
   for (const module of visibleModules(catalog, lines)) {
     const binding = appearanceBundle?.moduleBindings.get(module.id);
-    const issue =
-      appearanceMode === "reconstructed"
-        ? binding
-          ? splatIssue(binding.asset, module)
-          : "Reconstructed appearance unavailable."
-        : null;
+    const issue = appearanceMode === "reconstructed"
+      ? binding
+        ? splatIssue(binding.asset, module)
+        : "Reconstructed appearance unavailable."
+      : null;
     const appearanceNote = issue
       ? ` · ${issue}${showScreenedOut && binding?.asset.quality.status === "excluded" ? " Review only." : ""}`
       : "";
@@ -155,10 +154,9 @@ async function loadAppearanceBundle() {
       cache: "force-cache",
       redirect: "error",
     });
-    if (!response.ok)
-      throw new Error(`Pinned appearance manifest request failed (${response.status}).`);
+    if (!response.ok) throw new Error(`Pinned appearance manifest request failed (${response.status}).`);
     const bytes = await readBoundedBytes(response, 1_048_576);
-    if ((await sha256Hex(bytes)) !== expectedHash)
+    if (await sha256Hex(bytes) !== expectedHash)
       throw new Error(`Pinned appearance manifest integrity check failed: ${file}.`);
     documents[key] = JSON.parse(new TextDecoder().decode(bytes));
   }
@@ -207,12 +205,9 @@ async function applyAppearance() {
   }
   const controller = new AbortController();
   appearanceController = controller;
-  text(
-    "geometry-status",
-    "Loading pinned reconstructed appearance; operational data is unchanged…",
-  );
+  text("geometry-status", "Loading pinned reconstructed appearance; operational data is unchanged…");
   try {
-    const bundle = appearanceBundle ?? (await getAppearanceBundle());
+    const bundle = appearanceBundle ?? await getAppearanceBundle();
     if (generation !== appearanceGeneration || controller.signal.aborted) return;
     await plant3d.setVisualMode("reconstructed", bundle, showScreenedOut, controller.signal);
     if (generation !== appearanceGeneration || controller.signal.aborted) return;
@@ -577,9 +572,7 @@ async function refresh(scope = "all") {
     incidents = [];
     incidentAsOf = null;
     selectedIncident = null;
-    drawIncidents(
-      "Incident assessments are current-only; historical assessments are unavailable in replay.",
-    );
+    drawIncidents("Incident assessments are current-only; historical assessments are unavailable in replay.");
     drawDrawer();
   }
   if (document.hidden || !context?.readAvailable || !context?.approvedRun) return;
