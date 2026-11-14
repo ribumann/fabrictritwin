@@ -41,11 +41,9 @@ export function createMiningRouter(
       return;
     }
     if (Object.keys(req.query).length) {
-      res
-        .status(400)
-        .json({
-          error: { code: "invalid_mining_demo", message: "No query parameters are supported." },
-        });
+      res.status(400).json({
+        error: { code: "invalid_mining_demo", message: "No query parameters are supported." },
+      });
       return;
     }
     await proxyStreamingBackendGet(
