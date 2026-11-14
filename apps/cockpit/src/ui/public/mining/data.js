@@ -146,6 +146,10 @@ export function validOverview(data, runId, catalogVersion, asOf, replay) {
   return validAsOf(data.asOf, asOf, replay);
 }
 
+export function seriesQuery({ plantId, runId, start, end, binMinutes, maxRows }, metric, moduleId) {
+  return { plantId, runId, start, end, binMinutes, maxRows, metric, moduleId };
+}
+
 export class MiningReads {
   constructor(fetchImpl = fetch, now = Date.now) {
     this.fetch = (...args) => fetchImpl(...args);

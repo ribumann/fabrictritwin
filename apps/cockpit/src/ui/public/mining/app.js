@@ -15,6 +15,7 @@ import {
   currentIncidentQuery,
   validCurrentAssessmentAsOf,
   validSeries,
+  seriesQuery,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
 import {
@@ -693,7 +694,7 @@ async function refresh(scope = "all") {
       })(),
       (async () => {
         try {
-          const data = await reads.read("compare-lines", { ...params, metric: "feed" });
+          const data = await reads.read("compare-lines", seriesQuery(params, "feed"));
           if (!validSeries(data, { ...params, metric: "feed" }, catalogVersion, catalog))
             throw new Error(
               "Trend response does not match the requested run, time, metric or catalog.",
@@ -713,7 +714,7 @@ async function refresh(scope = "all") {
     tasks.push(
       (async () => {
         try {
-          const data = await reads.read("trends", { ...params, moduleId, metric });
+          const data = await reads.read("trends", seriesQuery(params, metric, moduleId));
           if (!validSeries(data, { ...params, moduleId, metric }, catalogVersion, catalog))
             throw new Error(
               "Trend response does not match the requested module, time, metric or catalog.",
