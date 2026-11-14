@@ -23,10 +23,12 @@ is needed only to build images. See
 [`docs/dependencies-and-configuration.md`](docs/dependencies-and-configuration.md)
 for the live cloud prerequisites and configuration boundaries.
 
-The current Copilot setup workflow is not general pull-request CI: it runs when
-that workflow file changes (and on manual dispatch). Do not assume arbitrary
-pull requests automatically run the full build, tests, lints, or infrastructure
-checks.
+Credential-free `ci.yml` runs on every pull request and on pushes to `main`,
+covering the build, JavaScript tests, lint, formatting, mock PowerShell tests,
+and Bicep compilation. The separate Copilot setup workflow runs only when its
+own file changes and on manual dispatch; it verifies runner tooling and setup
+capabilities. Neither workflow deploys cloud resources or validates live
+Azure/Fabric access.
 
 ## Changes involving cloud resources
 
