@@ -1,0 +1,6 @@
+.create-merge table mining_TelemetryRaw (event:dynamic, timestamp_raw:string)
+.create-merge table mining_PlantStateEvents (event:dynamic, timestamp_raw:string)
+.create-or-alter table mining_TelemetryRaw ingestion json mapping 'mining_telemetry_raw_json_map' '[{"column":"event","Properties":{"path":"$"}},{"column":"timestamp_raw","Properties":{"path":"$.timestamp"}}]'
+.create-or-alter table mining_PlantStateEvents ingestion json mapping 'mining_state_raw_json_map' '[{"column":"event","Properties":{"path":"$"}},{"column":"timestamp_raw","Properties":{"path":"$.timestamp"}}]'
+.alter table mining_TelemetryRaw policy retention '{"SoftDeletePeriod":"7.00:00:00","Recoverability":"Enabled"}'
+.alter table mining_PlantStateEvents policy retention '{"SoftDeletePeriod":"7.00:00:00","Recoverability":"Enabled"}'

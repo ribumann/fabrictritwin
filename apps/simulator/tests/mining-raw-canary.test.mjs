@@ -40,6 +40,9 @@ describe("offline mining raw-ingestion canary", () => {
     ).toBe(true);
     expect(packet.verificationQuery).toContain(`expected_run_id = "${runId}"`);
     expect(packet.verificationQuery).toContain(`expected_timestamp = "${timestamp}"`);
+    expect(packet.verificationQuery).toContain("timestamp_raw == expected_timestamp");
+    expect(packet.verificationQuery).toContain("todatetime(event[\"timestamp\"])");
+    expect(packet.verificationQuery).not.toContain('gettype(event["timestamp"])');
     for (const message of packet.messages) {
       expect(packet.verificationQuery).toContain(message.event_id);
     }
