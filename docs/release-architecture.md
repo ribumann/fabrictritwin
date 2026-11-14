@@ -6,8 +6,7 @@ data or request paths, not proof of availability. No operator-specific resource
 names, identities, athlete identifiers, credentials, or raw measurements belong
 here.
 
-Source baseline: main at `ac1ed74` (including the MCP readable formatter,
-Console source retirement, and isolated Mining definitions). Status snapshot:
+Source baseline: main after the public mining demo and classifier corrections. Status snapshot:
 **14 November 2026**. These diagrams describe checked-in source and dated
 observations, not proof of the current resources or serving revision in any
 tenant.
@@ -154,46 +153,52 @@ and [live simulation](../apps/streaming-backend/src/api/simulate.ts).
 
 ```mermaid
 flowchart LR
-    Canary["Bounded v2 canary<br/>one-off sender"]
+    Browser["Public browser"]
+    Cockpit["Cockpit mining view"]
+    Backend["Authenticated backend demo boundary"]
+    State["Private run coordination"]
+    Publisher["Bounded D01 publisher"]
     Stream["Separate Mining Eventstream<br/>CustomEndpoint"]
     RawTelemetry["mining_TelemetryRaw"]
     RawState["mining_PlantStateEvents"]
-    Classifiers["Read-only mining classifiers"]
-    Blocked["BLOCKED_SOURCE_CONTRACT"]
-    Curated["Curated telemetry / state<br/>currently empty"]
+    Classifiers["Mining classifiers"]
+    Curated["Validated telemetry / state"]
+    Quarantine["Quarantine"]
     G5["Fixed G5 read contracts"]
-    Backend["Backend mining routes<br/>start / read / cancel default-off"]
-    Cockpit["Public Cockpit mining view"]
 
-    Canary --> Stream
+    Browser -->|"Same-origin controls and reads"| Cockpit
+    Cockpit -->|"Cockpit workload identity"| Backend
+    Backend --> State
+    Backend --> Publisher
+    Publisher --> Stream
     Stream --> RawTelemetry
     Stream --> RawState
     RawTelemetry --> Classifiers
     RawState --> Classifiers
-    Classifiers --> Blocked
-    Classifiers -.->|"Materialization disabled"| Curated
-    Curated -.-> G5
-    G5 -.-> Backend
-    Cockpit -.->|"No enabled live mining read"| Backend
+    Classifiers -->|"Accepted, non-transactional policies"| Curated
+    Classifiers -->|"Rejected"| Quarantine
+    Curated --> G5
+    G5 --> Backend
 ```
 
 Mining has its own Eventstream, Eventhouse, KQL database, raw schema, and
 definitions in the existing workspace/capacity. It does not share or modify the
 triathlon Eventstream, Eventhouse, or tables shown above.
 
-**Dated evidence, not a readiness guarantee:** on 14 November 2026, a bounded
-two-message canary reached the mining raw telemetry and state tables. Each table
-received its intended event with a non-null ingestion time, and `timestamp_raw`
-preserved the exact sent UTC millisecond string. Ten mining KQL functions and
-seven mining-scoped retention policies were deployed. Both validators currently
-return `BLOCKED_SOURCE_CONTRACT`; curated and quarantine tables remain empty,
-and no update policy or raw-to-curated materialization is enabled.
+**Dated evidence, not a readiness guarantee:** on 14 November 2026, a public
+run reached both raw tables and produced a snapshot of 303 validated telemetry
+and 20 validated state events, with no quarantined events. The public overview
+returned all 56 catalog readings; trends and line comparison returned real
+run-scoped rows. A cancellation reached `stopped`. Raw ingestion timestamps
+were present. Non-transactional update policies can lag or fail independently
+of raw ingestion and require reconciliation.
 
-The backend's mining start, read, and cancel routes remain default-off. The
-remaining gates include explicit sole-writer approval and a private durable
-run-state container with narrowly scoped backend access. The public Cockpit
-mining view and the local synthetic triathlon demo do not establish end-to-end
-mining readiness or live mining data.
+The public demo path is separately opt-in and checks the Cockpit service
+identity; protected delegated routes remain separate. Its configured writer
+designation is not technical enforcement of exclusive access, and demo reads
+do not verify a private receipt or detect native-definition drift. Incident
+assessment and the mining assistant remain unavailable. The account-free local
+synthetic demo is triathlon-only.
 
 Sources: [isolated Fabric provisioning](../scripts/provision/mining-streaming.ps1),
 [mining Eventstream](../infra/fabric/mining-streaming/eventstream.json),
