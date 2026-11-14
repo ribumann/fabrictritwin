@@ -807,6 +807,75 @@ function invalidate() {
   reads.abort();
   polling.stop();
 }
+let demoRun = null;
+let demoBusy = false;
+let demoStatusEpoch = 0;
+async function demoRequest(path, body) {
+  const response = await fetch(`/api/mining/demo/runs/${path}`, {
+    ...(body
+      ? {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      : {}),
+    credentials: "same-origin",
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message ?? "Demo request failed.");
+  return data;
+}
+async function updateDemoStatus(notice = "") {
+  if (demoBusy || document.hidden) return;
+  const epoch = ++demoStatusEpoch;
+  try {
+    const data = await demoRequest("status");
+    if (epoch !== demoStatusEpoch || demoBusy) return;
+    if (data.plantId !== "D01" || (data.run && !/^[0-9a-f-]{36}$/.test(data.run.runId)))
+      throw new Error("Invalid demo status.");
+    demoRun = data.run;
+    const active = demoRun && ["running", "stopping"].includes(demoRun.publisherStatus);
+    $("run-start").disabled = !!active;
+    $("run-cancel").disabled = !active || demoRun.stopRequested;
+    const status = demoRun
+      ? `Run ${demoRun.runId}: ${demoRun.publisherStatus}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion unknown.`
+      : "No active public demo run.";
+    text("run-control-status", `${notice}${status}`);
+  } catch (error) {
+    if (epoch !== demoStatusEpoch || demoBusy) return;
+    demoRun = null;
+    $("run-start").disabled = true;
+    $("run-cancel").disabled = true;
+    text("run-control-status", error.message);
+  }
+}
+async function demoAction(action) {
+  demoBusy = true;
+  demoStatusEpoch++;
+  $("run-start").disabled = true;
+  $("run-cancel").disabled = true;
+  let notice = "";
+  try {
+    const body =
+      action === "cancel" ? { plantId: "D01", runId: demoRun.runId } : { plantId: "D01" };
+    const result = await demoRequest(action, body);
+    text(
+      "run-control-status",
+      `${action === "start" ? "Started" : "Stop requested"}: ${result.runId}. Fabric ingestion is not yet confirmed.`,
+    );
+  } catch (error) {
+    notice = `${error.message} Check the run status before retrying. `;
+  } finally {
+    demoBusy = false;
+    await updateDemoStatus(notice);
+  }
+}
+$("run-start").addEventListener("click", () => void demoAction("start"));
+$("run-cancel").addEventListener("click", () => void demoAction("cancel"));
+void updateDemoStatus();
+const demoStatusTimer = setInterval(() => void updateDemoStatus(), 15_000);
 $("refresh").addEventListener("click", async () => {
   invalidate();
   await loadContext();
@@ -874,6 +943,7 @@ document.addEventListener("visibilitychange", () => {
 });
 addEventListener("pagehide", () => {
   invalidate();
+  clearInterval(demoStatusTimer);
   appearanceGeneration++;
   appearanceController?.abort();
   plant3d?.dispose();

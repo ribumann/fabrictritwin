@@ -8,6 +8,28 @@ It does not prove G3 authoritative hosted delivery or G8 live stop/ingestion. Ex
 triathlon locks, routes, simulator jobs and `DEMO_PROFILE` behavior are unchanged.
 No mining storage operation is performed merely by importing modules.
 
+## Public D01 demo controls
+
+The public demo is a separate, default-off service boundary; it does not change
+the delegated operator endpoints. Set `MINING_PUBLIC_DEMO_ENABLED=true` on
+both the cockpit and backend, and set
+`MINING_PUBLIC_DEMO_CALLER_PRINCIPAL_ID` on the backend to the cockpit managed
+identity's object ID. The backend verifies the service bearer token and accepts
+only that identity. The cockpit accepts only same-origin JSON actions; it never
+forwards browser credentials. Synthetic mode never enables the demo.
+
+The server generates each run ID, always uses D01 and the normal scenario, and
+limits a run to five minutes. Durable coordination permits one active writer and
+enforces a ten-minute minimum interval between start times across replicas;
+the cockpit also limits action requests per replica. These controls limit
+accidental load but are not a distributed denial-of-service defense. Demo
+cancellation is restricted to the current run marked as a public demo and does
+not imply the publisher has already stopped. The publisher additionally requires
+the dedicated Eventstream connection and durable store; configure
+`MINING_FINAL_FLUSH_MILLISECONDS` to a nonzero budget for the final batch.
+Neither run status nor publisher completion proves Fabric ingestion. Hosted
+reads and incidents have separate prerequisites.
+
 ## Read-only HTTP boundary
 
 The backend's `/api/mining` routes are disabled unless `MINING_READ_ENABLED=true`
