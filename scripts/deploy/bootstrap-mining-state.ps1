@@ -151,11 +151,15 @@ function Get-State {
     Write-Information 'Mining bootstrap read stage: UAMI metadata.' -InformationAction Continue
     $identity = Read-Arm $identityId '2023-01-31'
     $attached = $app.identity.userAssignedIdentities
+    $attachedKeys = @($attached.Keys | Where-Object {
+        [string]::Equals($_, $identityId, [StringComparison]::OrdinalIgnoreCase)
+    })
     if ($app.id -ine $appId -or $app.properties.provisioningState -cne 'Succeeded' -or
         $identity.id -ine $identityId -or $identity.properties.tenantId -ine "$TenantId" -or
         $identity.properties.clientId -ine "$IdentityClientId" -or $identity.properties.principalId -ine "$IdentityPrincipalId" -or
-        -not $attached -or -not $attached.ContainsKey($identityId) -or
-        $attached[$identityId].clientId -ine "$IdentityClientId" -or $attached[$identityId].principalId -ine "$IdentityPrincipalId") {
+        -not $attached -or $attachedKeys.Count -ne 1 -or
+        $attached[$attachedKeys[0]].clientId -ine "$IdentityClientId" -or
+        $attached[$attachedKeys[0]].principalId -ine "$IdentityPrincipalId") {
         throw 'Backend or explicitly selected attached UAMI validation failed; no principal fallback is allowed.'
     }
     Write-Information 'Mining bootstrap read stage: container ARM lookup.' -InformationAction Continue
