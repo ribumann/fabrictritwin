@@ -105,6 +105,9 @@ After policy propagation, a fresh canary produced one validated telemetry row,
 one validated state row and one quarantined invalid telemetry row. Earlier
 canary rows missed during propagation were reconciled separately. This does not
 prove public operator controls, hosted backend reads or incident readiness.
+The source contract's `exclusive_writer_approved` flag records the operator's
+designation; it does not enforce exclusivity or prevent other administrators
+from writing to the database.
 
 The frozen source contract pins catalog version
 `sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce`,
