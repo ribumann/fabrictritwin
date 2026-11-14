@@ -9,8 +9,9 @@ Foundry/Power BI configuration. Cockpit is the only operator UI shipped by this
 repository. Legacy Console source, provisioning, and release targets are retired.
 This does not delete a previously deployed cloud Console app or identity; exact
 cloud cleanup remains a separate, review-gated operation.
-The public runtime demo remains cloud-connected to an existing Fabric environment
-and uses generated synthetic data. This is different from the account-free
+The [public Cockpit demo](https://ontologydemo.liberatetheinnerchild.net/)
+remains cloud-connected to an existing Fabric environment and uses generated
+synthetic data. This is different from the account-free
 `DEMO_PROFILE=synthetic` local in-memory path below. The deployed legacy Console
 is intentionally left running; source retirement does not retire the cloud app.
 No private deployment history or operational data is included.
@@ -102,7 +103,8 @@ mining-scoped KQL functions and seven retention policies have been deployed.
 However, both validators currently return `BLOCKED_SOURCE_CONTRACT`; curated and
 quarantine tables remain empty, and no raw-to-curated materialization is
 enabled. Mining start, read, and cancel runtime paths remain default-off. The
-public Cockpit mining view is not yet a live operational mining demo.
+public [Cockpit Mining view](https://ontologydemo.liberatetheinnerchild.net/mining)
+is reachable, but it is not yet a live operational mining demo.
 The account-free local synthetic demo remains triathlon-only; it does not
 generate or display simulated mining data.
 
