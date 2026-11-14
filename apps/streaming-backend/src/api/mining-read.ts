@@ -21,7 +21,7 @@ const routes = [
   "compare-lines",
   "runs/status",
 ] as const;
-type Route = (typeof routes)[number];
+export type MiningReadRoute = (typeof routes)[number];
 
 interface ReadOptions {
   synthetic: boolean;
@@ -52,13 +52,13 @@ function validDate(value: string, now: number): boolean {
   return new Date(parsed).toISOString() === normalized;
 }
 
-function validateQuery(
-  route: Route,
+export function validateMiningReadQuery(
+  route: MiningReadRoute,
   query: Request["query"],
   now: number,
   moduleIds: ReadonlySet<string>,
 ): string | undefined {
-  const fields: Record<Route, string[]> = {
+  const fields: Record<MiningReadRoute, string[]> = {
     context: ["plantId", "runId"],
     overview: ["plantId", "runId", "asOf"],
     trends: ["plantId", "runId", "start", "end", "moduleId", "metric", "binMinutes", "maxRows"],
@@ -229,7 +229,7 @@ export function createMiningReadRouter(options: ReadOptions): Router {
         );
         return;
       }
-      const invalid = validateQuery(
+      const invalid = validateMiningReadQuery(
         route,
         req.query,
         (options.now ?? Date.now)(),

@@ -843,6 +843,11 @@ async function updateDemoStatus(notice = "") {
       ? `Run ${demoRun.runId}: ${demoRun.publisherStatus}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion unknown.`
       : "No active public demo run.";
     text("run-control-status", `${notice}${status}`);
+    if (catalog && (context?.approvedRun?.runId ?? null) !== (demoRun?.runId ?? null)) {
+      invalidate();
+      reads.reset();
+      await loadContext();
+    }
   } catch (error) {
     if (epoch !== demoStatusEpoch || demoBusy) return;
     demoRun = null;
