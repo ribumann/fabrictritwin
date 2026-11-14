@@ -509,7 +509,7 @@ function chart(container, data) {
         flush();
       if (usable(row))
         points.push(
-          `${40 + ((Date.parse(row.timestamp) - start) / (end - start)) * 540},${165 - ((row.value - low) / span) * 120}`,
+          `${40 + (Math.max(0, Date.parse(row.timestamp) - start) / (end - start)) * 540},${165 - ((row.value - low) / span) * 120}`,
         );
       previous = Date.parse(row.timestamp);
     }

@@ -349,6 +349,61 @@ describe("unknown and catalog selection semantics", () => {
     expect(validAsOf(params.start, params.start, true)).toBe(true);
     expect(validAsOf(params.start, params.end, true)).toBe(false);
   });
+  it("accepts only aligned partial bins that intersect the requested window", () => {
+    const catalog = {
+      telemetry_tags: [
+        {
+          id: "D01.A.dms.medium_density",
+          module_id: "D01.A.dms",
+          metric: "medium_density",
+          unit: "kg/m3",
+        },
+      ],
+    };
+    for (const [binMinutes, firstBin, beforeBin] of [
+      [1, "2026-01-01T00:02:00Z", "2026-01-01T00:01:00Z"],
+      [5, "2026-01-01T00:00:00Z", "2025-12-31T23:55:00Z"],
+    ] as const) {
+      const params = {
+        runId: "approved",
+        moduleId: "D01.A.dms",
+        metric: "density",
+        start: "2026-01-01T00:02:15Z",
+        end: "2026-01-01T00:12:15Z",
+        binMinutes: String(binMinutes),
+        maxRows: "1000",
+      };
+      const row = { seriesId: "D01.A.dms.medium_density", unit: "kg/m3", timestamp: firstBin };
+      const data = {
+        plantId: "D01",
+        runId: params.runId,
+        catalogVersion: "pinned",
+        moduleId: params.moduleId,
+        metric: params.metric,
+        windowStart: params.start,
+        windowEnd: params.end,
+        binMinutes,
+        rows: [row],
+      };
+      expect(validSeries(data, params, "pinned", catalog)).toBe(true);
+      expect(
+        validSeries(
+          { ...data, rows: [{ ...row, timestamp: beforeBin }] },
+          params,
+          "pinned",
+          catalog,
+        ),
+      ).toBe(false);
+      expect(
+        validSeries(
+          { ...data, rows: [{ ...row, timestamp: params.start }] },
+          params,
+          "pinned",
+          catalog,
+        ),
+      ).toBe(false);
+    }
+  });
   it("does not treat missing, bad, stale or nonfinite readings as healthy zero", () => {
     for (const quality of ["missing", "bad", "stale"])
       expect(usable({ quality, value: 0 })).toBe(false);

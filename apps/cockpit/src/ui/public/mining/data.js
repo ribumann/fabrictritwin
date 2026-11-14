@@ -99,6 +99,7 @@ export function validSeries(data, params, catalogVersion, catalog) {
     !sameScope(data, params.runId, catalogVersion) ||
     data.moduleId !== (params.moduleId ?? null) ||
     data.metric !== params.metric ||
+    ![1, 5].includes(data.binMinutes) ||
     data.binMinutes !== Number(params.binMinutes) ||
     Date.parse(data.windowStart) !== Date.parse(params.start) ||
     Date.parse(data.windowEnd) !== Date.parse(params.end) ||
@@ -106,6 +107,8 @@ export function validSeries(data, params, catalogVersion, catalog) {
     data.rows.length > Math.min(1000, Number(params.maxRows))
   )
     return false;
+  const binMs = data.binMinutes * 60_000;
+  const firstBin = Math.floor(Date.parse(params.start) / binMs) * binMs;
   return data.rows.every((row) => {
     const tag = catalog.telemetry_tags.find((item) => item.id === row?.seriesId);
     const time = Date.parse(row?.timestamp);
@@ -118,8 +121,9 @@ export function validSeries(data, params, catalogVersion, catalog) {
       (!params.moduleId || tag.module_id === params.moduleId) &&
       (!metric || tag.metric === metric) &&
       Number.isFinite(time) &&
-      time >= Date.parse(params.start) &&
-      time <= Date.parse(params.end)
+      time >= firstBin &&
+      time < Date.parse(params.end) &&
+      time % binMs === 0
     );
   });
 }
