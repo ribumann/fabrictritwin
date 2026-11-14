@@ -20,6 +20,7 @@ import {
   currentIncidentQuery,
   validCurrentAssessmentAsOf,
   validSeries,
+  seriesQuery,
 } from "../src/ui/public/mining/data.js";
 import { connections, createPlant3D, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
 import {
@@ -50,6 +51,30 @@ const loadAppearanceBundle = () =>
 
 afterEach(() => vi.useRealTimers());
 describe("mining request lifecycle", () => {
+  it("sends chart windows without the overview-only asOf parameter", async () => {
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(new Response("{}")));
+    const reads = new MiningReads(fetchImpl);
+    const params = {
+      plantId: "D01",
+      runId: "approved",
+      asOf: "2026-01-01T12:00:00.000Z",
+      start: "2026-01-01T11:30:00.000Z",
+      end: "2026-01-01T12:00:00.000Z",
+      binMinutes: "1",
+      maxRows: "1000",
+    };
+    await reads.read("compare-lines", seriesQuery(params, "feed"));
+    await reads.read("trends", seriesQuery(params, "density", "D01.A.dms"));
+    const compare = new URL(fetchImpl.mock.calls[0][0], "https://example.test");
+    const trend = new URL(fetchImpl.mock.calls[1][0], "https://example.test");
+    expect([...compare.searchParams.keys()].sort()).toEqual(
+      ["binMinutes", "end", "maxRows", "metric", "plantId", "runId", "start"].sort(),
+    );
+    expect([...trend.searchParams.keys()].sort()).toEqual(
+      ["binMinutes", "end", "maxRows", "metric", "moduleId", "plantId", "runId", "start"].sort(),
+    );
+    expect(trend.searchParams.get("end")).toBe(params.asOf);
+  });
   it("does not call browser fetch with the MiningReads instance as its receiver", async () => {
     let receiver: unknown;
     const fetchImpl = function (this: unknown) {
