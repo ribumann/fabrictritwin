@@ -186,6 +186,8 @@ Describe 'Offline mining source and query contracts (static checks only)' {
         $script:ValidationText | Should -Match 'raw_timestamp_shape_verified'
         $script:ValidationText | Should -Match 'exclusive_writer_approved'
         $script:ValidationText | Should -Match 'timestamp_raw matches regex'
+        ([regex]::Matches($script:ValidationText, 'gettype\(event\["timestamp"\]\) in \("string", "datetime"\)')).Count | Should -Be 2
+        $script:ValidationText | Should -Not -Match 'gettype\(event\["timestamp"\]\) == "string"'
         $script:ValidationText | Should -Match 'disposition = case'
         $script:ValidationText | Should -Match '"QUARANTINED"'
         $script:ValidationText | Should -Match '"BLOCKED"'

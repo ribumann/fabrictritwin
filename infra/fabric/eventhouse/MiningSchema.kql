@@ -1,7 +1,7 @@
 // Proposed mining-owned objects only. Do not apply without reviewing existing
-// table schemas and policies. Dynamic values can be type-converted by Kusto;
-// timestamp_raw is a separate string projection whose preservation needs a
-// hosted probe before the source contract can become Ready.
+// table schemas and policies. Kusto may type-convert ISO timestamps inside
+// dynamic values; timestamp_raw is a separate string projection whose exact
+// preservation must be established by a hosted probe before source readiness.
 .create table mining_TelemetryRaw (event:dynamic, timestamp_raw:string)
 .create table mining_PlantStateEvents (event:dynamic, timestamp_raw:string)
 .create table mining_PlantCatalog (plant_id:string, catalog_version:string, record_kind:string, record_id:string, module_id:string, record_json:dynamic)
