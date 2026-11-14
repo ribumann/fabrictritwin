@@ -76,12 +76,15 @@ routes remain explicitly filtered by the v2 `entityType` values
 | `mining_telemetry_json_map`, `mining_state_json_map` | Root-document JSON mappings on the two mining raw tables                             |
 | `mining_telemetry_*`, `mining_state_*`               | The two proposed Eventstream filters, derived streams and destinations               |
 
-`MiningSchema.kql`, `MiningValidation.kql` and `MiningQueries.kql` are proposed
-definitions, **not an apply script**. The classifiers are read-only: they
-return an `ACCEPTED`, `QUARANTINED` or `BLOCKED` disposition and do not write
-either curated or quarantine tables. No update policy, raw-to-curated
-materialization, or incident population is enabled. Never use a raw dynamic
-table as a curated reading source.
+`scripts/fabric/apply-mining-definitions.ps1` applies the mining-owned KQL
+tables, scoped retention policies and functions after validating the exact
+Fabric target, existing schemas, raw mappings and ingestion-time policies.
+Use `-WhatIf` for a read-only plan; apply runs require a fresh private receipt
+path and record each submitted definition. The classifiers are read-only:
+they return an `ACCEPTED`, `QUARANTINED` or `BLOCKED` disposition and do not
+write either curated or quarantine tables. No update policy, raw-to-curated
+materialization, readiness flag or incident population is enabled. Never use
+a raw dynamic table as a curated reading source.
 
 The frozen source contract pins catalog version
 `sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce`,
@@ -94,16 +97,20 @@ gate is met. Timestamp proof requires evidence that raw ingestion preserved
 the timestamp field's original shape; exclusive-writer approval is separate.
 Neither scalar connectivity nor offline tests satisfy these gates.
 
-Telemetry validation requires the exact v2 root key set and types, canonical
-UTC millisecond timestamps, deterministic SHA-256 event ID from
-`run_id:sequence`, safe integer sequence, exact D01 catalog module/equipment/
-tag/unit identity, exact per-tag publish interval, finite numeric value and
-quality in `good|uncertain|bad`. State validation checks its exact v2 shape,
-event identity, canonical timestamp, scope and state enums. The source quality
-is retained unchanged; uncertain and bad samples are both excluded from
-good-only calculations but are counted separately. Same-ID/same-fingerprint
-retries deduplicate; a same-ID payload conflict is surfaced and excluded,
-never silently selected. Quarantine/classification is not yet materialized.
+Telemetry validation requires the exact v2 payload key set and types, with
+either no transport metadata or the three known Eventstream metadata keys.
+Kusto may parse `run_id` as `guid` and the dynamic `timestamp` as `datetime`;
+the validators accept those representations while checking the canonical run
+ID and UTC millisecond lexeme in `timestamp_raw`. They also require the
+deterministic SHA-256 event ID from `run_id:sequence`, safe integer sequence,
+exact D01 catalog module/equipment/tag/unit identity, exact per-tag publish
+interval, finite numeric value and quality in `good|uncertain|bad`. State
+validation applies the same envelope and conversion rules plus its scope and
+state enums. The source quality is retained unchanged; uncertain and bad
+samples are both excluded from good-only calculations but are counted
+separately. Same-ID/same-fingerprint retries deduplicate; a same-ID payload
+conflict is surfaced and excluded, never silently selected.
+Quarantine/classification is not yet materialized.
 
 The five fixed G5 read contracts are:
 
@@ -449,10 +456,10 @@ not prove full-payload preservation, classifiers, or mining readiness.
 
 Acceptance is at least one matching raw row per event ID, exactly one distinct
 canary event ID in each intended table for the fresh run, and every delivered
-copy preserves the sent timestamp string in `timestamp_raw` and
-`event["timestamp"]` (whose type must remain `string`) with non-null
-`ingestion_time()`. The opposite mining raw table must have no copy of that
-event ID. `ingestion_time()` can be null when the table's ingestion-time
+copy preserves the sent timestamp string in `timestamp_raw` and the same
+instant in `event["timestamp"]` (which Kusto may parse as `datetime`), with
+non-null `ingestion_time()`. The opposite mining raw table must have no copy
+of that event ID. `ingestion_time()` can be null when the table's ingestion-time
 policy is disabled; this packet neither reads nor changes that policy. If the
 count is null, the canary fails and any policy change requires a separately
 reviewed mining-table-only scope. A bounded telemetry proof query is:
@@ -469,9 +476,8 @@ mining_TelemetryRaw
         tostring(event["event_id"]) == expected_event_id and
         isnotnull(ingestion_time())),
     exact_lexeme_copies = countif(tostring(event["event_id"]) == expected_event_id and
-        gettype(event["timestamp"]) == "string" and
         timestamp_raw == expected_timestamp and
-        tostring(event["timestamp"]) == expected_timestamp)
+        todatetime(timestamp_raw) == todatetime(tostring(event["timestamp"])))
 ```
 
 Run the same check against `mining_PlantStateEvents` using its fixture ID and

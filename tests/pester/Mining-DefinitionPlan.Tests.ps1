@@ -194,6 +194,37 @@ Describe 'Offline mining source and query contracts (static checks only)' {
         $script:ValidationText | Should -Match '"ACCEPTED"'
     }
 
+    It 'accepts canonical run identifiers represented as Kusto GUIDs' {
+        ([regex]::Matches(
+            $script:ValidationText,
+            'gettype\(event\["run_id"\]\) in \("string", "guid"\)'
+        )).Count | Should -Be 2
+        $script:ValidationText | Should -Not -Match 'gettype\(event\["run_id"\]\) == "string"'
+    }
+
+    It 'uses the supported two-argument bin form for integral sequence validation' {
+        ([regex]::Matches(
+            $script:ValidationText,
+            'toreal\(sequence\)\s*==\s*bin\(toreal\(sequence\),\s*1\.0\)'
+        )).Count | Should -Be 2
+        $script:ValidationText | Should -Not -Match '\bfloor\('
+    }
+
+    It 'accepts only canonical payload keys with optional Eventstream metadata' {
+        $shapeExpressions = [regex]::Matches(
+            $script:ValidationText,
+            '(?s)shape_ok = (.*?)\r?\n\s*\| extend types_ok'
+        )
+        $shapeExpressions | Should -HaveCount 2
+        $shapeExpressions[0].Groups[1].Value | Should -Match 'array_length\(bag_keys\(event\)\) == 14'
+        $shapeExpressions[0].Groups[1].Value | Should -Match 'array_length\(bag_keys\(event\)\) == 17'
+        $shapeExpressions[1].Groups[1].Value | Should -Match 'array_length\(bag_keys\(event\)\) == 10'
+        $shapeExpressions[1].Groups[1].Value | Should -Match 'array_length\(bag_keys\(event\)\) == 13'
+        $script:ValidationText | Should -Match 'EventProcessedUtcTime'
+        $script:ValidationText | Should -Match 'PartitionId'
+        $script:ValidationText | Should -Match 'EventEnqueuedUtcTime'
+    }
+
     It 'retains v2 quality categories without converting uncertain to bad' {
         $script:ValidationText | Should -Match 'quality in \("good", "uncertain", "bad"\)'
         $script:QueriesText | Should -Match 'quality = iff\(event_conflict, "", quality\)'

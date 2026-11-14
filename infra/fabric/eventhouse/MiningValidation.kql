@@ -99,7 +99,12 @@
         unit = tostring(event["unit"]),
         quality = tostring(event["quality"]),
         event_time = todatetime(timestamp_raw)
-    | extend shape_ok = gettype(event) == "dictionary" and array_length(bag_keys(event)) == 14 and
+    | extend shape_ok = gettype(event) == "dictionary" and
+        (array_length(bag_keys(event)) == 14 or
+            (array_length(bag_keys(event)) == 17 and
+                bag_has_key(event, "EventProcessedUtcTime") and
+                bag_has_key(event, "PartitionId") and
+                bag_has_key(event, "EventEnqueuedUtcTime"))) and
         bag_has_key(event, "entityType") and bag_has_key(event, "schema_version") and
         bag_has_key(event, "run_id") and bag_has_key(event, "event_id") and
         bag_has_key(event, "sequence") and bag_has_key(event, "interval_seconds") and
@@ -109,7 +114,7 @@
         bag_has_key(event, "unit") and bag_has_key(event, "quality")
     | extend types_ok = gettype(event["entityType"]) == "string" and
         gettype(event["schema_version"]) in ("int", "long") and
-        gettype(event["run_id"]) == "string" and gettype(event["event_id"]) == "string" and
+        gettype(event["run_id"]) in ("string", "guid") and gettype(event["event_id"]) == "string" and
         gettype(event["sequence"]) in ("int", "long") and
         gettype(event["interval_seconds"]) in ("int", "long") and
         gettype(event["timestamp"]) in ("string", "datetime") and
@@ -120,7 +125,7 @@
     | extend identity_ok = event_type == "PlantTelemetry" and schema_version == 2 and
         run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
         sequence > 0 and toreal(sequence) <= 9007199254740991.0 and
-        toreal(sequence) == floor(toreal(sequence)) and plant_id == "D01" and
+        toreal(sequence) == bin(toreal(sequence), 1.0) and plant_id == "D01" and
         event_id matches regex @"^[0-9a-f]{64}$" and
         event_id == hash_sha256(strcat(run_id, ":", tostring(sequence)))
     | extend timestamp_ok = timestamp_raw matches regex
@@ -213,7 +218,12 @@
         scheduled_running = tobool(event["scheduled_running"]),
         state = tostring(event["state"]),
         event_time = todatetime(timestamp_raw)
-    | extend shape_ok = gettype(event) == "dictionary" and array_length(bag_keys(event)) == 10 and
+    | extend shape_ok = gettype(event) == "dictionary" and
+        (array_length(bag_keys(event)) == 10 or
+            (array_length(bag_keys(event)) == 13 and
+                bag_has_key(event, "EventProcessedUtcTime") and
+                bag_has_key(event, "PartitionId") and
+                bag_has_key(event, "EventEnqueuedUtcTime"))) and
         bag_has_key(event, "entityType") and bag_has_key(event, "schema_version") and
         bag_has_key(event, "run_id") and bag_has_key(event, "event_id") and
         bag_has_key(event, "sequence") and bag_has_key(event, "timestamp") and
@@ -221,7 +231,7 @@
         bag_has_key(event, "scheduled_running") and bag_has_key(event, "state")
     | extend types_ok = gettype(event["entityType"]) == "string" and
         gettype(event["schema_version"]) in ("int", "long") and
-        gettype(event["run_id"]) == "string" and gettype(event["event_id"]) == "string" and
+        gettype(event["run_id"]) in ("string", "guid") and gettype(event["event_id"]) == "string" and
         gettype(event["sequence"]) in ("int", "long") and
         gettype(event["timestamp"]) in ("string", "datetime") and
         gettype(event["plant_id"]) == "string" and gettype(event["scope_id"]) == "string" and
@@ -229,7 +239,7 @@
     | extend identity_ok = event_type == "PlantStateEvent" and schema_version == 2 and
         run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
         sequence > 0 and toreal(sequence) <= 9007199254740991.0 and
-        toreal(sequence) == floor(toreal(sequence)) and plant_id == "D01" and
+        toreal(sequence) == bin(toreal(sequence), 1.0) and plant_id == "D01" and
         event_id matches regex @"^[0-9a-f]{64}$" and
         event_id == hash_sha256(strcat(run_id, ":", tostring(sequence)))
     | extend timestamp_ok = timestamp_raw matches regex
