@@ -55,8 +55,8 @@
     }
   ],
   "queryPath": "scripts/fabric/fixtures/mining-engine-self-test.kql",
-  "querySha256": "8097f6b29dfb2d483e36088d956015796d60c6c226ccc52c69e213b165867e5f",
-  "queryBytes": 108410,
+  "querySha256": "3a73db0741ad4f7e12fe3ec1c15f773cf63e0d3e33b9def7765a93e3de0865fa",
+  "queryBytes": 109541,
   "maxBytes": 262144,
   "fixtureSha256": "5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1",
   "sourceFiles": [
@@ -66,7 +66,7 @@
     },
     {
       "path": "infra/fabric/eventhouse/MiningQueries.kql",
-      "sha256": "818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a"
+      "sha256": "ba3fdff7ca680f8fb8a915d47b0db42302356fea1596b87ec786b697e5dadf26"
     },
     {
       "path": "apps/simulator/src/mining/plant-catalog.json",

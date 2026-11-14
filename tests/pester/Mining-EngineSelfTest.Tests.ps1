@@ -9,7 +9,7 @@ BeforeAll {
     $script:Manifest = Get-Content -LiteralPath $script:ManifestPath -Raw | ConvertFrom-Json
     $script:ExpectedSourceHashes = @{
         'infra/fabric/eventhouse/MiningValidation.kql' = '0ba0f1c5fcb85522f4281c6d11a71358623fc4589ca042ed89c3db2b52cad6ae'
-        'infra/fabric/eventhouse/MiningQueries.kql' = '818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a'
+        'infra/fabric/eventhouse/MiningQueries.kql' = 'ba3fdff7ca680f8fb8a915d47b0db42302356fea1596b87ec786b697e5dadf26'
         'apps/simulator/src/mining/plant-catalog.json' = '0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce'
         'apps/simulator/src/mining/catalog.ts' = 'ae699fe26beaad2f245a317ecb96e9dbfdecdf0414a34e1eb26a31f5f1930a66'
         'infra/fabric/eventhouse/MiningSchema.kql' = '2d780c59767ae0937914aeb3e36c48182ad2d913720ad199526e1858e62dbdec'
@@ -38,8 +38,8 @@ Describe 'Synthetic mining KQL engine self-test' {
         $script:Manifest.previousCandidates[2].miningQueriesSha256 | Should -Be '63f84951b34cf27722fb74f58234dac659af058d50dc2cb1430b58409fe48b4c'
         $script:Manifest.previousCandidates[2].querySha256 | Should -Be '380c2234bbd86545ea52b8cc0af90e58a7671b38aa5f76c4b8974c7eae9ffd41'
         $script:Manifest.previousCandidates[2].queryBytes | Should -Be 108395
-        $script:Manifest.querySha256 | Should -Be '8097f6b29dfb2d483e36088d956015796d60c6c226ccc52c69e213b165867e5f'
-        $script:Manifest.queryBytes | Should -Be 108410
+        $script:Manifest.querySha256 | Should -Be '3a73db0741ad4f7e12fe3ec1c15f773cf63e0d3e33b9def7765a93e3de0865fa'
+        $script:Manifest.queryBytes | Should -Be 109541
         $script:Manifest.fixtureSha256 | Should -Be '5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1'
         (Get-FileHash -LiteralPath $script:QueryPath -Algorithm SHA256).Hash.ToLowerInvariant() |
             Should -Be $script:Manifest.querySha256
