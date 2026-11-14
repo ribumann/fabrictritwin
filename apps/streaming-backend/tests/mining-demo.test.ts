@@ -10,9 +10,17 @@ const principal = "11111111-1111-4111-8111-111111111111";
 const tenant = "22222222-2222-4222-8222-222222222222";
 const env = {
   MINING_PUBLIC_DEMO_ENABLED: "true",
+  MINING_PUBLIC_DEMO_READ_ENABLED: "true",
   MINING_PUBLIC_DEMO_CALLER_PRINCIPAL_ID: principal,
   ASSISTANT_AUTH_TENANT_ID: tenant,
   ASSISTANT_AUTH_CLIENT_ID: "33333333-3333-4333-8333-333333333333",
+  MINING_MANAGED_IDENTITY_CLIENT_ID: "55555555-5555-4555-8555-555555555555",
+  IDENTITY_ENDPOINT: "http://127.0.0.1:8081/token",
+  IDENTITY_HEADER: "test",
+  MINING_EVENTHOUSE_QUERY_URI: "https://demo.kusto.fabric.microsoft.com",
+  MINING_EVENTHOUSE_DATABASE_NAME: "mining",
+  MINING_CURATED_SOURCE_VERSION: "d01-validated-source-v1",
+  MINING_CURATED_QUERY_VERSION: "d01-g5-query-v1",
 };
 
 function setup(configuration: NodeJS.ProcessEnv = env) {
@@ -124,6 +132,12 @@ describe("public mining demo service boundary", () => {
     expect(result.status).toBe(404);
   });
 
+  it("reports missing read configuration without disabling run status", async () => {
+    const { app } = setup({ ...env, MINING_EVENTHOUSE_QUERY_URI: undefined });
+    expect((await request(app).get("/demo/runs/status")).status).toBe(200);
+    expect((await request(app).get("/demo/context")).status).toBe(503);
+  });
+
   it("reports and stops an admitted demo run through durable coordination", async () => {
     const { app, start, store } = setup();
     const coordinator = new MiningRunCoordinator(store);
@@ -141,6 +155,18 @@ describe("public mining demo service boundary", () => {
     });
     const started = await request(app).post("/demo/runs/start").send({ plantId: "D01" });
     expect(started.status).toBe(202);
+    const context = await request(app).get("/demo/context");
+    expect(context.body).toMatchObject({
+      plantId: "D01",
+      readAvailable: true,
+      approvedRun: { runId: started.body.runId },
+    });
+    expect(
+      (await request(app).get("/demo/overview?runId=44444444-4444-4444-8444-444444444444")).status,
+    ).toBe(403);
+    const incidents = await request(app).get("/demo/incidents");
+    expect(incidents.status).toBe(503);
+    expect(incidents.body.error.code).toBe("mining_incidents_unavailable");
     const status = await request(app).get("/demo/runs/status");
     expect(status.body.run).toMatchObject({
       runId: started.body.runId,

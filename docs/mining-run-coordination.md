@@ -30,6 +30,23 @@ the dedicated Eventstream connection and durable store; configure
 Neither run status nor publisher completion proves Fabric ingestion. Hosted
 reads and incidents have separate prerequisites.
 
+For the separately opt-in public read path, set
+`MINING_PUBLIC_DEMO_READ_ENABLED=true` on both apps and configure
+`MINING_EVENTHOUSE_QUERY_URI`, `MINING_EVENTHOUSE_DATABASE_NAME`,
+`MINING_CURATED_SOURCE_VERSION=d01-validated-source-v1` and
+`MINING_CURATED_QUERY_VERSION=d01-g5-query-v1` on the backend. The backend
+uses the explicitly selected mining managed identity. Its mining query target
+is independent of the existing triathlon Eventhouse settings.
+
+Public reads are scoped to the current durable public-demo run and use the
+validated mining query functions and bounded DTOs. This simpler demo path does
+not perform the private receipt or native-definition verification described
+below; access to change the source or its definitions therefore remains a
+trust boundary. Query failures are surfaced rather than replaced with synthetic
+data. Incident assessments remain unavailable unless a real evaluator and
+journal are connected; this path does not report an empty incident list as a
+healthy assessment.
+
 ## Read-only HTTP boundary
 
 The backend's `/api/mining` routes are disabled unless `MINING_READ_ENABLED=true`

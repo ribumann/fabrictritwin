@@ -184,6 +184,10 @@ export class MiningReads {
     for (const { controller } of this.inflight.values()) controller.abort();
     this.inflight.clear();
   }
+  reset() {
+    this.abort();
+    this.cache.clear();
+  }
 }
 
 export class MiningPolling {

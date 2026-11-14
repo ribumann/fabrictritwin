@@ -200,6 +200,32 @@ describe("isolated mining BFF", () => {
     ).toBe(202);
   });
 
+  it("uses the demo read path only when explicitly enabled", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    const app = express();
+    app.use(
+      "/api/mining",
+      createMiningRouter(
+        {
+          streamingBackendBaseUrl: "https://internal.example",
+          fetchImpl,
+          buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+        },
+        false,
+        true,
+        true,
+      ),
+    );
+    expect((await request(app).get("/api/mining/context")).status).toBe(200);
+    expect(String(fetchImpl.mock.calls[0][0])).toBe(
+      "https://internal.example/api/mining/demo/context?plantId=D01",
+    );
+    expect((await request(app).get("/api/mining/runs/status")).status).toBe(200);
+    expect(String(fetchImpl.mock.calls[1][0])).toBe(
+      "https://internal.example/api/mining/runs/status?plantId=D01",
+    );
+  });
+
   it("serves separate mining and existing triathlon entry documents", async () => {
     const { app } = await import("../src/index.js");
     const mining = await request(app).get("/mining");

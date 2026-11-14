@@ -25,6 +25,7 @@ export function createMiningRouter(
   options: StreamingBackendProxyOptions,
   synthetic = false,
   demoEnabled = process.env.MINING_PUBLIC_DEMO_ENABLED === "true",
+  demoReadEnabled = process.env.MINING_PUBLIC_DEMO_READ_ENABLED === "true",
 ): Router {
   const router = Router();
   let startTimes: number[] = [];
@@ -174,7 +175,11 @@ export function createMiningRouter(
         res,
         { ...options, maxResponseBytes: 1_048_576 },
         () => {
-          const url = new URL(`/api/mining/${route}`, options.streamingBackendBaseUrl);
+          const prefix =
+            demoEnabled && demoReadEnabled && route !== "runs/status"
+              ? "/api/mining/demo"
+              : "/api/mining";
+          const url = new URL(`${prefix}/${route}`, options.streamingBackendBaseUrl);
           url.search = query.toString();
           return url;
         },

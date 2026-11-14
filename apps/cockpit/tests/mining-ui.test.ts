@@ -84,6 +84,14 @@ describe("mining request lifecycle", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls[0][0]).not.toContain("undefined");
   });
+  it("clears cached context when the current demo run changes", async () => {
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(new Response("{}")));
+    const reads = new MiningReads(fetchImpl);
+    await reads.read("context");
+    reads.reset();
+    await reads.read("context");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
   it("aborts pending work when the view changes", async () => {
     let signal: AbortSignal | undefined;
     const reads = new MiningReads((_url: string, init: RequestInit) => {

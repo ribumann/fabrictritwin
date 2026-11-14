@@ -1,12 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import type { JWTPayload } from "jose";
+import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulator/mining";
 import { verifyMcpCallerClaimsWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningPublisherHost } from "../mining/publisher-host.js";
 import { configuredMiningPublisherRuntime } from "../mining/publisher-runtime.js";
 import { MiningRunCoordinator } from "../mining/run-coordinator.js";
 import { MiningCoordinationError, type MiningStore } from "../mining/store.js";
+import {
+  assertMiningDemoQueryConfiguration,
+  createMiningDemoProvider,
+} from "../mining/read/demo-provider.js";
+import type {
+  MiningCuratedProvider,
+  MiningCuratedRequest,
+} from "../mining/read/curated-provider.js";
+import { validateMiningReadQuery, type MiningReadRoute } from "./mining-read.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -20,6 +30,7 @@ interface Options {
   host?: MiningPublisherHost;
   store?: MiningStore;
   verifyClaims?: (req: Request, signal: AbortSignal) => Promise<JWTPayload | undefined>;
+  curated?: MiningCuratedProvider;
 }
 
 function error(res: Response, status: number, code: string, message: string): void {
@@ -41,6 +52,7 @@ export function createMiningDemoRouter(options: Options): Router {
     options.verifyClaims ??
     ((req: Request, signal: AbortSignal) => verifyMcpCallerClaimsWithErrors(req, signal, env));
   const host = options.host ?? createMiningDemoHost(env);
+  const curated = options.curated ?? createMiningDemoProvider(env);
 
   router.use(async (req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
@@ -148,7 +160,109 @@ export function createMiningDemoRouter(options: Options): Router {
       fail(res, cause);
     }
   });
-
+  for (const route of ["context", "overview", "trends", "incidents", "compare-lines"] as const) {
+    router.get(`/${route}`, async (req, res) => {
+      if (env.MINING_PUBLIC_DEMO_READ_ENABLED !== "true") {
+        error(res, 503, "mining_demo_read_disabled", "Public mining reads are not enabled.");
+        return;
+      }
+      const invalid = validateMiningReadQuery(
+        route satisfies MiningReadRoute,
+        req.query,
+        Date.now(),
+        new Set(D01_PLANT_CATALOG.modules.map((module) => module.id)),
+      );
+      if (invalid) {
+        error(res, 400, "invalid_mining_query", invalid);
+        return;
+      }
+      try {
+        assertMiningDemoQueryConfiguration(env);
+        const { store, coordinator } = dependencies();
+        const signal: AbortSignal = res.locals.miningDemoSignal;
+        const status = await coordinator.currentStatus(signal);
+        const demo = status && (await isDemoRun(store, status.runId, signal)) ? status : undefined;
+        if (res.headersSent || res.destroyed) return;
+        const run =
+          demo?.admission === "accepted" && demo.run?.contract
+            ? {
+                plantId: "D01",
+                runId: demo.runId,
+                catalogVersion: D01_CATALOG_VERSION,
+                publisherStatus:
+                  demo.stopRequested && demo.phase === "running" ? "stop_requested" : demo.phase,
+                ingestionStatus: "unknown",
+              }
+            : null;
+        if (req.query.runId && req.query.runId !== run?.runId) {
+          error(res, 403, "mining_run_forbidden", "Only the current public demo run is available.");
+          return;
+        }
+        if (route === "context") {
+          res.json({
+            plantId: "D01",
+            approvedRun: run,
+            catalogVersion: D01_CATALOG_VERSION,
+            readAvailable: true,
+            assistant: { available: false },
+            ...(!run
+              ? { unavailableReason: "Start a public demo run to view mining telemetry." }
+              : {}),
+          });
+          return;
+        }
+        if (!run || !demo?.run) {
+          error(res, 404, "mining_demo_run_not_found", "No admitted public demo run is available.");
+          return;
+        }
+        if (route === "incidents") {
+          error(
+            res,
+            503,
+            "mining_incidents_unavailable",
+            "Incident assessments are not connected.",
+          );
+          return;
+        }
+        let input: MiningCuratedRequest;
+        if (route === "overview") {
+          input = {
+            kind: "overview",
+            run: demo.run,
+            asOf: new Date((req.query.asOf as string | undefined) ?? Date.now()).toISOString(),
+          };
+        } else {
+          const metric = req.query.metric;
+          if (
+            metric !== "feed" &&
+            metric !== "density" &&
+            metric !== "vibration" &&
+            metric !== "water-energy"
+          ) {
+            error(res, 400, "invalid_mining_query", "Unsupported mining metric.");
+            return;
+          }
+          const window = {
+            run: demo.run,
+            start: new Date(String(req.query.start)).toISOString(),
+            end: new Date(String(req.query.end)).toISOString(),
+            metric,
+            binMinutes: req.query.binMinutes === "1" ? 1 : 5,
+            maxRows: Number(req.query.maxRows),
+          } as const;
+          input =
+            route === "trends"
+              ? { ...window, kind: "trend", moduleId: String(req.query.moduleId) }
+              : { ...window, kind: "compare" };
+        }
+        const data = await curated(input, signal);
+        if (res.headersSent || res.destroyed) return;
+        res.json(route === "overview" ? { ...data, run } : data);
+      } catch (cause) {
+        fail(res, cause);
+      }
+    });
+  }
   router.post("/runs/start", async (req, res) => {
     if (
       Object.keys(req.query).length ||

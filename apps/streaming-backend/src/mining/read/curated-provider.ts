@@ -57,6 +57,45 @@ interface Dependencies {
   now?: () => number;
 }
 
+export async function readMiningOverview(
+  input: { run: MiningRunRecord; asOf: string },
+  query: ReturnType<typeof createBoundedMiningQuery>,
+  now: () => number,
+  signal: AbortSignal,
+) {
+  const runId = input.run.runId;
+  const end = input.asOf;
+  const start = new Date(Date.parse(end) - 5 * 60_000).toISOString();
+  const [latestRows, summaryRows] = await Promise.all([
+    query({ kind: "latest", runId, asOf: end, maxRows: 1000 }, signal),
+    query({ kind: "summary", runId, start, end, maxRows: 1 }, signal),
+  ]);
+  signal.throwIfAborted();
+  const latest = mapLatestRows({ runId, asOf: end }, latestRows);
+  const summary = mapSummaryRows({ runId, start, end }, summaryRows);
+  const modules = D01_PLANT_CATALOG.modules.map((module) => ({
+    moduleId: module.id,
+    status:
+      latest.states[module.line]?.status === "stopped"
+        ? ("stopped" as const)
+        : ("unknown" as const),
+  }));
+  const qualities = latest.readings.map((reading) => reading.quality);
+  const quality =
+    (["bad", "uncertain", "stale", "missing"] as const).find((item) => qualities.includes(item)) ??
+    "good";
+  return {
+    plantId: "D01" as const,
+    runId,
+    catalogVersion: D01_CATALOG_VERSION,
+    asOf: end,
+    refreshedAt: new Date(now()).toISOString(),
+    quality,
+    latest: { modules, readings: latest.readings },
+    summary,
+  };
+}
+
 /**
  * Explicit host composition only. No production verifier is supplied or activated here.
  * The HTTP caller must first authorize the viewer/run and read its durable admission.
@@ -126,38 +165,7 @@ export function createMiningCuratedProvider(dependencies: Dependencies) {
         active.throwIfAborted();
         return mapComparisonRows({ ...input, runId }, rows);
       }
-      const end = input.asOf;
-      const start = new Date(Date.parse(end) - 5 * 60_000).toISOString();
-      const [latestRows, summaryRows] = await Promise.all([
-        query({ kind: "latest", runId, asOf: end, maxRows: 1000 }, active),
-        query({ kind: "summary", runId, start, end, maxRows: 1 }, active),
-      ]);
-      active.throwIfAborted();
-      const latest = mapLatestRows({ runId, asOf: end }, latestRows);
-      const summary = mapSummaryRows({ runId, start, end }, summaryRows);
-      const modules = D01_PLANT_CATALOG.modules.map((module) => ({
-        moduleId: module.id,
-        // State is not an engineering operating limit or propagated incident evidence.
-        status:
-          latest.states[module.line]?.status === "stopped"
-            ? ("stopped" as const)
-            : ("unknown" as const),
-      }));
-      const qualities = latest.readings.map((reading) => reading.quality);
-      const quality =
-        (["bad", "uncertain", "stale", "missing"] as const).find((item) =>
-          qualities.includes(item),
-        ) ?? "good";
-      return {
-        plantId: "D01" as const,
-        runId,
-        catalogVersion: D01_CATALOG_VERSION,
-        asOf: end,
-        refreshedAt: new Date(now()).toISOString(),
-        quality,
-        latest: { modules, readings: latest.readings },
-        summary,
-      };
+      return await readMiningOverview(input, query, now, active);
     } finally {
       signal.removeEventListener("abort", cancel);
       controller.abort();
