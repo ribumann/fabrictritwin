@@ -244,17 +244,30 @@ function terminal(phase: RunPhase): boolean {
 
 export class MiningRunCoordinator {
   private readonly finalFlushMilliseconds: number;
+  private readonly minimumStartIntervalMs: number;
 
   constructor(
     private readonly store: MiningStore,
     private readonly clock: MiningClock = systemClock,
-    options: { finalFlushMilliseconds?: number } = {},
+    options: { finalFlushMilliseconds?: number; minimumStartIntervalMs?: number } = {},
   ) {
     const budget = options.finalFlushMilliseconds ?? 0;
     if (!Number.isInteger(budget) || budget < 0 || budget > 5_000) {
       invalid("Mining final-flush budget must be an explicit integer from 0 to 5000ms.");
     }
     this.finalFlushMilliseconds = budget;
+    const interval = options.minimumStartIntervalMs ?? 0;
+    if (!Number.isSafeInteger(interval) || interval < 0 || interval > 86_400_000) {
+      invalid("Mining minimum start interval must be between 0 and 86400000ms.");
+    }
+    this.minimumStartIntervalMs = interval;
+  }
+
+  async currentStatus(signal?: AbortSignal): Promise<MiningRunStatus | undefined> {
+    const document = await this.store.read(PLANT_PATH, signal);
+    signal?.throwIfAborted();
+    const run = document ? parsePlant(document.value) : null;
+    return run ? this.status(run.runId, signal) : undefined;
   }
 
   async status(runId: string, signal?: AbortSignal): Promise<MiningRunStatus | undefined> {
@@ -349,6 +362,14 @@ export class MiningRunCoordinator {
       if (!current)
         throw new MiningCoordinationError("uncertain", "Leased mining plant document disappeared.");
       const previous = parsePlant(current.value);
+      if (
+        previous &&
+        this.minimumStartIntervalMs > 0 &&
+        acquiredAt - Date.parse(previous.startedAt) < this.minimumStartIntervalMs
+      ) {
+        await this.store.write(path, { spec: identity, admission: "rejected" }, receipt.etag);
+        throw new MiningCoordinationError("conflict", "Mining start cooldown is active.");
+      }
       if (previous) {
         const archived = terminal(previous.phase)
           ? previous

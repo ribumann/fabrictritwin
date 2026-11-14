@@ -134,6 +134,24 @@ describe("mining durable run coordination", () => {
     expect(statuses.map((status) => status?.phase).sort()).toEqual(["rejected", "running"]);
   });
 
+  it("enforces the optional start cooldown across replicas without affecting regular starts", async () => {
+    const restricted = new MiningRunCoordinator(storage, clock, {
+      minimumStartIntervalMs: 600_000,
+    });
+    const active = await owner(restricted, { ...input, durationSeconds: 30 });
+    await active.finish();
+    expect(await replicaB.currentStatus()).toMatchObject({ runId: first });
+    await expect(restricted.start({ ...input, requestId: second })).rejects.toMatchObject({
+      code: "conflict",
+    });
+    expect(await replicaB.status(second)).toMatchObject({ admission: "rejected" });
+    vi.setSystemTime(Date.now() + 600_000);
+    const third = "33333333-3333-4333-8333-333333333333";
+    expect(await restricted.start({ ...input, requestId: third })).toMatchObject({
+      kind: "started",
+    });
+  });
+
   it("races the same idempotency key without returning a second sender capability", async () => {
     const results = await Promise.all([replicaA.start(input), replicaB.start(input)]);
     expect(results.map((result) => result.kind).sort()).toEqual(["observed", "started"]);

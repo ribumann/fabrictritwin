@@ -16,6 +16,7 @@ import { createMiningReadRouter } from "./api/mining-read.js";
 import { configuredMiningCuratedProvider } from "./mining/read/runtime.js";
 import { createMiningCancelRouter } from "./api/mining-cancel.js";
 import { createMiningStartRouter } from "./api/mining-start.js";
+import { createMiningDemoHost, createMiningDemoRouter } from "./api/mining-demo.js";
 import { MiningPublisherHost } from "./mining/publisher-host.js";
 import { createBackendShutdown } from "./services/backend-shutdown.js";
 
@@ -25,6 +26,7 @@ const server = createServer(app);
 const synthetic = resolveRuntimeProfile() === "synthetic";
 const runtime = synthetic ? new SyntheticRuntime() : undefined;
 const miningPublisherHost = synthetic ? undefined : new MiningPublisherHost();
+const miningDemoHost = synthetic ? undefined : createMiningDemoHost();
 const alertListener = synthetic
   ? createDefaultAlertListener({
       athleteIds: [runtime!.dataset.athlete.athleteId],
@@ -33,6 +35,7 @@ const alertListener = synthetic
   : createDefaultAlertListener();
 
 app.use(express.json());
+app.use("/api/mining/demo", createMiningDemoRouter({ synthetic, host: miningDemoHost }));
 app.use("/api/mining", createMiningStartRouter({ synthetic, host: miningPublisherHost }));
 app.use("/api/mining", createMiningCancelRouter({ synthetic }));
 app.use(
@@ -61,7 +64,9 @@ const streamServer = attachStreamServer(server, { synthetic });
 alertListener?.start();
 const closeServer = server.close.bind(server);
 const shutdown = createBackendShutdown({
-  closePublisher: () => miningPublisherHost?.close(),
+  closePublisher: async () => {
+    await Promise.all([miningPublisherHost?.close(), miningDemoHost?.close()]);
+  },
   stopBackgroundServices: () => {
     runtime?.close();
     alertListener?.stop();

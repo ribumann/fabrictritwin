@@ -97,8 +97,8 @@
               </select></label
             >
             <label
-              ><input id="include-screened" type="checkbox" disabled />Show screened assets
-              (review only)</label
+              ><input id="include-screened" type="checkbox" disabled />Show screened assets (review
+              only)</label
             >
           </fieldset>
           <fieldset class="mining-toggles">
@@ -195,12 +195,13 @@
       <section class="card">
         <h2>Run control</h2>
         <p>
-          Start and cancel are gated until verified human delegated authorization is connected.
+          Public D01 demo runs last up to five minutes. A shared cooldown limits repeated starts.
           Reopening this view never starts a run. Publisher completion is not Fabric ingestion
           completion; stop requested is not stopped.
         </p>
-        <button disabled>Start run (authorization required)</button>
-        <button disabled>Cancel run (authorization required)</button>
+        <p id="run-control-status" role="status">Checking demo availability…</p>
+        <button id="run-start" disabled>Start demo run</button>
+        <button id="run-cancel" disabled>Cancel demo run</button>
       </section>
     </main>
     <script type="module" src="/mining/app.js"></script>

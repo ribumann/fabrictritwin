@@ -371,6 +371,7 @@ function publisherError(error: unknown): Error {
 /** No HTTP/startup binding. Authenticated run authorization is an independent activation gate. */
 export function configuredMiningPublisherRuntime(
   env: NodeJS.ProcessEnv = process.env,
+  options: { minimumStartIntervalMs?: number } = {},
 ): MiningPublisherRuntime | undefined {
   if (env.MINING_PUBLISHER_ENABLED === undefined || env.MINING_PUBLISHER_ENABLED === "false") {
     return undefined;
@@ -391,6 +392,7 @@ export function configuredMiningPublisherRuntime(
   return new MiningPublisherRuntime(
     new MiningRunCoordinator(store, systemClock, {
       finalFlushMilliseconds: flushBudget === undefined ? 0 : Number(flushBudget),
+      minimumStartIntervalMs: options.minimumStartIntervalMs,
     }),
     () => new D01EventstreamPublisher(connectionString),
   );

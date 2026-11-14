@@ -139,6 +139,67 @@ describe("isolated mining BFF", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("forwards only bounded same-origin demo actions with server credentials", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ runId: "11111111-1111-4111-8111-111111111111" }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const app = express();
+    app.use(express.json());
+    app.use(
+      "/api/mining",
+      createMiningRouter(
+        {
+          streamingBackendBaseUrl: "https://internal.example",
+          fetchImpl,
+          buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+        },
+        false,
+        true,
+      ),
+    );
+    const post = () => request(app).post("/api/mining/demo/runs/start").set("host", "demo.example");
+    expect(
+      (await post().set("origin", "https://attacker.example").send({ plantId: "D01" })).status,
+    ).toBe(403);
+    expect(
+      (
+        await post()
+          .set("origin", "https://demo.example")
+          .send({ plantId: "D01", durationSeconds: 1800 })
+      ).status,
+    ).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const response = await post()
+      .set("origin", "https://demo.example")
+      .set("authorization", "Bearer attacker")
+      .send({ plantId: "D01" });
+    expect(response.status).toBe(202);
+    const [url, options] = fetchImpl.mock.calls[0];
+    expect(String(url)).toBe("https://internal.example/api/mining/demo/runs/start");
+    expect(new Headers(options?.headers).get("authorization")).toBe("Bearer service");
+    expect(options?.body).toBe(JSON.stringify({ plantId: "D01" }));
+    for (let i = 0; i < 4; i++) {
+      expect(
+        (await post().set("origin", "https://demo.example").send({ plantId: "D01" })).status,
+      ).toBe(202);
+    }
+    expect(
+      (await post().set("origin", "https://demo.example").send({ plantId: "D01" })).status,
+    ).toBe(429);
+    expect(
+      (
+        await request(app)
+          .post("/api/mining/demo/runs/cancel")
+          .set("host", "demo.example")
+          .set("origin", "https://demo.example")
+          .send({ plantId: "D01", runId: "11111111-1111-4111-8111-111111111111" })
+      ).status,
+    ).toBe(202);
+  });
+
   it("serves separate mining and existing triathlon entry documents", async () => {
     const { app } = await import("../src/index.js");
     const mining = await request(app).get("/mining");
