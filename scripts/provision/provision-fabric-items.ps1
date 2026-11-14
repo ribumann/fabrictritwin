@@ -8,6 +8,11 @@ param(
     [string]$ResourceGroupName = 'rg-triathlon-twin-demo',
     [string]$FabricCapacityName,
     [string]$FabricWorkspaceName,
+    [ValidateSet('Triathlon', 'MiningStreaming')]
+    [string]$Profile = 'Triathlon',
+    [guid]$ExistingWorkspaceId,
+    [guid]$TenantId,
+    [string]$ReceiptPath,
     [string]$NamePrefix = 'triatwin-dev',
     [string]$FabricCapacityAdminUpn = 'admin@example.invalid',
     [string]$OperationsRecipientUpn,
@@ -1131,6 +1136,11 @@ function Ensure-EventstreamItem {
 
     Write-Host "Created Eventstream '$DisplayName' with id '$($created.id)'."
     return (New-ItemStatus -LogicalName 'Eventstream' -DisplayName $DisplayName -ItemId $created.id -ItemType $created.type -Status 'Created')
+}
+
+if ($Profile -eq 'MiningStreaming') {
+    . (Join-Path $PSScriptRoot 'mining-streaming.ps1')
+    return
 }
 
 Write-Host '=== provision-fabric-items.ps1 (T036) ==='

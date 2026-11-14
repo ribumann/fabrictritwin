@@ -30,6 +30,7 @@ BeforeAll {
     $global:T039_FabricCapacityName = $script:FabricCapacityName
     $global:T039_WorkspaceId = $script:WorkspaceId
     $global:T039_WorkspaceName = $script:WorkspaceName
+    $global:T039_TenantId = 'bbbbbbbb-1111-4444-8888-111111111111'
     $script:ItemDefinitions = @(
         @{ LogicalName = 'Eventhouse'; Type = 'Eventhouse'; DisplayName = 'triatwin-dev-eventhouse'; UriSuffix = '/eventhouses' },
         @{ LogicalName = 'KQLDatabase'; Type = 'KQLDatabase'; DisplayName = 'triatwin-dev-realtime'; UriSuffix = '/kqlDatabases' },
@@ -98,7 +99,7 @@ BeforeAll {
             }
 
             if ($args.Count -ge 2 -and $args[0] -eq 'account' -and $args[1] -eq 'show') {
-                return "{`"id`":`"$($global:T039_SubscriptionId)`"}"
+                return "{`"id`":`"$($global:T039_SubscriptionId)`",`"tenantId`":`"$($global:T039_TenantId)`"}"
             }
 
             if ($args.Count -ge 2 -and $args[0] -eq 'account' -and $args[1] -eq 'set') {
@@ -144,6 +145,10 @@ BeforeAll {
                     value           = @($global:T039_Items)
                     continuationUri = $null
                 }
+            }
+
+            if ($Method -eq 'Get' -and $Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$($global:T039_WorkspaceId)") {
+                return [pscustomobject]@{ id = $global:T039_WorkspaceId; capacityId = $global:T039_FabricCapacityId }
             }
 
             if ($Method -eq 'Post' -and $Uri -eq 'https://api.fabric.microsoft.com/v1/workspaces') {
@@ -304,6 +309,80 @@ Describe 'provision-fabric-items.ps1 (T039)' {
             $reportDefinitionPart = @($reportRequest.definition.parts | Where-Object { $_.path -eq 'definition.pbir' })[0]
             $reportDefinition = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($reportDefinitionPart.payload))
             $reportDefinition | Should -Match ([regex]::Escape("semanticmodelid=$semanticModelId"))
+        }
+    }
+
+    Context 'Isolated mining streaming' {
+        BeforeEach {
+            $global:T039_ItemDefinitions = @(
+                @{ Type = 'Eventhouse'; DisplayName = 'mining-d01-eventhouse'; UriSuffix = '/eventhouses' },
+                @{ Type = 'KQLDatabase'; DisplayName = 'mining-d01-realtime'; UriSuffix = '/kqlDatabases' },
+                @{ Type = 'Eventstream'; DisplayName = 'mining-d01-eventstream'; UriSuffix = '/items' }
+            )
+            Set-ProvisionFabricMocks -WorkspaceExists
+            $script:MiningArguments = @{
+                SubscriptionId = $script:SubscriptionId
+                FabricCapacityName = $script:FabricCapacityName
+                Profile = 'MiningStreaming'
+                ExistingWorkspaceId = $script:WorkspaceId
+                TenantId = $global:T039_TenantId
+                NamePrefix = 'mining-d01'
+                ReceiptPath = Join-Path $TestDrive "$([guid]::NewGuid()).jsonl"
+            }
+        }
+
+        It 'creates only three isolated items and binds raw destinations to the new database' {
+            $result = & $script:ProvisionScript @script:MiningArguments
+            $result.status | Should -Be 'ItemsCreatedNotIngestionVerified'
+            Should -Invoke Invoke-RestMethod -Times 3 -Exactly -ParameterFilter { $Method -eq 'Post' }
+            Should -Invoke az -Times 0 -ParameterFilter { $args[0] -eq 'resource' -or $args[1] -eq 'set' }
+            $requests = @($global:T039_RequestLog | ForEach-Object { $_.Body | ConvertFrom-Json -Depth 100 })
+            $database = $requests | Where-Object displayName -eq 'mining-d01-realtime'
+            $propertiesPart = $database.definition.parts | Where-Object path -eq 'DatabaseProperties.json'
+            $properties = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($propertiesPart.payload)) | ConvertFrom-Json
+            $properties.parentEventhouseItemId | Should -Be $result.eventhouseId
+            $stream = $requests | Where-Object displayName -eq 'mining-d01-eventstream'
+            $topologyPart = $stream.definition.parts | Where-Object path -eq 'eventstream.json'
+            $topology = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($topologyPart.payload)) | ConvertFrom-Json -Depth 100
+            @($topology.destinations.properties.itemId | Select-Object -Unique) | Should -Be @($result.databaseId)
+            @($topology.operators.properties.conditions.value.value | Sort-Object) | Should -Be @('PlantStateEvent', 'PlantTelemetry')
+            @($topology.sources) | Should -HaveCount 1
+            $topology.sources[0].name | Should -Be 'mining_custom_endpoint'
+            $receipt = Get-Content -LiteralPath $script:MiningArguments.ReceiptPath | ForEach-Object { $_ | ConvertFrom-Json }
+            @($receipt | Where-Object status -eq 'Created') | Should -HaveCount 3
+            $receipt[-1].status | Should -Be 'ItemsCreatedNotIngestionVerified'
+        }
+
+        It 'keeps WhatIf free of writes and receipts, including capacity operations' {
+            $result = & $script:ProvisionScript @script:MiningArguments -WhatIf
+            $result.status | Should -Be 'WhatIf'
+            Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Method -ne 'Get' }
+            Should -Invoke az -Times 0 -ParameterFilter { $args[0] -eq 'resource' -or $args[1] -eq 'set' }
+            Test-Path -LiteralPath $script:MiningArguments.ReceiptPath | Should -BeFalse
+        }
+
+        It 'rejects a workspace on a different capacity without making writes' {
+            Mock Invoke-RestMethod -ParameterFilter { $Method -eq 'Get' -and $Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$($global:T039_WorkspaceId)" } -MockWith {
+                [pscustomobject]@{ id = $global:T039_WorkspaceId; capacityId = 'wrong-capacity' }
+            }
+            { & $script:ProvisionScript @script:MiningArguments } | Should -Throw '*not on the explicitly selected capacity*'
+            Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Method -ne 'Get' }
+        }
+
+        It 'refuses to adopt existing items rather than updating or repointing them' {
+            [void]$global:T039_Items.Add((New-T039Item -Id ([guid]::NewGuid()) -DisplayName 'mining-d01-eventstream' -Type 'Eventstream'))
+            { & $script:ProvisionScript @script:MiningArguments } | Should -Throw '*never adopts or updates*'
+            Should -Invoke Invoke-RestMethod -Times 0 -ParameterFilter { $Method -ne 'Get' }
+        }
+
+        It 'does not retry unknown create delivery and blocks reuse of its receipt' {
+            Mock Invoke-RestMethod -ParameterFilter { $Method -eq 'Post' } -MockWith { throw 'Connection interrupted; delivery unknown.' }
+            { & $script:ProvisionScript @script:MiningArguments } | Should -Throw '*delivery unknown*'
+            Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter { $Method -eq 'Post' }
+            $receipt = Get-Content -LiteralPath $script:MiningArguments.ReceiptPath | ForEach-Object { $_ | ConvertFrom-Json }
+            $receipt[-1].status | Should -Be 'Unresolved'
+            { & $script:ProvisionScript @script:MiningArguments } | Should -Throw '*ReceiptPath already exists*'
+            Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter { $Method -eq 'Post' }
         }
     }
 }

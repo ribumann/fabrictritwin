@@ -1,0 +1,112 @@
+{
+  "sources": [
+    {
+      "name": "mining_custom_endpoint",
+      "type": "CustomEndpoint",
+      "properties": {
+        "inputSerialization": { "type": "Json", "properties": { "encoding": "UTF8" } }
+      }
+    }
+  ],
+  "destinations": [
+    {
+      "name": "mining_telemetry_raw_ingestion",
+      "type": "Eventhouse",
+      "properties": {
+        "dataIngestionMode": "DirectIngestion",
+        "workspaceId": "{{EVENTHOUSE_WORKSPACE_ID}}",
+        "itemId": "{{KQLDATABASE_ITEM_ID}}",
+        "tableName": "mining_TelemetryRaw",
+        "connectionName": "{{TELEMETRY_CONNECTION_NAME}}",
+        "mappingRuleName": "mining_telemetry_raw_json_map"
+      },
+      "inputNodes": [{ "name": "mining_telemetry_stream" }]
+    },
+    {
+      "name": "mining_state_raw_ingestion",
+      "type": "Eventhouse",
+      "properties": {
+        "dataIngestionMode": "DirectIngestion",
+        "workspaceId": "{{EVENTHOUSE_WORKSPACE_ID}}",
+        "itemId": "{{KQLDATABASE_ITEM_ID}}",
+        "tableName": "mining_PlantStateEvents",
+        "connectionName": "{{STATE_CONNECTION_NAME}}",
+        "mappingRuleName": "mining_state_raw_json_map"
+      },
+      "inputNodes": [{ "name": "mining_state_stream" }]
+    }
+  ],
+  "operators": [
+    {
+      "name": "mining_telemetry_filter",
+      "type": "Filter",
+      "inputNodes": [{ "name": "mining_main_stream" }],
+      "properties": {
+        "conditions": [
+          {
+            "column": {
+              "node": "mining_main_stream",
+              "columnName": "entityType",
+              "columnPath": null,
+              "expressionType": "ColumnReference"
+            },
+            "operatorType": "Equals",
+            "value": {
+              "dataType": "Nvarchar(max)",
+              "value": "PlantTelemetry",
+              "expressionType": "Literal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "mining_state_filter",
+      "type": "Filter",
+      "inputNodes": [{ "name": "mining_main_stream" }],
+      "properties": {
+        "conditions": [
+          {
+            "column": {
+              "node": "mining_main_stream",
+              "columnName": "entityType",
+              "columnPath": null,
+              "expressionType": "ColumnReference"
+            },
+            "operatorType": "Equals",
+            "value": {
+              "dataType": "Nvarchar(max)",
+              "value": "PlantStateEvent",
+              "expressionType": "Literal"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "streams": [
+    {
+      "name": "mining_main_stream",
+      "type": "DefaultStream",
+      "properties": {},
+      "inputNodes": [{ "name": "mining_custom_endpoint" }]
+    },
+    {
+      "name": "mining_telemetry_stream",
+      "type": "DerivedStream",
+      "properties": {
+        "inputSerialization": { "type": "Json", "properties": { "encoding": "UTF8" } }
+      },
+      "inputNodes": [{ "name": "mining_telemetry_filter" }]
+    },
+    {
+      "name": "mining_state_stream",
+      "type": "DerivedStream",
+      "properties": {
+        "inputSerialization": { "type": "Json", "properties": { "encoding": "UTF8" } }
+      },
+      "inputNodes": [{ "name": "mining_state_filter" }]
+    }
+  ],
+  "compatibilityLevel": "1.1"
+}

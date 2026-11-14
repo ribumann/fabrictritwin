@@ -65,16 +65,16 @@ Eventhouse database; it does not share triathlon tables or functions. Mining
 routes remain explicitly filtered by the v2 `entityType` values
 `PlantTelemetry` and `PlantStateEvent`. The proposed owned-object ledger is:
 
-| Owned object | Purpose and retention |
-| --- | --- |
-| `mining_TelemetryRaw`, `mining_PlantStateEvents` | Full v2 JSON and a separate `timestamp_raw` string projection; 7-day soft-delete |
-| `mining_PlantCatalog`, `mining_PublishProfile` | Versioned catalog/profile inputs; no added retention policy |
-| `mining_SourceContract` | Version and readiness evidence, including timestamp-shape and exclusive-writer gates |
-| `mining_ValidatedTelemetry`, `mining_ValidatedState` | Typed curated rows; proposed read source for analytics; 7-day soft-delete |
-| `mining_Quarantine` | Raw event, timestamp projection, disposition and reason codes; 7-day soft-delete |
-| `mining_AlertTransitions`, `mining_IncidentLedger` | Separate alert-transition and approved incident sources; 30-day soft-delete |
-| `mining_telemetry_json_map`, `mining_state_json_map` | Root-document JSON mappings on the two mining raw tables |
-| `mining_telemetry_*`, `mining_state_*` | The two proposed Eventstream filters, derived streams and destinations |
+| Owned object                                         | Purpose and retention                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `mining_TelemetryRaw`, `mining_PlantStateEvents`     | Full v2 JSON and a separate `timestamp_raw` string projection; 7-day soft-delete     |
+| `mining_PlantCatalog`, `mining_PublishProfile`       | Versioned catalog/profile inputs; no added retention policy                          |
+| `mining_SourceContract`                              | Version and readiness evidence, including timestamp-shape and exclusive-writer gates |
+| `mining_ValidatedTelemetry`, `mining_ValidatedState` | Typed curated rows; proposed read source for analytics; 7-day soft-delete            |
+| `mining_Quarantine`                                  | Raw event, timestamp projection, disposition and reason codes; 7-day soft-delete     |
+| `mining_AlertTransitions`, `mining_IncidentLedger`   | Separate alert-transition and approved incident sources; 30-day soft-delete          |
+| `mining_telemetry_json_map`, `mining_state_json_map` | Root-document JSON mappings on the two mining raw tables                             |
+| `mining_telemetry_*`, `mining_state_*`               | The two proposed Eventstream filters, derived streams and destinations               |
 
 `MiningSchema.kql`, `MiningValidation.kql` and `MiningQueries.kql` are proposed
 definitions, **not an apply script**. The classifiers are read-only: they
@@ -107,13 +107,13 @@ never silently selected. Quarantine/classification is not yet materialized.
 
 The five fixed G5 read contracts are:
 
-| Stored function | Signature | Bound and key behavior |
-| --- | --- | --- |
-| `mining_PlantLatest` | `(plant_id:string, run_id:string, as_of_utc:datetime)` | Catalog-wide tag/module rows; latest seven days; quality and freshness remain explicit |
-| `mining_PlantSummary` | `(plant_id:string, run_id:string, window_start_utc:datetime, window_end_utc:datetime)` | 60 seconds–24 hours; interval-integrated line feed, process water and whole-plant power; no hopper double count, OEE, grade, or line-energy allocation |
-| `mining_AssetTrend` | `(plant_id:string, run_id:string, requested_module_id:string, metric_family:string, window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)` | BFF families `feed`, `density`, `vibration`, `water-energy`; 1- or 5-minute bins; at most 24 hours; explicit gaps, quality counts, late counts and overflow |
-| `mining_ActiveIncidents` | `(plant_id:string, requested_run_id:string, as_of_utc:datetime)` | Requires the separately approved `d01-incident-ledger-v1`; at most 20 incidents |
-| `mining_CompareLines` | `(plant_id:string, run_id:string, metric_family:string, window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)` | 1- or 5-minute bins; at most 24 hours and 1,000 rows; only `feed`, `density`, `vibration` |
+| Stored function          | Signature                                                                                                                                                 | Bound and key behavior                                                                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mining_PlantLatest`     | `(plant_id:string, run_id:string, as_of_utc:datetime)`                                                                                                    | Catalog-wide tag/module rows; latest seven days; quality and freshness remain explicit                                                                      |
+| `mining_PlantSummary`    | `(plant_id:string, run_id:string, window_start_utc:datetime, window_end_utc:datetime)`                                                                    | 60 seconds–24 hours; interval-integrated line feed, process water and whole-plant power; no hopper double count, OEE, grade, or line-energy allocation      |
+| `mining_AssetTrend`      | `(plant_id:string, run_id:string, requested_module_id:string, metric_family:string, window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)` | BFF families `feed`, `density`, `vibration`, `water-energy`; 1- or 5-minute bins; at most 24 hours; explicit gaps, quality counts, late counts and overflow |
+| `mining_ActiveIncidents` | `(plant_id:string, requested_run_id:string, as_of_utc:datetime)`                                                                                          | Requires the separately approved `d01-incident-ledger-v1`; at most 20 incidents                                                                             |
+| `mining_CompareLines`    | `(plant_id:string, run_id:string, metric_family:string, window_start_utc:datetime, window_end_utc:datetime, bin_minutes:int)`                             | 1- or 5-minute bins; at most 24 hours and 1,000 rows; only `feed`, `density`, `vibration`                                                                   |
 
 Every query scopes to D01 and the requested run, returns a status column,
 surfaces duplicate conflicts, and refuses invalid/future windows. `AssetTrend`
@@ -147,13 +147,13 @@ The exact candidate result projections are below. All rows include
 empty strings paired with a non-success status. Nullable non-string values use
 typed nulls.
 
-| Function | Additional columns |
-| --- | --- |
-| `mining_PlantLatest` | `plant_id:string`, `run_id:string`, `as_of_utc:datetime`, `row_kind:string` (`tag`, `state`, `contract`), `module_id:string`, `equipment_id:string`, `scope_id:string`, `tagId:string`, `seriesId:string`, `metric:string`, `value:real`, `unit:string`, `quality:string`, `event_time:datetime`, `received_at:datetime`, `age_seconds:long`, `state:string`, `scheduled_running:bool`, `coverage:real` |
-| `mining_PlantSummary` | `plant_id:string`, `run_id:string`, `window_start_utc:datetime`, `window_end_utc:datetime`, `line_a_feed_tph:real`, `line_b_feed_tph:real`, `line_c_feed_tph:real`, `plant_feed_tph:real`, `processed_tonnes:real`, `running_lines:long`, `good_sample_count:long`, `non_good_sample_count:long`, `uncertain_sample_count:long`, `bad_sample_count:long`, `late_sample_count:long`, `conflicting_event_count:long`, `gross_process_water_m3_per_t:real`, `whole_plant_energy_kwh_per_t:real`, `feed_coverage:real`, `water_coverage:real`, `power_coverage:real`, `common_coverage:real`, `first_event_time:datetime`, `last_event_time:datetime`, `first_received_at:datetime`, `last_received_at:datetime` |
-| `mining_AssetTrend` | `plant_id:string`, `run_id:string`, `module_id:string`, `tagId:string`, `seriesId:string`, `metric_family:string`, `bin_start_utc:datetime`, `value:real`, `unit:string`, `good_count:long`, `non_good_count:long`, `source_qualities:dynamic` (distinct exact source categories), `uncertain_count:long`, `bad_count:long`, `late_count:long`, `expected_samples:real`, `coverage:real`, `first_event_time:datetime`, `last_event_time:datetime`, `first_received_at:datetime`, `last_received_at:datetime` |
-| `mining_ActiveIncidents` | `plant_id:string`, `run_id:string`, `incident_id:string`, `rule_id:string`, `scope_id:string`, `severity:string`, `active_state:string`, `raised_at:datetime`, `last_transition_at:datetime`, `acknowledged_at:datetime`, `received_at:datetime`, `evidence:dynamic`, `conflict_count:long` |
-| `mining_CompareLines` | `plant_id:string`, `run_id:string`, `line_id:string`, `module_id:string`, canonical `tag_id:string`, `metric:string`, `unit:string`, `metric_family:string`, `bin_start_utc:datetime`, `value:real`, `good_count:long`, `non_good_count:long`, `source_qualities:dynamic`, `uncertain_count:long`, `bad_count:long`, `late_count:long`, `expected_samples:real`, `coverage:real`, `conflict_count:long`, `first_event_time:datetime`, `last_event_time:datetime`, `first_received_at:datetime`, `last_received_at:datetime` |
+| Function                 | Additional columns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mining_PlantLatest`     | `plant_id:string`, `run_id:string`, `as_of_utc:datetime`, `row_kind:string` (`tag`, `state`, `contract`), `module_id:string`, `equipment_id:string`, `scope_id:string`, `tagId:string`, `seriesId:string`, `metric:string`, `value:real`, `unit:string`, `quality:string`, `event_time:datetime`, `received_at:datetime`, `age_seconds:long`, `state:string`, `scheduled_running:bool`, `coverage:real`                                                                                                                                                                                                                                                                                                      |
+| `mining_PlantSummary`    | `plant_id:string`, `run_id:string`, `window_start_utc:datetime`, `window_end_utc:datetime`, `line_a_feed_tph:real`, `line_b_feed_tph:real`, `line_c_feed_tph:real`, `plant_feed_tph:real`, `processed_tonnes:real`, `running_lines:long`, `good_sample_count:long`, `non_good_sample_count:long`, `uncertain_sample_count:long`, `bad_sample_count:long`, `late_sample_count:long`, `conflicting_event_count:long`, `gross_process_water_m3_per_t:real`, `whole_plant_energy_kwh_per_t:real`, `feed_coverage:real`, `water_coverage:real`, `power_coverage:real`, `common_coverage:real`, `first_event_time:datetime`, `last_event_time:datetime`, `first_received_at:datetime`, `last_received_at:datetime` |
+| `mining_AssetTrend`      | `plant_id:string`, `run_id:string`, `module_id:string`, `tagId:string`, `seriesId:string`, `metric_family:string`, `bin_start_utc:datetime`, `value:real`, `unit:string`, `good_count:long`, `non_good_count:long`, `source_qualities:dynamic` (distinct exact source categories), `uncertain_count:long`, `bad_count:long`, `late_count:long`, `expected_samples:real`, `coverage:real`, `first_event_time:datetime`, `last_event_time:datetime`, `first_received_at:datetime`, `last_received_at:datetime`                                                                                                                                                                                                 |
+| `mining_ActiveIncidents` | `plant_id:string`, `run_id:string`, `incident_id:string`, `rule_id:string`, `scope_id:string`, `severity:string`, `active_state:string`, `raised_at:datetime`, `last_transition_at:datetime`, `acknowledged_at:datetime`, `received_at:datetime`, `evidence:dynamic`, `conflict_count:long`                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `mining_CompareLines`    | `plant_id:string`, `run_id:string`, `line_id:string`, `module_id:string`, canonical `tag_id:string`, `metric:string`, `unit:string`, `metric_family:string`, `bin_start_utc:datetime`, `value:real`, `good_count:long`, `non_good_count:long`, `source_qualities:dynamic`, `uncertain_count:long`, `bad_count:long`, `late_count:long`, `expected_samples:real`, `coverage:real`, `conflict_count:long`, `first_event_time:datetime`, `last_event_time:datetime`, `first_received_at:datetime`, `last_received_at:datetime`                                                                                                                                                                                  |
 
 `PlantLatest` has a tag row for each catalog tag, and a distinct state row for
 each `scope_id` (`A`, `B`, `C`, `shared`); it does not duplicate line state
@@ -347,7 +347,38 @@ rejects this expanded topology until separately extended and tested. Actual
 ingestion, proof-gate population, hosted function compilation and runtime
 validation remain pending an approved verification window.
 
-### Disposable raw-source canary approval scope
+### Isolated mining streaming deployment
+
+For a separate mining Eventhouse, KQL database and Eventstream on the existing
+workspace capacity, use the existing provisioner with its narrow mining profile:
+
+```powershell
+.\scripts\provision\provision-fabric-items.ps1 `
+  -SubscriptionId <subscription-guid> -TenantId <tenant-guid> `
+  -ExistingWorkspaceId <workspace-guid> -FabricCapacityName <existing-capacity-name> `
+  -NamePrefix mining-d01 -Profile MiningStreaming `
+  -ReceiptPath C:\private\mining-d01-create.jsonl -WhatIf
+```
+
+Remove `-WhatIf` after checking the target. The receipt directory must already
+exist outside the repository. This profile verifies the workspace is already on
+the selected capacity; it never creates/reassigns a workspace, resumes/scales a
+capacity, modifies existing items, or deploys triathlon agents/reports/notebooks.
+An existing item name or receipt is a reconciliation stop, not permission to
+adopt, overwrite or retry an uncertain create. Fabric also creates a default KQL
+database with a new Eventhouse; the separately named `mining-d01-realtime` database
+is the ingestion target.
+
+The definitions in `infra/fabric/mining-streaming` provision only two raw tables,
+root JSON mappings, seven-day retention and ingestion-time policies. They use a
+new custom endpoint and exact `PlantTelemetry` / `PlantStateEvent` filters, without
+copying triathlon source credentials or declaring a projecting input schema.
+Successful item creation is **not** ingestion or raw-preservation proof. Retrieve
+the new source's own connection securely, send the two-message packet below once,
+and verify it against the returned database endpoint before enabling mining.
+The existing shared ontology/static packet is not part of this deployment.
+
+### Historical shared-Eventstream canary proposal
 
 This is a proposed, unexecuted canary, not a frozen native mutation packet,
 authorization, or an apply procedure. The reviewed source is pinned in the
