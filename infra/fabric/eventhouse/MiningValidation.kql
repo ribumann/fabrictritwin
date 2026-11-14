@@ -120,7 +120,7 @@
         gettype(event["timestamp"]) in ("string", "datetime") and
         gettype(event["plant_id"]) == "string" and gettype(event["module_id"]) == "string" and
         gettype(event["equipment_id"]) == "string" and gettype(event["tag_id"]) == "string" and
-        gettype(event["value"]) in ("int", "long", "real") and
+        gettype(event["value"]) in ("int", "long", "real", "double") and
         gettype(event["unit"]) == "string" and gettype(event["quality"]) == "string"
     | extend identity_ok = event_type == "PlantTelemetry" and schema_version == 2 and
         run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and

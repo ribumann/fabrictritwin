@@ -62,7 +62,7 @@
   "sourceFiles": [
     {
       "path": "infra/fabric/eventhouse/MiningValidation.kql",
-      "sha256": "7618627f390b9ca75dfb34d9fef0534f81bf773356089d5bad07b8cb504b6f8a"
+      "sha256": "0ba0f1c5fcb85522f4281c6d11a71358623fc4589ca042ed89c3db2b52cad6ae"
     },
     {
       "path": "infra/fabric/eventhouse/MiningQueries.kql",
