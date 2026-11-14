@@ -156,6 +156,46 @@ Describe 'Protected mining-state bootstrap' {
         Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -notin @('GET','HEAD') }
     }
 
+    It 'previews without writes when the attached UAMI key uses lowercase resourcegroups' {
+        $f = $global:MiningFixture
+        $key = $f.Identity.id.Replace('/resourceGroups/', '/resourcegroups/')
+        $attached = [System.Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+        $attached.Add($key, @{
+            clientId = $script:Parameters.IdentityClientId; principalId = $script:Parameters.IdentityPrincipalId
+        })
+        $f.App.identity.userAssignedIdentities = $attached
+
+        $result = & $script:Bootstrap @script:Parameters -InformationVariable markers
+        $result.Status | Should -Be 'Preview'
+        ($markers.MessageData -join "`n") | Should -BeExactly ($script:ReadStages -join "`n")
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -notin @('GET','HEAD') }
+    }
+
+    It 'rejects ambiguous or mismatched attached UAMIs without continuing preflight' -ForEach @(
+        @{ Change = 'duplicate' }, @{ Change = 'resourceId' }, @{ Change = 'clientId' }, @{ Change = 'principalId' }
+    ) {
+        $f = $global:MiningFixture
+        $key = $f.Identity.id.Replace('/resourceGroups/', '/resourcegroups/')
+        $attachedIdentity = @{
+            clientId = $script:Parameters.IdentityClientId; principalId = $script:Parameters.IdentityPrincipalId
+        }
+        $attached = [System.Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+        switch ($Change) {
+            duplicate { $attached.Add($f.Identity.id, $attachedIdentity) }
+            resourceId { $key += '-different' }
+            clientId { $attachedIdentity.clientId = '88888888-8888-8888-8888-888888888888' }
+            principalId { $attachedIdentity.principalId = '88888888-8888-8888-8888-888888888888' }
+        }
+        $attached.Add($key, $attachedIdentity)
+        $f.App.identity.userAssignedIdentities = $attached
+
+        { & $script:Bootstrap @script:Parameters } | Should -Throw '*explicitly selected attached UAMI validation failed*'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter {
+            $Method -notin @('GET','HEAD') -or $Uri -match '/containers/mining-private' -or
+            $Uri -like 'https://examplestate.blob.core.windows.net/*'
+        }
+    }
+
     It 'stops at the exact failed read marker without leaking raw details' -ForEach @(
         @{ Index = 0; Token = 'account'; Target = '' },
         @{ Index = 0; Token = 'ARM'; Target = '' },
