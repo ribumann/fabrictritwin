@@ -6,7 +6,7 @@ data or request paths, not proof of availability. No operator-specific resource
 names, identities, athlete identifiers, credentials, or raw measurements belong
 here.
 
-Source baseline: main at `7df75a6` (including the MCP readable formatter,
+Source baseline: main at `ac1ed74` (including the MCP readable formatter,
 Console source retirement, and isolated Mining definitions). Status snapshot:
 **14 November 2026**. These diagrams describe checked-in source and dated
 observations, not proof of the current resources or serving revision in any
@@ -271,6 +271,8 @@ flowchart LR
     DeployGate["azure-deploy main-only / enable gate"]
     Update["OIDC image-only updater"]
     Workload["One existing app or simulator job"]
+    MiningGate["azure-mining-bootstrap<br/>independent review + main"]
+    MiningState["Private Mining state bootstrap"]
 
     PR -->|"No Azure credentials or OIDC"| CI
     PR -->|"Independent review / required checks"| Main
@@ -281,6 +283,8 @@ flowchart LR
     Main -->|"Separate manual dispatch: one app"| DeployGate
     DeployGate --> Update
     Update -->|"Preserve non-image configuration"| Workload
+    Main -->|"Manual preview/apply, separately authorized"| MiningGate
+    MiningGate --> MiningState
 ```
 
 PR CI builds/tests without Azure login, registry push, deployment or provisioning;
@@ -292,7 +296,7 @@ configured environment protection rules and authorized registry write access.
 Publication rebuilds/tests the chosen app; it does not promote the PR's local
 image or deploy it.
 
-The separate main-only `azure-deploy` lane requires exact
+The separate main-only `azure-deploy` app-image lane requires exact
 `DEPLOYMENT_ENABLED=true`, satisfaction of configured environment protection
 rules, a reviewed existing digest and `deploy: true` for a write. It updates one
 existing Cockpit, backend, MCP app or
@@ -307,8 +311,10 @@ For this personal sample, the owner has authorized unattended app image releases
 reviewer gates. Dispatch, CI/image tests, OIDC, scoped permissions and digest
 checks remain unchanged. Production/shared environments retain independent
 reviewer gates. This exception does not authorize Fabric data, ontology, identity
-or private-state bootstrap changes; mining bootstrap remains disabled until its
-separate protection and authorization prerequisites are satisfied.
+or private-state bootstrap changes. Mining bootstrap uses the separate
+`azure-mining-bootstrap` environment and dedicated OIDC identity; it remains
+disabled until independent review, `main` protection, exact Azure permissions,
+private target review, and explicit writer-window approval are configured.
 
 Publication and deployment are separate actions. The MCP readable formatter and
 Console retirement are present in the source baseline, but their presence here

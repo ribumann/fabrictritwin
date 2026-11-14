@@ -157,13 +157,19 @@ These are setup prerequisites, not credentials to copy into app configuration.
 Power BI tenant settings and Fabric preview features require their respective
 administrators; the scripts do not silently grant blanket tenant access.
 
-The only currently active workflow is
-`.github/workflows/copilot-setup-steps.yml`; it has `contents: read` and does not
-log in to Azure or deploy resources. Files under `.github/disabled-workflows/`
-are intentionally suffixed `.yml.disabled`, so GitHub Actions does not run them.
-They contain prospective deployment/OIDC/secret references and must not be
-renamed or enabled without a separate security and target review. This repository
-does not currently establish a GitHub OIDC deployment identity.
+Active GitHub Actions include credential-free CI and image builds, Copilot
+setup, manual read-only OIDC proofs, main-only app image publication/deployment,
+and the manual Mining state-bootstrap workflow. The read-only proofs establish
+only that their specific identity can exchange a token and read its configured
+resource group; they do not prove write permissions or Mining Blob access. On
+14 November 2026, the `azure-canary` and `azure-deploy` read-only proofs
+succeeded for those limited checks.
+Mining bootstrap uses the separate `azure-mining-bootstrap` environment and
+requires a dedicated OIDC identity, independent environment protection, and
+explicitly reviewed permissions before it can be used. Files under
+`.github/disabled-workflows/` are intentionally suffixed `.yml.disabled`, so
+GitHub Actions does not run them; do not rename or enable them without a
+separate security and target review.
 
 ## Network endpoints and exposure
 

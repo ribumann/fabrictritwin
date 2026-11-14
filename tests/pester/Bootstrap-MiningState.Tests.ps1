@@ -347,7 +347,13 @@ Describe 'Mining bootstrap workflow boundary' {
     }
     It 'uses a manual, main-only protected OIDC job and no public plan artifacts' {
         $script:Workflow | Should -Match "github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'"
-        $script:Workflow | Should -Match 'environment: azure-deploy'
+        $script:Workflow | Should -Match 'environment: azure-mining-bootstrap'
+        $script:Workflow | Should -Match 'CLIENT_ID: \$\{\{ vars.MINING_STATE_DEPLOY_CLIENT_ID \}\}'
+        $script:Workflow | Should -Match 'TENANT_ID: \$\{\{ vars.MINING_STATE_DEPLOY_TENANT_ID \}\}'
+        $script:Workflow | Should -Match 'SUBSCRIPTION_ID: \$\{\{ vars.MINING_STATE_DEPLOY_SUBSCRIPTION_ID \}\}'
+        $script:Workflow | Should -Match 'RESOURCE_GROUP: \$\{\{ vars.MINING_STATE_DEPLOY_RESOURCE_GROUP \}\}'
+        $script:Workflow | Should -Not -Match 'vars\.AZURE_DEPLOY_'
+        $script:Workflow | Should -Match "claims.sub -cne 'repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap'"
         $script:Workflow | Should -Match 'default: false'
         $script:Workflow | Should -Match 'MINING_STATE_APPROVED_DIGEST'
         $script:Workflow | Should -Match 'MINING_STATE_BOOTSTRAP_ENABLED'
