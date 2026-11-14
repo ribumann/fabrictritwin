@@ -6,10 +6,11 @@ data or request paths, not proof of availability. No operator-specific resource
 names, identities, athlete identifiers, credentials, or raw measurements belong
 here.
 
-Source baseline: main at `33e726c` (including the MCP readable formatter and
-Console source retirement). Status snapshot:
-**8 November 2026**. These diagrams describe checked-in source, not proof of
-the current resources or serving revision in any tenant.
+Source baseline: main at `7df75a6` (including the MCP readable formatter,
+Console source retirement, and isolated Mining definitions). Status snapshot:
+**14 November 2026**. These diagrams describe checked-in source and dated
+observations, not proof of the current resources or serving revision in any
+tenant.
 
 ## Live request and identity boundaries
 
@@ -148,6 +149,60 @@ Sources: [daily generator](../apps/simulator/src/index.ts),
 [Eventstream definition](../infra/fabric/eventstream/eventstream.custom-endpoint.json),
 [KQL definitions](../infra/fabric/eventhouse/DatabaseSchema.kql),
 and [live simulation](../apps/streaming-backend/src/api/simulate.ts).
+
+## Isolated D01 mining path: readiness gated
+
+```mermaid
+flowchart LR
+    Canary["Bounded v2 canary<br/>one-off sender"]
+    Stream["Separate Mining Eventstream<br/>CustomEndpoint"]
+    RawTelemetry["mining_TelemetryRaw"]
+    RawState["mining_PlantStateEvents"]
+    Classifiers["Read-only mining classifiers"]
+    Blocked["BLOCKED_SOURCE_CONTRACT"]
+    Curated["Curated telemetry / state<br/>currently empty"]
+    G5["Fixed G5 read contracts"]
+    Backend["Backend mining routes<br/>start / read / cancel default-off"]
+    Cockpit["Public Cockpit mining view"]
+
+    Canary --> Stream
+    Stream --> RawTelemetry
+    Stream --> RawState
+    RawTelemetry --> Classifiers
+    RawState --> Classifiers
+    Classifiers --> Blocked
+    Classifiers -.->|"Materialization disabled"| Curated
+    Curated -.-> G5
+    G5 -.-> Backend
+    Cockpit -.->|"No enabled live mining read"| Backend
+```
+
+Mining has its own Eventstream, Eventhouse, KQL database, raw schema, and
+definitions in the existing workspace/capacity. It does not share or modify the
+triathlon Eventstream, Eventhouse, or tables shown above.
+
+**Dated evidence, not a readiness guarantee:** on 14 November 2026, a bounded
+two-message canary reached the mining raw telemetry and state tables. Each table
+received its intended event with a non-null ingestion time, and `timestamp_raw`
+preserved the exact sent UTC millisecond string. Ten mining KQL functions and
+seven mining-scoped retention policies were deployed. Both validators currently
+return `BLOCKED_SOURCE_CONTRACT`; curated and quarantine tables remain empty,
+and no update policy or raw-to-curated materialization is enabled.
+
+The backend's mining start, read, and cancel routes remain default-off. The
+remaining gates include explicit sole-writer approval and a private durable
+run-state container with narrowly scoped backend access. The public Cockpit
+mining view and the local synthetic triathlon demo do not establish end-to-end
+mining readiness or live mining data.
+
+Sources: [isolated Fabric provisioning](../scripts/provision/mining-streaming.ps1),
+[mining Eventstream](../infra/fabric/mining-streaming/eventstream.json),
+[raw schema](../infra/fabric/mining-streaming/MiningRawSchema.kql),
+[validators and read contracts](../infra/fabric/eventhouse/MiningValidation.kql),
+[deployment notes](../scripts/fabric/README.md), and the backend's
+[mining start](../apps/streaming-backend/src/api/mining-start.ts),
+[read](../apps/streaming-backend/src/api/mining-read.ts), and
+[cancel](../apps/streaming-backend/src/api/mining-cancel.ts) routes.
 
 ## Account-free synthetic demo: isolated local processes
 

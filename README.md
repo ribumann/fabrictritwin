@@ -88,6 +88,31 @@ must use the actual deployed configuration; local/synthetic proof cannot replace
 them. Leave any existing deployed Console running until separately authorized
 to retire it; source consolidation does not delete its cloud resource.
 
+## D01 mining extension: live raw path, readiness gated
+
+The repository also contains a separate Fabric-backed D01 mining extension.
+Mining uses its own Eventstream, Eventhouse, KQL database, and raw tables in the
+existing workspace and capacity; it does not share or modify the triathlon
+Eventstream or database.
+
+As of 14 November 2026, a bounded two-message canary reached the mining raw
+telemetry and state tables. The raw `timestamp_raw` projection preserved the
+sent UTC millisecond strings, and ingestion timestamps were present. Ten
+mining-scoped KQL functions and seven retention policies have been deployed.
+However, both validators currently return `BLOCKED_SOURCE_CONTRACT`; curated and
+quarantine tables remain empty, and no raw-to-curated materialization is
+enabled. Mining start, read, and cancel runtime paths remain default-off. The
+public Cockpit mining view is not yet a live operational mining demo.
+The account-free local synthetic demo remains triathlon-only; it does not
+generate or display simulated mining data.
+
+End-to-end mining still requires an explicit sole-writer decision and approval
+for a private run-state Blob container with narrowly scoped access for the
+backend identity. Those gates are not satisfied by the account-free synthetic
+triathlon demo or by the raw canary. See the [mining architecture and dated
+evidence](docs/release-architecture.md#isolated-d01-mining-path-readiness-gated)
+and the [dependency and permission inventory](docs/dependencies-and-configuration.md).
+
 ## Development
 
 Use Node.js 24 or newer, npm, PowerShell 7 and Pester 5.6.1:
@@ -141,6 +166,7 @@ See [security reporting guidance](SECURITY.md) for vulnerability disclosures.
 - [x] Consolidate the operator UI into Cockpit and retire the legacy Console from source and release configuration.
 - [x] Record bounded live Fabric evidence and the remaining human consent/platform gates.
 - [x] Document the live architecture, operator recovery, demo profiles and release handoff.
+- [ ] Complete Fabric-backed D01 mining source-to-Cockpit acceptance after the required writer and private-state decisions.
 - [ ] User acceptance testing of the actual serving public runtime.
 
 The deployed legacy Console remains running; no cloud cleanup is required for

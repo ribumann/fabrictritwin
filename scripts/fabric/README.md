@@ -58,23 +58,24 @@ Official references:
 The support matrix excludes CustomEndpoint sources and Eventhouse DirectIngestion
 destinations, but includes derived streams.
 
-## Mining: source and query contracts (offline review only)
+## D01 mining: isolated Fabric path and gated source contract
 
-The mining extension shares the existing CustomEndpoint, Eventstream and
-Eventhouse database; it does not share triathlon tables or functions. Mining
-routes remain explicitly filtered by the v2 `entityType` values
-`PlantTelemetry` and `PlantStateEvent`. The proposed owned-object ledger is:
+Mining uses a separately provisioned CustomEndpoint Eventstream, Eventhouse,
+and KQL database in the existing workspace/capacity. It does not share or
+modify the triathlon Eventstream, Eventhouse, tables, or functions. Mining routes
+remain explicitly filtered by the v2 `entityType` values `PlantTelemetry` and
+`PlantStateEvent`. The mining-owned object inventory is:
 
 | Owned object                                         | Purpose and retention                                                                |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `mining_TelemetryRaw`, `mining_PlantStateEvents`     | Full v2 JSON and a separate `timestamp_raw` string projection; 7-day soft-delete     |
 | `mining_PlantCatalog`, `mining_PublishProfile`       | Versioned catalog/profile inputs; no added retention policy                          |
 | `mining_SourceContract`                              | Version and readiness evidence, including timestamp-shape and exclusive-writer gates |
-| `mining_ValidatedTelemetry`, `mining_ValidatedState` | Typed curated rows; proposed read source for analytics; 7-day soft-delete            |
+| `mining_ValidatedTelemetry`, `mining_ValidatedState` | Typed curated rows; empty while source and writer gates are closed; 7-day soft-delete |
 | `mining_Quarantine`                                  | Raw event, timestamp projection, disposition and reason codes; 7-day soft-delete     |
 | `mining_AlertTransitions`, `mining_IncidentLedger`   | Separate alert-transition and approved incident sources; 30-day soft-delete          |
-| `mining_telemetry_json_map`, `mining_state_json_map` | Root-document JSON mappings on the two mining raw tables                             |
-| `mining_telemetry_*`, `mining_state_*`               | The two proposed Eventstream filters, derived streams and destinations               |
+| `mining_telemetry_raw_json_map`, `mining_state_raw_json_map` | Root-document JSON mappings on the two mining raw tables                       |
+| Mining telemetry/state routes                       | Separate Eventstream filters, derived streams and raw-table destinations             |
 
 `scripts/fabric/apply-mining-definitions.ps1` applies the mining-owned KQL
 tables, scoped retention policies and functions after validating the exact
@@ -85,6 +86,13 @@ they return an `ACCEPTED`, `QUARANTINED` or `BLOCKED` disposition and do not
 write either curated or quarantine tables. No update policy, raw-to-curated
 materialization, readiness flag or incident population is enabled. Never use
 a raw dynamic table as a curated reading source.
+
+As of 2026-11-14, a bounded two-message canary reached both mining raw tables;
+the raw timestamp projection preserved the exact sent UTC millisecond strings
+and each table had a non-null ingestion time. The deployed classifiers still
+return `BLOCKED_SOURCE_CONTRACT`; curated and quarantine tables remain empty.
+This proves only the isolated raw routing/mapping path, not end-to-end mining
+readiness or hosted backend reads.
 
 The frozen source contract pins catalog version
 `sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce`,
@@ -149,7 +157,7 @@ particular, water-flow and power series are never combined or converted into a
 fabricated shared ratio; the selected module scope and each exact tag identity
 remain visible to the caller.
 
-The exact candidate result projections are below. All rows include
+The stored result projections are below. All rows include
 `status:string`; Kusto strings cannot be null, so unavailable string values are
 empty strings paired with a non-success status. Nullable non-string values use
 typed nulls.
@@ -166,7 +174,8 @@ typed nulls.
 each `scope_id` (`A`, `B`, `C`, `shared`); it does not duplicate line state
 across physical modules. A blocked request yields a contract status row rather
 than reading or fabricating data. These are source-code-projected column
-contracts and remain subject to hosted KQL compilation.
+contracts; the functions have been applied and read back from the isolated
+Mining KQL database, but useful results still require accepted source data.
 
 The v2 event validators and all five query functions require a lowercase,
 hyphenated UUID `run_id`; query windows are ordered, half-open (`[start,end)`),
@@ -204,12 +213,13 @@ are explicitly unsupported: there is no per-line power allocation and no
 invented shared-water series. A hosted caller must surface every non-OK
 status and must not treat a control row as data.
 
-The query file declares functions against the proposed curated/incident
-schemas, but these definitions have **not** been compiled or run against a
-hosted KQL database. The focused Pester checks are offline static contract and
-planner-safeguard checks only; they do not prove KQL syntax, ingestion,
-timestamp preservation, policy state or runtime results. No live definitions,
-data, queries or permissions are changed by these scripts or checks.
+The checked-in query file declares functions against the curated/incident
+schemas; all ten mining functions were applied and read back from the isolated
+Mining KQL database. The focused Pester checks remain offline static contract
+and planner-safeguard checks: they do not prove ingestion, timestamp
+preservation, policy state or runtime results. The self-test and planner do not
+change live definitions, data, queries or permissions; the separate guarded
+`apply-mining-definitions.ps1` deployer is the live definition path.
 
 ### Synthetic KQL engine self-test
 
@@ -291,22 +301,22 @@ expected line; repeated copies of one line cannot substitute for another.
 Focused offline predicate-model regressions reject duplicate/missing lines
 and swapped summary feeds, but do not execute or compile KQL.
 
-The adjacent manifest also records a **requirements-only, unissued** proof
-contract. For each raw canary table, allow duplicate copies but require exactly
-one distinct event ID, at least one copy, timestamp-lexeme and non-null raw
-ingestion-time matches for every copy, and zero copies in the opposite table.
-Classifier proof is separate: compare duplicate-preserving multisets keyed by
-event ID and raw ingestion time against event ID and `received_at`; pin the
-expected classifier rows independently, require all expected rows to have a
-non-null `received_at` and match, and require one conflict-free deduplicated
-row per event with the minimum receipt time. Do not infer expected classifier
-rows from observed raw copies. A synthetic readiness string or this engine
+The adjacent manifest also records a proposed classifier-proof contract. The
+raw-routing portion has been independently proved by the dated canary above;
+classifier propagation is not accepted because the source gate remains blocked.
+Any future classifier proof must compare duplicate-preserving multisets keyed
+by event ID and raw ingestion time against event ID and `received_at`, pin
+expected rows independently, and require one conflict-free deduplicated row
+per event with the minimum receipt time. Do not infer expected classifier rows
+from observed raw copies. A synthetic readiness string or this engine
 self-test is never proof.
 
 Kusto soft-delete periods are minimum availability periods, not guaranteed
 immediate deletion. Retention commands are scoped to mining-owned tables only;
 the ledger leaves triathlon objects, database recoverability, and unrelated
 content unchanged.
+
+### Historical shared-Eventstream definition planner (superseded; do not execute)
 
 `plan-mining-definition.ps1` compares three **local** decoded `eventstream.json`
 files: an operator-approved baseline, an independently reviewed candidate, and
@@ -350,9 +360,11 @@ read definition, retaining every other part; do not restore a stale whole-item
 snapshot over unrelated edits. Mining table/function deletion is a separate
 destructive decision requiring explicit approval and a check for downstream
 use; never tear down the database. The legacy resume helper deliberately
-rejects this expanded topology until separately extended and tested. Actual
-ingestion, proof-gate population, hosted function compilation and runtime
-validation remain pending an approved verification window.
+rejects this expanded topology until separately extended and tested. This
+historical shared-Eventstream proposal was not used for the current Mining path.
+The separate Mining items, ten functions, and bounded raw canary are described
+above. Source readiness/materialization, hosted application reads, and runtime
+start/cancel remain gated.
 
 ### Isolated mining streaming deployment
 
@@ -383,11 +395,10 @@ database's query endpoint, applies the policy to those two exact tables, and rea
 each policy back before creating the Eventstream. The Kusto token remains in
 memory. The items use a new custom endpoint and exact `PlantTelemetry` /
 `PlantStateEvent` filters, without copying triathlon source credentials or
-declaring a projecting input schema. Successful item creation is **not** ingestion
-or raw-preservation proof. Retrieve the new source's own connection securely,
-send the two-message packet below once, and verify it against the returned
-database endpoint before enabling mining. The existing shared ontology/static
-packet is not part of this deployment.
+declaring a projecting input schema. Successful item creation alone is **not**
+ingestion or raw-preservation proof; the bounded isolated canary evidence below
+is separate. The existing shared ontology/static packet is not part of this
+deployment.
 
 The bounded live canary passed on 2026-11-14: each intended raw table received
 one matching event with a non-null ingestion time, and `timestamp_raw` retained
@@ -397,9 +408,12 @@ datetime and checks exact lexical preservation in the separate `timestamp_raw`
 string column. This proves only the two-message raw routing/mapping path, not
 full-payload lexical preservation, curated mining readiness, or hosted app reads.
 
-### Historical shared-Eventstream canary proposal
+### Historical shared-Eventstream canary proposal (superseded; do not execute)
 
-This is a proposed, unexecuted canary, not a frozen native mutation packet,
+This is a historical, unexecuted proposal, not the current Mining topology or
+an apply procedure. **Do not execute it against the triathlon Eventstream.**
+The isolated Mining Eventstream and its bounded raw canary are described above.
+This proposed canary is not a frozen native mutation packet,
 authorization, or an apply procedure. The reviewed source is pinned in the
 adjacent manifest; no fresh target readback/ETag, exact current target hash,
 independently protected target identity, or observed permission evidence is
@@ -423,11 +437,9 @@ not needed for this raw-ingestion canary; no classifier, quarantine,
 materialization, update policy, incident data, or `SourceContract` readiness
 write is included.
 
-Use two synthetic messages only. The fixed sample below is for offline review;
-an approved run must use a fresh run ID and current canonical UTC millisecond
-timestamp strings, recomputing each event ID from `run_id:sequence` and
-retaining those exact strings for the proof query. The per-table event count is
-scoped to that fresh run, not to all historical rows.
+The fixed packet below and its commands are retained for offline review of the
+superseded proposal; do not send them to the triathlon Eventstream. Any future
+Mining canary must use the dedicated Mining Eventstream and a fresh packet.
 
 After building the simulator workspace, generate that exact two-message packet
 without sending anything:
@@ -509,8 +521,9 @@ command may target a triathlon table or database-wide scope. Because definition
 update is a full replacement without a documented atomic compare-and-swap, an
 external owner must provide a serialized writer-free maintenance window and the
 target must be re-read immediately before the write. Current Apply remains
-blocked; no capacity resume, permission change, live send, or cloud write is part
-of this packet.
+blocked for this historical full-definition proposal; it is unrelated to the
+separately provisioned Mining profile. No capacity resume, permission change,
+live send, or cloud write is part of this packet.
 
 There is no exact frozen native mutation packet ready for approval here: the
 source scope and local structural checks are documented, but the current target
