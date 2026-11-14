@@ -8,11 +8,11 @@ BeforeAll {
     $script:Query = Get-Content -LiteralPath $script:QueryPath -Raw
     $script:Manifest = Get-Content -LiteralPath $script:ManifestPath -Raw | ConvertFrom-Json
     $script:ExpectedSourceHashes = @{
-        'infra/fabric/eventhouse/MiningValidation.kql' = 'e733da5365075ea850588f1bf57ff3bc3ff7a2055fa3217149c5f4d26b94e0df'
+        'infra/fabric/eventhouse/MiningValidation.kql' = '8ed380084a1a1975fa4883e66085a6581ae5cce0321c661b37bcf050f6398170'
         'infra/fabric/eventhouse/MiningQueries.kql' = '818036feac8f5edb23c2c3564014c1ab0b4271f1926dc3257a87271c53e1ab1a'
         'apps/simulator/src/mining/plant-catalog.json' = '0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce'
         'apps/simulator/src/mining/catalog.ts' = 'ae699fe26beaad2f245a317ecb96e9dbfdecdf0414a34e1eb26a31f5f1930a66'
-        'infra/fabric/eventhouse/MiningSchema.kql' = 'd8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1'
+        'infra/fabric/eventhouse/MiningSchema.kql' = '2d780c59767ae0937914aeb3e36c48182ad2d913720ad199526e1858e62dbdec'
     }
 }
 
