@@ -1,0 +1,78 @@
+name: Mining bootstrap identity read-only OIDC proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-oidc:
+    if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: azure-mining-bootstrap
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CORE_OUTPUT: none
+      CLIENT_ID: ${{ vars.MINING_STATE_DEPLOY_CLIENT_ID }}
+      TENANT_ID: ${{ vars.MINING_STATE_DEPLOY_TENANT_ID }}
+      SUBSCRIPTION_ID: ${{ vars.MINING_STATE_DEPLOY_SUBSCRIPTION_ID }}
+      RESOURCE_GROUP: ${{ vars.MINING_STATE_DEPLOY_RESOURCE_GROUP }}
+      EXPECTED_ACTOR_ID: ${{ vars.MINING_STATE_ACTOR_ID }}
+      SOURCE_REVISION: ${{ github.sha }}
+      ACTOR_ID: ${{ github.actor_id }}
+    steps:
+      - name: Validate protected configuration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('CLIENT_ID', 'TENANT_ID', 'SUBSCRIPTION_ID', 'RESOURCE_GROUP', 'EXPECTED_ACTOR_ID')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ([string]::IsNullOrWhiteSpace($value) -or $value.Contains("`n") -or $value.Contains("`r")) {
+              throw "Missing or invalid protected variable: $name"
+            }
+            Write-Output "::add-mask::$value"
+          }
+          if ($env:ACTOR_ID -cne $env:EXPECTED_ACTOR_ID -or $env:EXPECTED_ACTOR_ID -notmatch '^[0-9]+$' -or
+              $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:SOURCE_REVISION -cnotmatch '^[a-f0-9]{40}$') {
+            throw 'Caller/source mismatch or rerun; use a new reviewed dispatch.'
+          }
+      - name: Verify actual environment OIDC claims
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $response = Invoke-RestMethod -Uri "$($env:ACTIONS_ID_TOKEN_REQUEST_URL)&audience=api%3A%2F%2FAzureADTokenExchange" `
+              -Headers @{ Authorization = "bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN" } -Verbose:$false -Debug:$false
+            $payload = $response.value.Split('.')[1].Replace('-', '+').Replace('_', '/')
+            $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload.PadRight(
+              $payload.Length + (4 - $payload.Length % 4) % 4, '='))) | ConvertFrom-Json
+            if ($claims.iss -cne 'https://token.actions.githubusercontent.com' -or
+                $claims.aud -cne 'api://AzureADTokenExchange' -or
+                $claims.sub -cne 'repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap' -or
+                $claims.repository_id -cne '1449513330' -or $claims.repository_owner_id -cne '46997953' -or
+                $claims.ref -cne 'refs/heads/main' -or $claims.sha -cne $env:SOURCE_REVISION -or
+                $claims.actor_id -cne $env:EXPECTED_ACTOR_ID -or $claims.event_name -cne 'workflow_dispatch' -or
+                $claims.workflow_ref -cne 'ribumann/fabrictritwin/.github/workflows/mining-bootstrap-oidc-proof.yml@refs/heads/main') {
+              throw 'Claims mismatch.'
+            }
+          } catch { throw 'Environment OIDC verification failed; raw token/response suppressed.' }
+          Write-Output 'Exact protected OIDC caller and source verified.'
+      - name: Exchange GitHub OIDC token for Azure access
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ env.CLIENT_ID }}
+          tenant-id: ${{ env.TENANT_ID }}
+          subscription-id: ${{ env.SUBSCRIPTION_ID }}
+      - name: Read configured resource group
+        shell: bash
+        run: |
+          set -euo pipefail
+          az group show \
+            --subscription "$SUBSCRIPTION_ID" \
+            --name "$RESOURCE_GROUP" \
+            --output none
+          printf 'Read-only Mining bootstrap identity resource-group lookup succeeded.\n'

@@ -258,10 +258,13 @@ review gate. The workflow verifies the exact immutable-ID OIDC subject
 `repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap`,
 issuer, audience, repository and owner IDs, actor ID, main ref, exact workflow
 path and source SHA before login. Configure that subject on the dedicated
-identity and verify its read-only exchange before granting write rights. The
-existing `azure-deploy` proof does not verify this new environment or identity.
-Azure tokens must match the pinned deployment caller as well as tenant. Reruns
-are rejected: use a new dispatch, approvals and fresh preview after inspection.
+identity and run the manual
+`.github/workflows/mining-bootstrap-oidc-proof.yml` first. That workflow checks
+the exact claims and reads only the configured resource group; it does not
+verify Blob reachability or write permissions. The existing `azure-deploy`
+proof does not verify this new environment or identity. Azure tokens must match
+the pinned deployment caller as well as tenant. Reruns are rejected: use a new
+dispatch, approvals and fresh preview after inspection.
 
 ### Permission and network review before authorization
 

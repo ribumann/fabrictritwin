@@ -163,7 +163,8 @@ and the manual Mining state-bootstrap workflow. The read-only proofs establish
 only that their specific identity can exchange a token and read its configured
 resource group; they do not prove write permissions or Mining Blob access. On
 14 November 2026, the `azure-canary` and `azure-deploy` read-only proofs
-succeeded for those limited checks.
+succeeded for those limited checks. The Mining-specific read-only OIDC proof
+must be configured and run separately before granting bootstrap write rights.
 Mining bootstrap uses the separate `azure-mining-bootstrap` environment and
 requires a dedicated OIDC identity, independent environment protection, and
 explicitly reviewed permissions before it can be used. Files under
