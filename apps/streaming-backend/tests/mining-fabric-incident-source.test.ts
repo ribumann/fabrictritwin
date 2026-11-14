@@ -16,7 +16,8 @@ const asOf = "2026-01-01T12:01:00.000Z";
 const receivedAt = "2026-01-01T12:01:03.000Z";
 const run = createD01IncidentRun({ runId, startedAt: start, stopAt: "2026-01-01T12:05:00.000Z" });
 const tag = D01_PLANT_CATALOG.telemetry_tags[0]!;
-const eventId = (sequence: number) => createHash("sha256").update(`${runId}:${sequence}`).digest("hex");
+const eventId = (sequence: number) =>
+  createHash("sha256").update(`${runId}:${sequence}`).digest("hex");
 const readiness = {
   status: "READY",
   catalog_version: D01_CATALOG_VERSION,
@@ -86,7 +87,12 @@ describe("unmounted Fabric incident observations", () => {
     const first = fixture([reading]);
     const saved = await first.source.read({ runId, asOf, committed: [], signal: first.signal });
     const next = fixture([reading, state]);
-    const result = await next.source.read({ runId, asOf, committed: saved.observations, signal: next.signal });
+    const result = await next.source.read({
+      runId,
+      asOf,
+      committed: saved.observations,
+      signal: next.signal,
+    });
     expect(result.observations).toHaveLength(1);
     expect(result.observations[0]).toMatchObject({ eventId: eventId(2), kind: "state" });
   });
@@ -107,18 +113,31 @@ describe("unmounted Fabric incident observations", () => {
       await expect(source.read({ runId, asOf, committed: [], signal })).rejects.toThrow();
     }
     const { source, signal } = fixture([reading, { ...reading, value: 43 }]);
-    await expect(source.read({ runId, asOf, committed: [], signal })).rejects.toThrow(/Conflicting/);
+    await expect(source.read({ runId, asOf, committed: [], signal })).rejects.toThrow(
+      /Conflicting/,
+    );
     const blocked = fixture([], { ...readiness, status: "BLOCKED_SOURCE_CONTRACT" });
-    await expect(blocked.source.read({ runId, asOf, committed: [], signal: blocked.signal })).rejects.toThrow(/not ready/);
+    await expect(
+      blocked.source.read({ runId, asOf, committed: [], signal: blocked.signal }),
+    ).rejects.toThrow(/not ready/);
     expect(blocked.query).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a changed previously committed event and a foreign run", async () => {
     const original = fixture([reading]);
-    const saved = await original.source.read({ runId, asOf, committed: [], signal: original.signal });
+    const saved = await original.source.read({
+      runId,
+      asOf,
+      committed: [],
+      signal: original.signal,
+    });
     const altered = fixture([{ ...reading, value: 43 }]);
-    await expect(altered.source.read({ runId, asOf, committed: saved.observations, signal: altered.signal })).rejects.toThrow(/Conflicting/);
-    await expect(altered.source.read({ runId: "foreign", asOf, committed: [], signal: altered.signal })).rejects.toThrow(/run/);
+    await expect(
+      altered.source.read({ runId, asOf, committed: saved.observations, signal: altered.signal }),
+    ).rejects.toThrow(/Conflicting/);
+    await expect(
+      altered.source.read({ runId: "foreign", asOf, committed: [], signal: altered.signal }),
+    ).rejects.toThrow(/run/);
     expect(altered.query).toHaveBeenCalledTimes(2);
   });
 
@@ -127,7 +146,8 @@ describe("unmounted Fabric incident observations", () => {
     const saved = await f.source.read({ runId, asOf, committed: [], signal: f.signal });
     const reordered = Object.fromEntries(Object.entries(saved.observations[0]!).reverse());
     const observation = { ...reordered, ...saved.observations[0]! };
-    expect(await f.source.read({ runId, asOf, committed: [observation], signal: f.signal }))
-      .toEqual({ observations: [], receivedAt });
+    expect(
+      await f.source.read({ runId, asOf, committed: [observation], signal: f.signal }),
+    ).toEqual({ observations: [], receivedAt });
   });
 });

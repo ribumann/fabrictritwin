@@ -142,7 +142,9 @@ describe("bounded mining query transport", () => {
       .filter((_, i) => i % 3 === 2)
       .map((call) => JSON.parse(String(call[1]?.body)));
     expect(requests[0].csl).toContain("mining_SourceReadiness()");
-    expect(requests[1].csl).toContain("union withsource=source mining_ValidatedTelemetry, mining_ValidatedState");
+    expect(requests[1].csl).toContain(
+      "union withsource=source mining_ValidatedTelemetry, mining_ValidatedState",
+    );
     expect(requests[1].csl).toContain("where run_id == run and timestamp <= asof");
     expect(requests[1].csl).not.toContain(input.runId);
     expect(requests[1].properties.Parameters.run).toBe(`'${input.runId}'`);

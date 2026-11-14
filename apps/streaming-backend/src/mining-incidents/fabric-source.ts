@@ -38,12 +38,30 @@ function subMillisecond(value: string): boolean {
 
 function fingerprint(observation: Observation): string {
   const common = [
-    observation.runId, observation.eventId, observation.timestamp, observation.kind,
+    observation.runId,
+    observation.eventId,
+    observation.timestamp,
+    observation.kind,
     observation.ingestionTime ?? null,
   ];
-  return JSON.stringify(observation.kind === "reading"
-    ? [...common, observation.tagId, observation.value, observation.unit, observation.quality, observation.intervalSeconds]
-    : [...common, observation.scopeId, observation.state, observation.scheduledRunning, observation.sequence]);
+  return JSON.stringify(
+    observation.kind === "reading"
+      ? [
+          ...common,
+          observation.tagId,
+          observation.value,
+          observation.unit,
+          observation.quality,
+          observation.intervalSeconds,
+        ]
+      : [
+          ...common,
+          observation.scopeId,
+          observation.state,
+          observation.scheduledRunning,
+          observation.sequence,
+        ],
+  );
 }
 
 function mapRow(
@@ -108,9 +126,15 @@ function mapRow(
   }
   if (
     row.source !== "mining_ValidatedState" ||
-    (row.scope_id !== "A" && row.scope_id !== "B" && row.scope_id !== "C" && row.scope_id !== "shared") ||
-    (row.state !== "starting" && row.state !== "running" && row.state !== "idle" &&
-      row.state !== "stopped" && row.state !== "fault") ||
+    (row.scope_id !== "A" &&
+      row.scope_id !== "B" &&
+      row.scope_id !== "C" &&
+      row.scope_id !== "shared") ||
+    (row.state !== "starting" &&
+      row.state !== "running" &&
+      row.state !== "idle" &&
+      row.state !== "stopped" &&
+      row.state !== "fault") ||
     typeof row.scheduled_running !== "boolean"
   ) {
     return invalid("Invalid incident state observation.");
@@ -153,7 +177,10 @@ export function createFabricIncidentSource(
       ) {
         throw new MiningQueryError("upstream", "The incident observation source is not ready.");
       }
-      const rows = await query({ kind: "incident-observations", runId, asOf, maxRows: 1000 }, signal);
+      const rows = await query(
+        { kind: "incident-observations", runId, asOf, maxRows: 1000 },
+        signal,
+      );
       signal.throwIfAborted();
       const receivedMs = now();
       if (!Number.isFinite(receivedMs) || receivedMs < asOfMs) {
