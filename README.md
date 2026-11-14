@@ -89,34 +89,32 @@ must use the actual deployed configuration; local/synthetic proof cannot replace
 them. Leave any existing deployed Console running until separately authorized
 to retire it; source consolidation does not delete its cloud resource.
 
-## D01 mining extension: live raw path, readiness gated
+## D01 mining extension: public Fabric-connected demo
 
 The repository also contains a separate Fabric-backed D01 mining extension.
 Mining uses its own Eventstream, Eventhouse, KQL database, and raw tables in the
 existing workspace and capacity; it does not share or modify the triathlon
 Eventstream or database.
 
-As of 14 November 2026, a bounded two-message canary reached the mining raw
-telemetry and state tables. The raw `timestamp_raw` projection preserved the
-sent UTC millisecond strings, and ingestion timestamps were present. Ten
-mining-scoped KQL functions and seven retention policies have been deployed.
-However, both validators currently return `BLOCKED_SOURCE_CONTRACT`; curated and
-quarantine tables remain empty, and no raw-to-curated materialization is
-enabled. Mining start, read, and cancel runtime paths remain default-off. The
-public [Cockpit Mining view](https://ontologydemo.liberatetheinnerchild.net/mining)
-is reachable, but it is not yet a live operational mining demo.
-The account-free local synthetic demo remains triathlon-only; it does not
-generate or display simulated mining data.
+The public [Cockpit Mining view](https://ontologydemo.liberatetheinnerchild.net/mining)
+offers anonymous, bounded D01 runs of generated telemetry through the real
+Mining Eventstream and Eventhouse. Runs last up to five minutes, share one
+durable active writer and have a ten-minute start interval. Cancellation
+requests a stop; publisher completion alone does not prove ingestion.
 
-End-to-end mining still requires an explicit sole-writer decision and approval
-for a private run-state Blob container with narrowly scoped access for the
-backend identity. Its bootstrap also requires a separately protected
-`azure-mining-bootstrap` environment and dedicated OIDC identity; the
-unattended app-image deployment environment is not sufficient. Those gates are
-not satisfied by the account-free synthetic triathlon demo or by the raw
-canary. See the [mining architecture and dated
+On 14 November 2026, an actual public run produced 303 validated telemetry and
+20 validated state events in an observed snapshot, with no quarantined events;
+all 56 catalog readings appeared in the public overview. These are dated
+observations, not a continuing availability guarantee. The current-run demo
+read path does not verify private proof receipts or native-definition drift,
+and the configured writer designation is not technical proof of exclusivity.
+Incident assessments and the mining assistant remain unavailable. Local
+account-free synthetic mode remains triathlon-only.
+
+The public demo controls and reads are separately opt-in and do not replace the
+protected delegated APIs. See the [mining architecture and dated
 evidence](docs/release-architecture.md#isolated-d01-mining-path-readiness-gated)
-and the [dependency and permission inventory](docs/dependencies-and-configuration.md).
+and [run coordination settings](docs/mining-run-coordination.md).
 
 ## Development
 
@@ -171,7 +169,7 @@ See [security reporting guidance](SECURITY.md) for vulnerability disclosures.
 - [x] Consolidate the operator UI into Cockpit and retire the legacy Console from source and release configuration.
 - [x] Record bounded live Fabric evidence and the remaining human consent/platform gates.
 - [x] Document the live architecture, operator recovery, demo profiles and release handoff.
-- [ ] Complete Fabric-backed D01 mining source-to-Cockpit acceptance after the required writer and private-state decisions.
+- [ ] Complete D01 mining incident readiness and public user acceptance.
 - [ ] User acceptance testing of the actual serving public runtime.
 
 The deployed legacy Console remains running; no cloud cleanup is required for
