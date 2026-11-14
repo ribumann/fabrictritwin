@@ -106,6 +106,64 @@ $createdDatabase = New-MiningStreamingItem -Type 'KQLDatabase' -Collection 'kqlD
     }
 $replacements.KQLDATABASE_ITEM_ID = $createdDatabase.id
 
+if (-not $WhatIfPreference) {
+    $databaseDetail = (Invoke-FabricRestMethod -Method Get `
+            -Uri "https://api.fabric.microsoft.com/v1/workspaces/$workspaceId/kqlDatabases/$($createdDatabase.id)" `
+            -Headers $headers).Body
+    $queryServiceUri = [uri]$databaseDetail.properties.queryServiceUri
+    if ($databaseDetail.id -ne $createdDatabase.id -or
+        $databaseDetail.displayName -ne "$NamePrefix-realtime" -or
+        -not $queryServiceUri.IsAbsoluteUri -or $queryServiceUri.Scheme -ne 'https' -or
+        $queryServiceUri.Host -notlike '*.kusto.fabric.microsoft.com') {
+        throw 'The created mining database did not return its exact identity and an HTTPS Fabric Kusto endpoint.'
+    }
+
+    $kustoToken = ((Invoke-Az -Arguments @(
+                'account', 'get-access-token',
+                '--resource', $queryServiceUri.GetLeftPart([UriPartial]::Authority),
+                '--query', 'accessToken',
+                '-o', 'tsv'
+            )) -join '').Trim()
+    if ([string]::IsNullOrWhiteSpace($kustoToken)) {
+        throw 'Failed to acquire a Kusto access token for the verified mining database endpoint.'
+    }
+
+    foreach ($tableName in @('mining_TelemetryRaw', 'mining_PlantStateEvents')) {
+        $alterCommand = ".alter table $tableName policy ingestiontime true"
+        $alterHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+                [Text.Encoding]::UTF8.GetBytes($alterCommand))).ToLowerInvariant()
+        Write-MiningProvisionReceipt @{
+            status = 'ApplyingIngestionTimePolicy'; databaseId = $createdDatabase.id
+            table = $tableName; requestSha256 = $alterHash
+        }
+        try {
+            $body = @{ db = "$NamePrefix-realtime"; csl = $alterCommand } | ConvertTo-Json -Compress
+            Invoke-RestMethod -Method Post -Uri "$($queryServiceUri.GetLeftPart([UriPartial]::Authority))/v1/rest/mgmt" `
+                -Headers @{ Authorization = "Bearer $kustoToken"; Accept = 'application/json' } `
+                -ContentType 'application/json' -Body $body | Out-Null
+
+            $verifyCommand = ".show table $tableName policy ingestiontime"
+            $verifyBody = @{ db = "$NamePrefix-realtime"; csl = $verifyCommand } | ConvertTo-Json -Compress
+            $verification = Invoke-RestMethod -Method Post `
+                -Uri "$($queryServiceUri.GetLeftPart([UriPartial]::Authority))/v1/rest/mgmt" `
+                -Headers @{ Authorization = "Bearer $kustoToken"; Accept = 'application/json' } `
+                -ContentType 'application/json' -Body $verifyBody
+            $policy = $verification.Tables[0].Rows[0][2] | ConvertFrom-Json
+            if (-not $policy.IsEnabled) { throw "Ingestion-time policy verification failed for '$tableName'." }
+            Write-MiningProvisionReceipt @{
+                status = 'IngestionTimePolicyEnabled'; databaseId = $createdDatabase.id; table = $tableName
+            }
+        }
+        catch {
+            Write-MiningProvisionReceipt @{
+                status = 'UnresolvedIngestionTimePolicy'; databaseId = $createdDatabase.id; table = $tableName
+                requestSha256 = $alterHash
+            }
+            throw
+        }
+    }
+}
+
 $createdEventstream = New-MiningStreamingItem -Type 'Eventstream' -Collection 'items' `
     -DisplayName "$NamePrefix-eventstream" -TemplatePath (Join-Path $eventstreamRoot 'create-eventstream.request.json') `
     -DefinitionSourceRoot $eventstreamRoot -Overrides @{

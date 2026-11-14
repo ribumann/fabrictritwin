@@ -370,13 +370,25 @@ database with a new Eventhouse; the separately named `mining-d01-realtime` datab
 is the ingestion target.
 
 The definitions in `infra/fabric/mining-streaming` provision only two raw tables,
-root JSON mappings, seven-day retention and ingestion-time policies. They use a
-new custom endpoint and exact `PlantTelemetry` / `PlantStateEvent` filters, without
-copying triathlon source credentials or declaring a projecting input schema.
-Successful item creation is **not** ingestion or raw-preservation proof. Retrieve
-the new source's own connection securely, send the two-message packet below once,
-and verify it against the returned database endpoint before enabling mining.
-The existing shared ontology/static packet is not part of this deployment.
+root JSON mappings and seven-day retention. Because Fabric's database-creation
+script rejects ingestion-time policy commands, the provisioner obtains the new
+database's query endpoint, applies the policy to those two exact tables, and reads
+each policy back before creating the Eventstream. The Kusto token remains in
+memory. The items use a new custom endpoint and exact `PlantTelemetry` /
+`PlantStateEvent` filters, without copying triathlon source credentials or
+declaring a projecting input schema. Successful item creation is **not** ingestion
+or raw-preservation proof. Retrieve the new source's own connection securely,
+send the two-message packet below once, and verify it against the returned
+database endpoint before enabling mining. The existing shared ontology/static
+packet is not part of this deployment.
+
+The bounded live canary passed on 2026-11-14: each intended raw table received
+one matching event with a non-null ingestion time, and `timestamp_raw` retained
+the exact sent UTC millisecond string. Kusto parses ISO timestamps inside the
+`event:dynamic` value as `datetime`; therefore the proof compares that field as a
+datetime and checks exact lexical preservation in the separate `timestamp_raw`
+string column. This proves only the two-message raw routing/mapping path, not
+full-payload lexical preservation, curated mining readiness, or hosted app reads.
 
 ### Historical shared-Eventstream canary proposal
 

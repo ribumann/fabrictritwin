@@ -151,6 +151,14 @@ BeforeAll {
                 return [pscustomobject]@{ id = $global:T039_WorkspaceId; capacityId = $global:T039_FabricCapacityId }
             }
 
+            if ($Method -eq 'Get' -and $Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$($global:T039_WorkspaceId)/kqlDatabases/$(New-T039GuidFor -Seed 'mining-d01-realtime')") {
+                return [pscustomobject]@{
+                    id = New-T039GuidFor -Seed 'mining-d01-realtime'
+                    displayName = 'mining-d01-realtime'
+                    properties = [pscustomobject]@{ queryServiceUri = 'https://trd-test.z2.kusto.fabric.microsoft.com' }
+                }
+            }
+
             if ($Method -eq 'Post' -and $Uri -eq 'https://api.fabric.microsoft.com/v1/workspaces') {
                 $request = $Body | ConvertFrom-Json -Depth 100
                 $workspace = [pscustomobject]@{
@@ -186,6 +194,22 @@ BeforeAll {
                         Body = $Body
                     })
                 return [pscustomobject]@{ name = $request.name }
+            }
+
+            if ($Method -eq 'Post' -and $Uri -eq 'https://trd-test.z2.kusto.fabric.microsoft.com/v1/rest/mgmt') {
+                $request = $Body | ConvertFrom-Json
+                [void]$global:T039_RequestLog.Add([pscustomobject]@{
+                        Uri = $Uri
+                        Body = $Body
+                    })
+                if ($request.csl -like '.show table * policy ingestiontime') {
+                    return [pscustomobject]@{
+                        Tables = @([pscustomobject]@{
+                                Rows = @(,@('IngestionTimePolicy', 'entity', '{"IsEnabled":true}'))
+                            })
+                    }
+                }
+                return [pscustomobject]@{}
             }
 
             if ($Method -eq 'Post' -and $Uri -like "https://api.fabric.microsoft.com/v1/workspaces/$($global:T039_WorkspaceId)/items/*/updateDefinition") {
@@ -334,7 +358,8 @@ Describe 'provision-fabric-items.ps1 (T039)' {
         It 'creates only three isolated items and binds raw destinations to the new database' {
             $result = & $script:ProvisionScript @script:MiningArguments
             $result.status | Should -Be 'ItemsCreatedNotIngestionVerified'
-            Should -Invoke Invoke-RestMethod -Times 3 -Exactly -ParameterFilter { $Method -eq 'Post' }
+            Should -Invoke Invoke-RestMethod -Times 3 -Exactly -ParameterFilter { $Method -eq 'Post' -and $Uri -like 'https://api.fabric.microsoft.com/*' }
+            Should -Invoke Invoke-RestMethod -Times 4 -Exactly -ParameterFilter { $Method -eq 'Post' -and $Uri -like 'https://*.kusto.fabric.microsoft.com/v1/rest/mgmt' }
             Should -Invoke az -Times 0 -ParameterFilter { $args[0] -eq 'resource' -or $args[1] -eq 'set' }
             $requests = @($global:T039_RequestLog | ForEach-Object { $_.Body | ConvertFrom-Json -Depth 100 })
             $database = $requests | Where-Object displayName -eq 'mining-d01-realtime'
@@ -348,8 +373,12 @@ Describe 'provision-fabric-items.ps1 (T039)' {
             @($topology.operators.properties.conditions.value.value | Sort-Object) | Should -Be @('PlantStateEvent', 'PlantTelemetry')
             @($topology.sources) | Should -HaveCount 1
             $topology.sources[0].name | Should -Be 'mining_custom_endpoint'
+            $policyCommands = @($global:T039_RequestLog | Where-Object { $_.Uri -like 'https://*.kusto.fabric.microsoft.com/v1/rest/mgmt' } | ForEach-Object { ($_.Body | ConvertFrom-Json).csl })
+            @($policyCommands | Where-Object { $_ -like '.alter table * policy ingestiontime true' }) | Should -HaveCount 2
+            @($policyCommands | Where-Object { $_ -like '.show table * policy ingestiontime' }) | Should -HaveCount 2
             $receipt = Get-Content -LiteralPath $script:MiningArguments.ReceiptPath | ForEach-Object { $_ | ConvertFrom-Json }
             @($receipt | Where-Object status -eq 'Created') | Should -HaveCount 3
+            @($receipt | Where-Object status -eq 'IngestionTimePolicyEnabled') | Should -HaveCount 2
             $receipt[-1].status | Should -Be 'ItemsCreatedNotIngestionVerified'
         }
 
