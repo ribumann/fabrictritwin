@@ -22,7 +22,12 @@ import {
   validSeries,
   seriesQuery,
 } from "../src/ui/public/mining/data.js";
-import { connections, createPlant3D, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
+import {
+  connections,
+  createPlant3D,
+  relevantTags,
+  visibleModules,
+} from "../src/ui/public/mining/plant.js";
 import {
   APPEARANCE_RELEASE,
   fitModelToNode,
@@ -33,7 +38,10 @@ import {
   validateAppearanceBundle,
 } from "../src/ui/public/mining/appearance.js";
 
-const reconstructedSource = new URL("../src/ui/public/mining/plant/reconstructed/source/", import.meta.url);
+const reconstructedSource = new URL(
+  "../src/ui/public/mining/plant/reconstructed/source/",
+  import.meta.url,
+);
 const readJson = (path: string) =>
   JSON.parse(readFileSync(new URL(path, reconstructedSource), "utf8"));
 const readCatalog = () =>
@@ -232,16 +240,10 @@ describe("unknown and catalog selection semantics", () => {
   it("allows only canonical module associations and does not invent a metric for state-only incidents", () => {
     const catalog = { modules: [{ id: "D01.A.crusher" }] };
     expect(
-      validIncidentAssociation(
-        { moduleId: null, metric: null, affectedModuleIds: [] },
-        catalog,
-      ),
+      validIncidentAssociation({ moduleId: null, metric: null, affectedModuleIds: [] }, catalog),
     ).toBe(true);
     expect(
-      validIncidentAssociation(
-        { moduleId: null, metric: "feed", affectedModuleIds: [] },
-        catalog,
-      ),
+      validIncidentAssociation({ moduleId: null, metric: "feed", affectedModuleIds: [] }, catalog),
     ).toBe(false);
     expect(
       validIncidentAssociation(
@@ -349,6 +351,61 @@ describe("unknown and catalog selection semantics", () => {
     expect(validAsOf(params.start, params.start, true)).toBe(true);
     expect(validAsOf(params.start, params.end, true)).toBe(false);
   });
+  it("accepts only aligned partial bins that intersect the requested window", () => {
+    const catalog = {
+      telemetry_tags: [
+        {
+          id: "D01.A.dms.medium_density",
+          module_id: "D01.A.dms",
+          metric: "medium_density",
+          unit: "kg/m3",
+        },
+      ],
+    };
+    for (const [binMinutes, firstBin, beforeBin] of [
+      [1, "2026-01-01T00:02:00Z", "2026-01-01T00:01:00Z"],
+      [5, "2026-01-01T00:00:00Z", "2025-12-31T23:55:00Z"],
+    ] as const) {
+      const params = {
+        runId: "approved",
+        moduleId: "D01.A.dms",
+        metric: "density",
+        start: "2026-01-01T00:02:15Z",
+        end: "2026-01-01T00:12:15Z",
+        binMinutes: String(binMinutes),
+        maxRows: "1000",
+      };
+      const row = { seriesId: "D01.A.dms.medium_density", unit: "kg/m3", timestamp: firstBin };
+      const data = {
+        plantId: "D01",
+        runId: params.runId,
+        catalogVersion: "pinned",
+        moduleId: params.moduleId,
+        metric: params.metric,
+        windowStart: params.start,
+        windowEnd: params.end,
+        binMinutes,
+        rows: [row],
+      };
+      expect(validSeries(data, params, "pinned", catalog)).toBe(true);
+      expect(
+        validSeries(
+          { ...data, rows: [{ ...row, timestamp: beforeBin }] },
+          params,
+          "pinned",
+          catalog,
+        ),
+      ).toBe(false);
+      expect(
+        validSeries(
+          { ...data, rows: [{ ...row, timestamp: params.start }] },
+          params,
+          "pinned",
+          catalog,
+        ),
+      ).toBe(false);
+    }
+  });
   it("does not treat missing, bad, stale or nonfinite readings as healthy zero", () => {
     for (const quality of ["missing", "bad", "stale"])
       expect(usable({ quality, value: 0 })).toBe(false);
@@ -451,7 +508,9 @@ describe("pinned reconstructed appearance", () => {
       setClearColor() {}
       setSize() {}
       setAnimationLoop() {}
-      render(scene: THREE.Scene, camera: THREE.Camera) { renders.push({ scene, camera }); }
+      render(scene: THREE.Scene, camera: THREE.Camera) {
+        renders.push({ scene, camera });
+      }
       dispose() {}
     }
     class Controls {
@@ -469,7 +528,9 @@ describe("pinned reconstructed appearance", () => {
     class SplatMesh extends THREE.Group {
       initialized = Promise.resolve();
       splats = {};
-      dispose() { disposeSplat(); }
+      dispose() {
+        disposeSplat();
+      }
     }
     class SparkRenderer extends THREE.Group {
       dispose() {}
@@ -488,7 +549,7 @@ describe("pinned reconstructed appearance", () => {
       );
     });
     vi.doMock("three", async () => ({
-      ...await vi.importActual<typeof import("three")>("three"),
+      ...(await vi.importActual<typeof import("three")>("three")),
       WebGLRenderer: Renderer,
     }));
     vi.doMock("three/addons/loaders/GLTFLoader.js", () => ({ GLTFLoader: Loader }));
@@ -504,9 +565,9 @@ describe("pinned reconstructed appearance", () => {
       const lines = new Set(["A", "B", "C", "shared"]);
       viewer.update(lines, false, "D01.A.dms");
       const camera = renders.at(-1)?.camera;
-      const selectedBox = renders.at(-1)?.scene.children.find(
-        (child) => child instanceof THREE.BoxHelper && child.visible,
-      );
+      const selectedBox = renders
+        .at(-1)
+        ?.scene.children.find((child) => child instanceof THREE.BoxHelper && child.visible);
       expect(selectedBox).toBeDefined();
       await viewer.setVisualMode("reconstructed", bundle, false);
       expect(viewer.renderedModuleCount).toBe(20);
@@ -589,26 +650,26 @@ describe("pinned reconstructed appearance", () => {
       ? invalidMetadata.appearance_assets
       : Object.values(invalidMetadata.appearance_assets);
     (invalidAssets[0] as { uri: string }).uri = "/api/assets/plant/splats/../object-000.ply";
-    expect(() =>
-      validateAppearanceBundle(catalog, invalidMetadata, scene, files, quality),
-    ).toThrow(/outside the pinned plant path/);
+    expect(() => validateAppearanceBundle(catalog, invalidMetadata, scene, files, quality)).toThrow(
+      /outside the pinned plant path/,
+    );
     expect(source.sha256).toMatch(/^[a-f0-9]{64}$/);
 
     const invalidQuality = structuredClone(quality);
     invalidQuality.assets[source.sha256].render_bounds.max[0] =
       invalidQuality.assets[source.sha256].render_bounds.min[0];
-    expect(() =>
-      validateAppearanceBundle(catalog, metadata, scene, files, invalidQuality),
-    ).toThrow(/quality record/);
+    expect(() => validateAppearanceBundle(catalog, metadata, scene, files, invalidQuality)).toThrow(
+      /quality record/,
+    );
   });
 
   it("bounds response reads and requires review-only display for screened assets", async () => {
     await expect(readBoundedBytes(new Response(new Uint8Array(5)), 4)).rejects.toThrow(
       /size limit/,
     );
-    await expect(
-      readBoundedBytes(new Response(new Uint8Array([1, 2, 3])), 3),
-    ).resolves.toEqual(new Uint8Array([1, 2, 3]));
+    await expect(readBoundedBytes(new Response(new Uint8Array([1, 2, 3])), 3)).resolves.toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
     const distorted = {
       quality: {
         status: "accepted",
@@ -624,10 +685,7 @@ describe("pinned reconstructed appearance", () => {
       rotation: [0, 0, 0],
       size: [4, 2, 6],
     };
-    const clean = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 2, 3),
-      new THREE.MeshBasicMaterial(),
-    );
+    const clean = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 3), new THREE.MeshBasicMaterial());
     const fittedClean = fitModelToNode(THREE, clean, module);
     const cleanSize = new THREE.Box3().setFromObject(fittedClean).getSize(new THREE.Vector3());
     expect(cleanSize.x).toBeCloseTo(module.size[0]);
