@@ -81,18 +81,30 @@ remain explicitly filtered by the v2 `entityType` values `PlantTelemetry` and
 tables, scoped retention policies and functions after validating the exact
 Fabric target, existing schemas, raw mappings and ingestion-time policies.
 Use `-WhatIf` for a read-only plan; apply runs require a fresh private receipt
-path and record each submitted definition. The classifiers are read-only:
-they return an `ACCEPTED`, `QUARANTINED` or `BLOCKED` disposition and do not
-write either curated or quarantine tables. No update policy, raw-to-curated
-materialization, readiness flag or incident population is enabled. Never use
-a raw dynamic table as a curated reading source.
+path and record each submitted definition. The classifiers themselves are
+read-only and return `ACCEPTED`, `QUARANTINED` or `BLOCKED`. The separate
+`infra/fabric/eventhouse/MiningMaterialization.kql` defines mining-only update
+policies: accepted events go to the corresponding validated table, and
+quarantined events go to the quarantine table. Blocked events remain in raw.
 
-As of 2026-11-14, a bounded two-message canary reached both mining raw tables;
-the raw timestamp projection preserved the exact sent UTC millisecond strings
-and each table had a non-null ingestion time. The deployed classifiers still
-return `BLOCKED_SOURCE_CONTRACT`; curated and quarantine tables remain empty.
-This proves only the isolated raw routing/mapping path, not end-to-end mining
-readiness or hosted backend reads.
+The classifiers join static tables, so the file disables streaming ingestion on
+the two mining raw tables as required by Fabric. The update policies are
+non-transactional: a transformation failure can leave an event only in raw.
+Policy changes also take time to propagate and do not backfill existing rows.
+Run the commands individually against the intended mining database after
+checking the existing policies: `.alter ... policy update` replaces the target
+table's policy list, so preserve any other required policies.
+Check raw, validated and quarantine counts by run and event ID, and reconcile
+missing rows from the classifier before claiming ingestion is complete. Never
+use a raw dynamic table as a curated reading source.
+
+As of 2026-11-14, bounded canaries reached both mining raw tables, preserved
+the original timestamp strings and had non-null ingestion times. The approved
+D01 catalog, profile and source contract were loaded in the isolated database.
+After policy propagation, a fresh canary produced one validated telemetry row,
+one validated state row and one quarantined invalid telemetry row. Earlier
+canary rows missed during propagation were reconciled separately. This does not
+prove public operator controls, hosted backend reads or incident readiness.
 
 The frozen source contract pins catalog version
 `sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce`,
@@ -118,7 +130,7 @@ state enums. The source quality is retained unchanged; uncertain and bad
 samples are both excluded from good-only calculations but are counted
 separately. Same-ID/same-fingerprint retries deduplicate; a same-ID payload
 conflict is surfaced and excluded, never silently selected.
-Quarantine/classification is not yet materialized.
+Quarantined input is stored separately from validated input.
 
 The five fixed G5 read contracts are:
 
