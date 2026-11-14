@@ -193,7 +193,10 @@ export class MiningReads {
 export class MiningPolling {
   constructor(
     refresh,
-    { setInterval: schedule = setInterval, clearInterval: cancel = clearInterval } = {},
+    {
+      setInterval: schedule = globalThis.setInterval.bind(globalThis),
+      clearInterval: cancel = globalThis.clearInterval.bind(globalThis),
+    } = {},
   ) {
     this.refresh = refresh;
     this.schedule = schedule;
