@@ -287,6 +287,13 @@ service-principal bridge is **unverified**; no role was granted. See
 | Capacity | Existing F4 `triatwindevfabriccap` binding was verified. Kusto returned HTTP 429 and the model returned `PFE_FABRIC_THROTTLED` while ARM showed Active. A controlled pause/resume was followed by public reads with the same complete event IDs and still-stale sample quality. | A workload outage, ingestion buffering/catch-up, or continuous availability. The public overview also succeeded while ARM showed Paused. |
 | Manual routing recovery | The guarded Mining recovery helper defaults to read-only, verifies the exact target and an Active assigned capacity, and requires explicit write opt-in. A manual `WhenLastStopped` resume restored both Mining derived streams. The existing Triathlon profile separately restored both of its derived streams; its RaceSplit destination still reported Warning. | Unattended OIDC authorization, source replay, or fresh Triathlon ingestion. No scheduled recovery or capacity keep-alive was enabled. |
 
+An aggregate-only native RaceSplit query at 20:46:51.890 UTC succeeded on the
+existing configured Eventhouse. Its 677 rows were historical: the latest event
+was on 8 November, with no events or receipts since the 20:25 UTC recovery
+observation. Running routes therefore do not establish fresh ingestion. A
+separate ingestion-failures management diagnostic returned HTTP 400; neither
+an authorization denial nor the destination Warning's cause was established.
+
 ### Controlled recovery observations
 
 The already-Running-source baseline `2465db77-26c5-40c2-8d45-ac1d00406710`
@@ -345,6 +352,27 @@ or credential need was established for the successful static Tag query.
 No credentials, permissions, capacity, or Fabric resources
 were changed for this documentation. The overall release is not declared
 complete.
+
+### Public replay acceptance
+
+The deployed Cockpit fixes in [PR 92](https://github.com/ribumann/fabrictritwin/pull/92)
+and [PR 93](https://github.com/ribumann/fabrictritwin/pull/93) were checked in the
+actual public browser against restoration run
+`95e111d7-36c9-4bfa-9bbe-12791490441d`. With REPLAY fixed at
+`2026-11-15T20:09:00.000Z`, the 30-minute feed window contains 90 line/minute
+bins: 15 good values and 75 gaps. All 15 displayed values match the independent
+native capture after display rounding. Three distinct curves retain a common
+unit axis; their own usable ranges are A 12.49-42.2, B 13.24-43.79 and
+C 11.94-39.64 t/h. Gaps remain unconnected.
+
+The cutoff stayed fixed across refreshes. Switching to REPLAY cleared the prior
+generated answer; the question button is disabled and historical incident
+assessments are explicitly unavailable. Partial-coverage KPIs, module status,
+ingested timestamps, normal bands and publisher provenance remain Unknown or
+unverified rather than fabricated. A separate LIVE answer correctly
+distinguished completed ingestion from stale samples. Post-run LIVE trend
+windows returned HTTP 503 at 20:46 UTC while overview reads succeeded; acceptance
+of this historical window does not establish empty-window trend availability.
 
 ## Account-free synthetic demo: isolated local processes
 
