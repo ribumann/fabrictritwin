@@ -115,12 +115,55 @@ Do not substitute direct Kusto ingestion, WebSocket counts, or absence of
 ingestion errors for this check. Stop at any permission/credential/consent denial.
 Connection strings must stay in memory and must not appear in logs or files.
 
-For the separate Mining Eventstream, use the same command with the Mining
-workspace, Eventstream and KQL database IDs and add `-Profile Mining`. The
-profile validates its own state/telemetry streams, raw tables and mappings; it
-does not touch the triathlon Eventstream. Once it reports Running, start one
-bounded Mining demo run and reconcile raw, validated and quarantined event
-IDs for that run. Routing status alone does not establish ingestion.
+### Mining recovery on an already Active capacity
+
+The Mining profile is deliberately pinned to the existing subscription, tenant,
+workspace, Eventstream and KQL database below. It reads the exact ARM capacity
+state and the workspace's Fabric capacity assignment. A non-Active capacity
+returns `DeferredCapacityNotActive` without a Fabric request; this script never
+resumes capacity. Coordinate with the environment owner so that the capacity
+and topology stay unchanged throughout the operation: the checks and resume
+are not atomic. The existing nightly governance suspension remains in force;
+there is no approved 24/7 exception.
+
+Preflight is read-only by default:
+
+```powershell
+$mining = @{
+  SubscriptionId = '86677b6e-28fc-48e4-8988-5ab9e568eece'
+  TenantId = 'ecd6dfda-d2ce-47a8-9901-e35f31fe18dd'
+  WorkspaceId = 'db05aacb-bd7c-405a-a19b-90cc1c67d87b'
+  EventstreamId = '6fca8489-4a0d-452b-8df1-217b91b9b557'
+  KqlDatabaseId = '62177ca4-73f8-4573-b0c6-8e9317e7dacc'
+  Profile = 'Mining'
+}
+.\scripts\fabric\resume-eventstream.ps1 @mining
+```
+
+`PreflightPaused` means recovery is needed, not that it was performed. After
+review and explicit coordination, add `-ApplyMiningRecovery` to allow a single
+eventstream-wide resume; use `-WhatIf` with that switch to preview it. The
+script verifies the exact source, main stream, both filter conditions and
+routes, both derived streams, raw tables and mappings, and rechecks capacity
+immediately before the POST. It refuses unexpected nodes, routes or targets.
+It only uses `WhenLastStopped`, which is subject to source retention and does
+not guarantee replay. It does not modify the Triathlon Eventstream.
+
+Before starting a run, require `Running` for both derived streams, then separately
+reconcile that run's expected event IDs and counts against raw, validated and
+quarantined records. `Running`, `WhenLastStopped`, accepted publishes, and a
+partial terminal batch are not proof that buffered events were recovered. Stop
+and investigate missing IDs instead of claiming catch-up or starting another run.
+
+The documented topology and resume APIs support service principals, but a
+GitHub OIDC login alone does not prove Fabric workspace/item access: topology
+needs Eventstream read and resume needs read/write. The existing Mining
+bootstrap OIDC proof succeeded for a resource-group read on 2026-11-14, but
+its identity's capacity and Fabric permissions have not been verified for
+recovery; protected environment variables could not be inspected with the
+current GitHub access. No recovery workflow or schedule is enabled; stop on an
+access denial and obtain the minimum appropriate access through the owner
+before considering a separately reviewed, explicitly dispatched workflow.
 
 Official references:
 
