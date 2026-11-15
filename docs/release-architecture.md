@@ -181,7 +181,8 @@ flowchart LR
     Curated --> Reconcile
     Curated --> Reads
     Reconcile --> Reads
-    Reads --> BFF
+    Reads --> Backend
+    Backend -->|"Bounded DTO or grounded answer"| BFF
 ```
 
 The public operator UI is [ontologydemo.liberatetheinnerchild.net/mining/](https://ontologydemo.liberatetheinnerchild.net/mining/).
@@ -236,15 +237,18 @@ request shapes, status semantics, and capacity observations.
 
 ```mermaid
 flowchart LR
+    Pinned["Versioned D01 catalog"]
     Catalog["Private Mining Lakehouse catalog"]
-    Generator["Offline graph generator"]
+    Generator["Offline graph definition generator"]
     Graph["Private static topology graph"]
     Model["DirectLake topology model"]
     Report["Private topology report"]
     DataAgent["Native Fabric Data Agent"]
 
-    Catalog --> Generator
-    Generator --> Graph
+    Pinned --> Generator
+    Pinned -->|"Guarded catalog load"| Catalog
+    Generator -.->|"Definition"| Graph
+    Catalog -->|"OneLake data"| Graph
     Catalog --> Model
     Model --> Report
     Model --> DataAgent
@@ -274,7 +278,7 @@ service-principal bridge is **unverified**; no role was granted. See
 | --- | --- | --- |
 | Public source | Exact raw/validated IDs and hashes reconciled for the run above; durable state remained `accepted` and `publisher_complete`. | Ongoing source readiness, continuous availability, or that sample quality is current. |
 | Historical snapshot | The two versioned native Lakehouse facts loads from the approved observed run are complete: SQL and Delta row hashes match exactly for 505 telemetry and 32 state rows, and 100-ns receipt times remain strings. Model/report are not accepted: initial model creation terminally failed on duplicate global measure names; absence of residual model/report was reconciled and correction is underway. | Model/report acceptance or any future result. |
-| Operations rules | The native Operations agent remains stopped/unstarted with only its Mining KQL source; generated/committed rules are empty, state is `Unconfigured`, with zero monitored rules or operations and no actions, recipients, or control. The standalone Mining Activator is also unaccepted. See [Mining Operations agent caveats](https://github.com/ribumann/fabrictritwin/blob/main/docs/mining-operations-agent.md). | Alerting, notification delivery, or control actions. No cause for the empty rule state is established. |
+| Operations rules | The native Operations agent remains stopped/unstarted with only its Mining KQL source; generated/committed rules are empty, state is `Unconfigured`, with zero monitored rules or operations and no actions, recipients, or control. The standalone Mining Activator is also unaccepted. See [Mining Operations agent caveats](mining-operations-agent.md). | Alerting, notification delivery, or control actions. No cause for the empty rule state is established. |
 | Capacity | Existing F4 `triatwindevfabriccap` binding was verified. Kusto returned HTTP 429 and the model returned `PFE_FABRIC_THROTTLED` while ARM showed Active. A controlled pause/resume was followed by public reads with the same complete event IDs and still-stale sample quality. | A workload outage, ingestion buffering/catch-up, or continuous availability. The public overview also succeeded while ARM showed Paused. |
 
 The direct caller's manifest Blob read was denied. No identity bypass or role
@@ -291,10 +295,10 @@ and any approved exception have not been established here. Continuous
 Fabric-backed availability requires coordination for an approved governance
 exception; do not disable the delegation or add a competing auto-resume loop.
 
-Remaining owner/admin decisions are narrow: whether continuous Fabric-backed
-availability is required (then coordinate an approved governance exception),
-and whether to pursue an optional native Data Agent bridge after supported
-feasibility is established. No workspace role was granted. Ontology
+The always-on Fabric-backed target requires coordination for an approved
+governance exception. An optional native Data Agent bridge would need a scoped
+identity/permission decision after supported feasibility is established.
+No workspace role was granted. Ontology
 ALM/projection validation (including the narrow read-only mapping
 investigation) and snapshot model/report correction remain ongoing technical
 work; no permission or credential need has been established for the current
