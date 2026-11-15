@@ -62,36 +62,81 @@ describe("mining request lifecycle", () => {
     { mode: "live", scope: "detail" },
   ])("loads the feed comparison in $mode $scope refreshes", async ({ mode, scope }) => {
     const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
-    const tree = ts.createSourceFile("app.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
     const refresh = tree.statements.find(
       (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "refresh",
     );
     if (!refresh) throw new Error("Missing mining refresh function");
     const catalog = readCatalog();
-    const tag = catalog.telemetry_tags.find((item: { metric: string }) => item.metric === "ore_flow");
+    const tag = catalog.telemetry_tags.find(
+      (item: { metric: string }) => item.metric === "ore_flow",
+    );
     const params = {
-      plantId: "D01", runId: "approved", asOf: "2026-11-15T19:07:00.000Z",
-      start: "2026-11-15T18:37:00.000Z", end: "2026-11-15T19:07:00.000Z",
-      binMinutes: "1", maxRows: "1000",
+      plantId: "D01",
+      runId: "approved",
+      asOf: "2026-11-15T19:07:00.000Z",
+      start: "2026-11-15T18:37:00.000Z",
+      end: "2026-11-15T19:07:00.000Z",
+      binMinutes: "1",
+      maxRows: "1000",
     };
     const comparison = {
-      plantId: "D01", runId: "approved", catalogVersion: "pinned", moduleId: null,
-      metric: "feed", binMinutes: 1, windowStart: params.start, windowEnd: params.end,
-      rows: [{ seriesId: tag.id, unit: tag.unit, timestamp: "2026-11-15T19:06:00.000Z", value: 10, quality: "good" }],
+      plantId: "D01",
+      runId: "approved",
+      catalogVersion: "pinned",
+      moduleId: null,
+      metric: "feed",
+      binMinutes: 1,
+      windowStart: params.start,
+      windowEnd: params.end,
+      rows: [
+        {
+          seriesId: tag.id,
+          unit: tag.unit,
+          timestamp: "2026-11-15T19:06:00.000Z",
+          value: 10,
+          quality: "good",
+        },
+      ],
     };
     const read = vi.fn(async (path: string) =>
       path === "compare-lines" ? comparison : { incidents: [], asOf: params.asOf },
     );
     const chart = vi.fn();
     const context = {
-      mode, incidents: [], incidentAsOf: null, incidentAssessment: null,
-      selectedIncident: null, selected: null, requestEpoch: 0,
-      document: { hidden: false }, context: { readAvailable: true, approvedRun: { runId: "approved" } },
-      query: () => params, reads: { read }, catalog, catalogVersion: "pinned",
-      currentIncidentQuery, seriesQuery, validSeries, validOverview: () => false,
-      sameScope: () => true, validIncidentAssessment: () => true, refreshedIncidentSelection,
-      drawIncidents: vi.fn(), drawDrawer: vi.fn(), drawOverview: vi.fn(), text: vi.fn(),
-      chart, $: (id: string) => id, node: vi.fn(),
+      mode,
+      incidents: [],
+      incidentAsOf: null,
+      incidentAssessment: null,
+      selectedIncident: null,
+      selected: null,
+      requestEpoch: 0,
+      document: { hidden: false },
+      context: { readAvailable: true, approvedRun: { runId: "approved" } },
+      query: () => params,
+      reads: { read },
+      catalog,
+      catalogVersion: "pinned",
+      currentIncidentQuery,
+      seriesQuery,
+      validSeries,
+      validOverview: () => false,
+      sameScope: () => true,
+      validIncidentAssessment: () => true,
+      refreshedIncidentSelection,
+      drawIncidents: vi.fn(),
+      drawDrawer: vi.fn(),
+      drawOverview: vi.fn(),
+      text: vi.fn(),
+      chart,
+      $: (id: string) => id,
+      node: vi.fn(),
       refresh: undefined as undefined | ((scope: string) => Promise<void>),
     };
     runInNewContext(`${refresh.getText(tree)}; this.refresh = refresh;`, context);
