@@ -102,14 +102,28 @@ Mining Eventstream and Eventhouse. Runs last up to five minutes, share one
 durable active writer and have a ten-minute start interval. Cancellation
 requests a stop; publisher completion alone does not prove ingestion.
 
-On 14 November 2026, an actual public run produced 303 validated telemetry and
-20 validated state events in an observed snapshot, with no quarantined events;
-all 56 catalog readings appeared in the public overview. These are dated
-observations, not a continuing availability guarantee. The current-run demo
-read path does not verify private proof receipts or native-definition drift,
-and the configured writer designation is not technical proof of exclusivity.
-Incident assessments and the mining assistant remain unavailable. Local
-account-free synthetic mode remains triathlon-only.
+On 15 November 2026, a completed public run reconciled the exact expected
+505 telemetry and 32 state event IDs, with no conflicts or quarantined events.
+[Durable incident assessments](docs/mining-incidents.md) survived a backend
+restart with their original event and capture times. The
+[public evidence assistant](docs/mining-assistant.md) answered through the deployed
+web form and distinguished complete ingestion from stale samples. It uses a
+bounded Fabric snapshot, not the native Fabric Data Agent.
+
+These are dated observations, not a continuing availability guarantee. Current
+reads can fail when Fabric is unavailable or throttled; a fresh refresh time does
+not make old samples live. The current-run path does not verify private proof
+receipts or native-definition drift, and the configured writer designation is
+not technical proof of exclusivity. Local account-free synthetic mode remains
+triathlon-only.
+
+The private native graph, topology report and topology Data Agent cover the
+static catalog, not live telemetry. Ontology full-property/time-series binding
+and standalone Activator acceptance remain incomplete. The
+[Mining Operations Agent](docs/mining-operations-agent.md) is stopped pending
+native rule acceptance: its first generated freshness query was incorrect, and a
+subsequent generation hit source throttling. Item creation or playbook generation
+alone is not treated as a working native capability.
 
 The public demo controls and reads are separately opt-in and do not replace the
 protected delegated APIs. See the [mining architecture and dated
