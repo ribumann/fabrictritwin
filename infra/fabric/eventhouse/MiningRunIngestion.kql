@@ -1,0 +1,34 @@
+.create-or-alter function with (folder = "Mining/Queries") mining_RunIngestion(
+    requested_plant_id:string, requested_run_id:string, as_of_utc:datetime)
+{
+    let readiness = toscalar(mining_SourceReadiness() | project status);
+    let observations = union
+        (mining_TelemetryRaw
+        | where tostring(event.plant_id) == requested_plant_id and tostring(event.run_id) == requested_run_id and ingestion_time() <= as_of_utc
+        | project family = "raw_telemetry", event_id = tostring(event.event_id), fingerprint = ""),
+        (mining_PlantStateEvents
+        | where tostring(event.plant_id) == requested_plant_id and tostring(event.run_id) == requested_run_id and ingestion_time() <= as_of_utc
+        | project family = "raw_state", event_id = tostring(event.event_id), fingerprint = ""),
+        (mining_ValidatedTelemetry
+        | where plant_id == requested_plant_id and run_id == requested_run_id and received_at <= as_of_utc
+        | project family = "validated_telemetry", event_id, fingerprint = payload_fingerprint),
+        (mining_ValidatedState
+        | where plant_id == requested_plant_id and run_id == requested_run_id and received_at <= as_of_utc
+        | project family = "validated_state", event_id, fingerprint = payload_fingerprint),
+        (mining_Quarantine
+        | where plant_id == requested_plant_id and run_id == requested_run_id and received_at <= as_of_utc
+        | project family = "quarantine", event_id, fingerprint = "");
+    let counted = observations
+        | summarize copies = count(), fingerprints = make_set(fingerprint, 50000) by family, event_id
+        | summarize event_count = count(), copies = sum(copies),
+            conflicting_ids = countif(array_length(fingerprints) > 1),
+            event_ids = make_set(event_id, 50000) by family
+        | extend event_ids_hash = hash_sha256(strcat_array(array_sort_asc(event_ids), "\n"))
+        | project family, event_count, copies, conflicting_ids, event_ids_hash;
+    datatable(family:string) ["raw_telemetry", "raw_state", "validated_telemetry", "validated_state", "quarantine"]
+    | join kind=leftouter counted on family
+    | project family, source_status = readiness, event_count = coalesce(event_count, 0),
+        copies = coalesce(copies, 0), conflicting_ids = coalesce(conflicting_ids, 0),
+        event_ids_hash = iff(isempty(event_ids_hash),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", event_ids_hash)
+}

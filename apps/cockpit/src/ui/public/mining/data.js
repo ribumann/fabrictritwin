@@ -222,3 +222,15 @@ export class MiningPolling {
     this.timers = [];
   }
 }
+export function verifiedRunIngestion(overview, run) {
+  const evidence = overview?.ingestion;
+  if (
+    !run ||
+    overview?.run?.runId !== run.runId ||
+    evidence?.provenance !== "fabric-event-id-reconciliation-v1" ||
+    !["pending", "partial", "complete", "unknown"].includes(evidence.status) ||
+    !Number.isFinite(Date.parse(evidence.asOf))
+  )
+    return "unknown";
+  return `${evidence.status} as of ${formatTimestamp(evidence.asOf)}`;
+}

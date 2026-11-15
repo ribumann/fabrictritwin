@@ -343,7 +343,20 @@ export function createMiningReadRouter(options: ReadOptions): Router {
             }
           }
           if (route !== "context") {
-            res.json(route === "overview" ? { ...data, run } : data);
+            res.json(
+              route === "overview"
+                ? {
+                    ...data,
+                    run: {
+                      ...run,
+                      ingestionStatus:
+                        data && "ingestion" in data
+                          ? (data.ingestion?.status ?? "unknown")
+                          : "unknown",
+                    },
+                  }
+                : data,
+            );
             return;
           }
           const context = {

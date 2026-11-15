@@ -21,6 +21,7 @@ import {
   validCurrentAssessmentAsOf,
   validSeries,
   seriesQuery,
+  verifiedRunIngestion,
 } from "../src/ui/public/mining/data.js";
 import { connections, createPlant3D, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
 import {
@@ -51,6 +52,29 @@ const loadAppearanceBundle = () =>
 
 afterEach(() => vi.useRealTimers());
 describe("mining request lifecycle", () => {
+  it("shows timestamped ingestion evidence only for the same run and verified provenance", () => {
+    const run = { runId: "approved" };
+    const overview = {
+      run,
+      ingestion: {
+        status: "complete",
+        asOf: "2026-01-01T12:00:00.000Z",
+        provenance: "fabric-event-id-reconciliation-v1",
+      },
+    };
+    expect(verifiedRunIngestion(overview, run)).toMatch(/^complete as of /);
+    expect(verifiedRunIngestion(overview, { runId: "new-run" })).toBe("unknown");
+    expect(verifiedRunIngestion({ ...overview, ingestion: undefined }, run)).toBe("unknown");
+    expect(
+      verifiedRunIngestion(
+        {
+          ...overview,
+          ingestion: { ...overview.ingestion, provenance: "publisher" },
+        },
+        run,
+      ),
+    ).toBe("unknown");
+  });
   it("sends chart windows without the overview-only asOf parameter", async () => {
     const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(new Response("{}")));
     const reads = new MiningReads(fetchImpl);

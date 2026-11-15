@@ -16,6 +16,7 @@ import {
   validCurrentAssessmentAsOf,
   validSeries,
   seriesQuery,
+  verifiedRunIngestion,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
 import {
@@ -250,6 +251,7 @@ function drawOverview() {
   });
   drawPlant();
   drawDrawer();
+  if (demoRun) drawDemoRunStatus();
 }
 function drawIncidentEvidence() {
   if (!selectedIncident) {
@@ -811,6 +813,12 @@ function invalidate() {
 let demoRun = null;
 let demoBusy = false;
 let demoStatusEpoch = 0;
+function drawDemoRunStatus(notice = "") {
+  const status = demoRun
+    ? `Run ${demoRun.runId}: ${demoRun.publisherStatus}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion ${verifiedRunIngestion(overview, demoRun)}.`
+    : "No active public demo run.";
+  text("run-control-status", `${notice}${status}`);
+}
 async function demoRequest(path, body) {
   const response = await fetch(`/api/mining/demo/runs/${path}`, {
     ...(body
@@ -840,10 +848,7 @@ async function updateDemoStatus(notice = "") {
     const active = demoRun && ["running", "stopping"].includes(demoRun.publisherStatus);
     $("run-start").disabled = !!active;
     $("run-cancel").disabled = !active || demoRun.stopRequested;
-    const status = demoRun
-      ? `Run ${demoRun.runId}: ${demoRun.publisherStatus}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion unknown.`
-      : "No active public demo run.";
-    text("run-control-status", `${notice}${status}`);
+    drawDemoRunStatus(notice);
     if (catalog && (context?.approvedRun?.runId ?? null) !== (demoRun?.runId ?? null)) {
       invalidate();
       reads.reset();

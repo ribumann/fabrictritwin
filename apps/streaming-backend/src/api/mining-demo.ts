@@ -257,7 +257,18 @@ export function createMiningDemoRouter(options: Options): Router {
         }
         const data = await curated(input, signal);
         if (res.headersSent || res.destroyed) return;
-        res.json(route === "overview" ? { ...data, run } : data);
+        res.json(
+          route === "overview"
+            ? {
+                ...data,
+                run: {
+                  ...run,
+                  ingestionStatus:
+                    data && "ingestion" in data ? (data.ingestion?.status ?? "unknown") : "unknown",
+                },
+              }
+            : data,
+        );
       } catch (cause) {
         fail(res, cause);
       }

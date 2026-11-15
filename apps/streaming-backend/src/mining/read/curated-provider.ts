@@ -20,6 +20,7 @@ import {
 } from "./bounded-query.js";
 import { mapCurrentIncidentJournal } from "./incident-dto.js";
 import { mapLatestRows } from "./latest-dto.js";
+import { mapMiningIngestion } from "./ingestion-dto.js";
 import { MiningReceiptError, readPinnedMiningReceipt } from "./pinned-receipt.js";
 import {
   assertReceiptMatchesExpectations,
@@ -62,13 +63,17 @@ export async function readMiningOverview(
   query: ReturnType<typeof createBoundedMiningQuery>,
   now: () => number,
   signal: AbortSignal,
+  reconcileIngestion = false,
 ) {
   const runId = input.run.runId;
   const end = input.asOf;
   const start = new Date(Date.parse(end) - 5 * 60_000).toISOString();
-  const [latestRows, summaryRows] = await Promise.all([
+  const [latestRows, summaryRows, ingestionRows] = await Promise.all([
     query({ kind: "latest", runId, asOf: end, maxRows: 1000 }, signal),
     query({ kind: "summary", runId, start, end, maxRows: 1 }, signal),
+    reconcileIngestion
+      ? query({ kind: "ingestion", runId, asOf: end, maxRows: 5 }, signal)
+      : undefined,
   ]);
   signal.throwIfAborted();
   const latest = mapLatestRows({ runId, asOf: end }, latestRows);
@@ -91,6 +96,7 @@ export async function readMiningOverview(
     asOf: end,
     refreshedAt: new Date(now()).toISOString(),
     quality,
+    ...(ingestionRows ? { ingestion: mapMiningIngestion(input.run, end, ingestionRows) } : {}),
     latest: { modules, readings: latest.readings },
     summary,
   };
@@ -165,7 +171,13 @@ export function createMiningCuratedProvider(dependencies: Dependencies) {
         active.throwIfAborted();
         return mapComparisonRows({ ...input, runId }, rows);
       }
-      return await readMiningOverview(input, query, now, active);
+      return await readMiningOverview(
+        input,
+        query,
+        now,
+        active,
+        env.MINING_INGESTION_RECONCILIATION_ENABLED === "true",
+      );
     } finally {
       signal.removeEventListener("abort", cancel);
       controller.abort();
