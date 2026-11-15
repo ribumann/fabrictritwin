@@ -206,8 +206,11 @@ curation. Public status is coordination status, not a live health check.
 `60ac23d3-e0fa-4da7-8ed9-cf79fc1fbcd5` produced 505 telemetry and 32 state
 events. Expected, raw, and validated event-ID sets and hashes matched; all 56
 catalog tags were represented, with zero conflicts and zero quarantined
-events. The observed sample interval was
-`2026-11-15T16:47:32.029Z`–`2026-11-15T16:52:02.029Z`. It is not a publisher
+events. The observed telemetry interval was
+`2026-11-15T16:47:32.029Z`–`2026-11-15T16:52:02.029Z`; including actual state
+events, the combined observed interval starts at `2026-11-15T16:47:02.029Z`
+and ends at the same time. The historical snapshot is as of
+`2026-11-15T17:31:48.989Z`. These observations are not a publisher
 `startedAt`, `stopAt`, duration, or profile manifest. This is evidence for that
 run, not continuing availability or current sample quality.
 
@@ -279,7 +282,7 @@ service-principal bridge is **unverified**; no role was granted. See
 | Area | Observed state on 15 November 2026 | What it does not prove |
 | --- | --- | --- |
 | Public source | Exact raw/validated IDs and hashes reconciled for the run above; durable state remained `accepted` and `publisher_complete`. | Ongoing source readiness, continuous availability, or that sample quality is current. |
-| Historical snapshot | The two versioned native Lakehouse facts loads from the approved observed run are complete: SQL and Delta row hashes match exactly for 505 telemetry and 32 state rows, and 100-ns receipt times remain strings. Model/report are not accepted: initial model creation terminally failed on duplicate global measure names; absence of residual model/report was reconciled and correction is underway. | Model/report acceptance or any future result. |
+| Historical snapshot | Both versioned native Lakehouse facts are row/identity verified: 505 telemetry and 32 state rows, preserving 100-ns receipt strings. The separate model/report definitions and binding are verified; the original API refresh and Direct Lake framing both completed. Semantic queries reconcile all 505/32 event IDs and actual visual values, including 28 state observation groups representing 32 events. An existing authorized Fabric browser session rendered all four visuals and proved reading-to-evidence selection. See [snapshot evidence](mining-telemetry-snapshot.md#observed-native-acceptance-15-november-2026). | Live or automatic refresh, publisher-manifest reconstruction, anonymous access to private native artifacts, or future availability. |
 | Operations rules | The native Operations agent remains stopped/unstarted with only its Mining KQL source; generated/committed rules are empty, state is `Unconfigured`, with zero monitored rules or operations and no actions, recipients, or control. The standalone Mining Activator is also unaccepted. See [Mining Operations agent caveats](mining-operations-agent.md). | Alerting, notification delivery, or control actions. No cause for the empty rule state is established. |
 | Capacity | Existing F4 `triatwindevfabriccap` binding was verified. Kusto returned HTTP 429 and the model returned `PFE_FABRIC_THROTTLED` while ARM showed Active. A controlled pause/resume was followed by public reads with the same complete event IDs and still-stale sample quality. | A workload outage, ingestion buffering/catch-up, or continuous availability. The public overview also succeeded while ARM showed Paused. |
 
@@ -300,8 +303,8 @@ exception; do not disable the delegation or add a competing auto-resume loop.
 The always-on Fabric-backed target requires coordination for an approved
 governance exception. An optional native Data Agent bridge would need a scoped
 identity/permission decision after supported feasibility is established.
-No workspace role was granted. Broader ontology/projection validation and
-snapshot model/report correction remain ongoing technical work; no permission
+No workspace role was granted. Broader ontology/projection validation remains
+ongoing technical work; no permission
 or credential need was established for the successful static Tag query.
 No credentials, permissions, capacity, or Fabric resources
 were changed for this documentation. The overall release is not declared
