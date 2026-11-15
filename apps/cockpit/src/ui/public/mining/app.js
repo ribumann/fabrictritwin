@@ -13,7 +13,8 @@ import {
   validOverview,
   validAsOf,
   currentIncidentQuery,
-  validCurrentAssessmentAsOf,
+  validIncidentAssessment,
+  incidentAssessmentLabel,
   validSeries,
   seriesQuery,
   verifiedRunIngestion,
@@ -54,6 +55,7 @@ let catalog,
   selectedIncident = null;
 let incidents = [];
 let incidentAsOf = null;
+let incidentAssessment = null;
 let mode = "live";
 let replayTime = null;
 let appearanceMode = "clean";
@@ -62,6 +64,7 @@ let appearanceBundle = null;
 let appearanceBundlePromise = null;
 let appearanceController = null;
 let appearanceGeneration = 0;
+let answerController = null;
 const lines = new Set(["A", "B", "C", "shared"]);
 const polling = new MiningPolling((scope) => refresh(scope));
 const kpis = ["throughput", "runningLines", "grossProcessWaterIntensity", "energyIntensity"];
@@ -87,6 +90,14 @@ function configurePolling() {
     connected: !!context?.readAvailable && !!context?.approvedRun,
   });
   plant3d?.setEnabled(!document.hidden && $("view").value === "3d");
+  const canAsk =
+    mode === "live" &&
+    context?.assistant?.available &&
+    context?.assistant?.kind === "bounded-fabric-evidence" &&
+    context?.approvedRun &&
+    !answerController;
+  $("mining-question").disabled = !canAsk;
+  $("mining-ask-submit").disabled = !canAsk;
 }
 function query() {
   const asOf =
@@ -118,11 +129,12 @@ function drawPlant() {
   list.replaceChildren();
   for (const module of visibleModules(catalog, lines)) {
     const binding = appearanceBundle?.moduleBindings.get(module.id);
-    const issue = appearanceMode === "reconstructed"
-      ? binding
-        ? splatIssue(binding.asset, module)
-        : "Reconstructed appearance unavailable."
-      : null;
+    const issue =
+      appearanceMode === "reconstructed"
+        ? binding
+          ? splatIssue(binding.asset, module)
+          : "Reconstructed appearance unavailable."
+        : null;
     const appearanceNote = issue
       ? ` · ${issue}${showScreenedOut && binding?.asset.quality.status === "excluded" ? " Review only." : ""}`
       : "";
@@ -155,9 +167,10 @@ async function loadAppearanceBundle() {
       cache: "force-cache",
       redirect: "error",
     });
-    if (!response.ok) throw new Error(`Pinned appearance manifest request failed (${response.status}).`);
+    if (!response.ok)
+      throw new Error(`Pinned appearance manifest request failed (${response.status}).`);
     const bytes = await readBoundedBytes(response, 1_048_576);
-    if (await sha256Hex(bytes) !== expectedHash)
+    if ((await sha256Hex(bytes)) !== expectedHash)
       throw new Error(`Pinned appearance manifest integrity check failed: ${file}.`);
     documents[key] = JSON.parse(new TextDecoder().decode(bytes));
   }
@@ -206,9 +219,12 @@ async function applyAppearance() {
   }
   const controller = new AbortController();
   appearanceController = controller;
-  text("geometry-status", "Loading pinned reconstructed appearance; operational data is unchanged…");
+  text(
+    "geometry-status",
+    "Loading pinned reconstructed appearance; operational data is unchanged…",
+  );
   try {
-    const bundle = appearanceBundle ?? await getAppearanceBundle();
+    const bundle = appearanceBundle ?? (await getAppearanceBundle());
     if (generation !== appearanceGeneration || controller.signal.aborted) return;
     await plant3d.setVisualMode("reconstructed", bundle, showScreenedOut, controller.signal);
     if (generation !== appearanceGeneration || controller.signal.aborted) return;
@@ -275,7 +291,7 @@ function drawIncidentEvidence() {
     : "";
   text(
     "incident-evidence",
-    `${selectedIncident.title} · rule ${selectedIncident.ruleId} · scope ${selectedIncident.scopeId} · ${selectedIncident.verification} · assessed ${timestamp(incidentAsOf)} · raised ${timestamp(selectedIncident.raisedAt)} · acknowledged ${selectedIncident.acknowledgedAt ? timestamp(selectedIncident.acknowledgedAt) : "not acknowledged"} (separate from assessment time). Current hold: ${hold}; evidence window: ${timestamp(selectedIncident.evidenceWindowStart)} to ${timestamp(selectedIncident.evidenceWindowEnd)}. ${evidence}${moduleContext}`,
+    `${selectedIncident.title} · rule ${selectedIncident.ruleId} · scope ${selectedIncident.scopeId} · ${selectedIncident.verification} · ${incidentAssessmentLabel(incidentAssessment)} · raised ${timestamp(selectedIncident.raisedAt)} · acknowledged ${selectedIncident.acknowledgedAt ? timestamp(selectedIncident.acknowledgedAt) : "not acknowledged"} (separate from assessment time). Current hold: ${hold}; evidence window: ${timestamp(selectedIncident.evidenceWindowStart)} to ${timestamp(selectedIncident.evidenceWindowEnd)}. ${evidence}${moduleContext}`,
   );
 }
 function drawDrawer() {
@@ -408,16 +424,14 @@ function selectIncident(incident) {
   drawPlant();
   drawDrawer();
 }
-function drawIncidents(emptyMessage = "No active incidents at the latest measured assessment.") {
+function drawIncidents(emptyMessage = "Unknown - incident assessment unavailable.") {
   const container = $("incidents");
   container.replaceChildren();
   text(
     "incident-status",
-    incidents.length
-      ? `Top three active incidents · assessed ${timestamp(incidentAsOf)} · advisory only`
-      : incidentAsOf
-        ? `No active incidents at the measured assessment ${timestamp(incidentAsOf)}.`
-        : emptyMessage,
+    incidentAsOf
+      ? `${incidents.length ? "Top three active incidents" : "No active incidents"} · ${incidentAssessmentLabel(incidentAssessment)}`
+      : emptyMessage,
   );
   for (const incident of incidents.slice(0, 3)) {
     const item = node("li");
@@ -561,6 +575,7 @@ function clearReadState(message) {
   overview = null;
   incidents = [];
   incidentAsOf = null;
+  incidentAssessment = null;
   selectedIncident = null;
   text("connection", message);
   drawOverview();
@@ -573,8 +588,11 @@ async function refresh(scope = "all") {
   if (mode === "replay") {
     incidents = [];
     incidentAsOf = null;
+    incidentAssessment = null;
     selectedIncident = null;
-    drawIncidents("Incident assessments are current-only; historical assessments are unavailable in replay.");
+    drawIncidents(
+      "Incident assessments are current-only; historical assessments are unavailable in replay.",
+    );
     drawDrawer();
   }
   if (document.hidden || !context?.readAvailable || !context?.approvedRun) return;
@@ -648,7 +666,7 @@ async function refresh(scope = "all") {
           if (!current()) return;
           if (
             !sameScope(data, params.runId, catalogVersion) ||
-            !validCurrentAssessmentAsOf(data.asOf) ||
+            !validIncidentAssessment(data) ||
             !Array.isArray(data.incidents) ||
             data.incidents.length > 20 ||
             data.incidents.some(
@@ -681,6 +699,7 @@ async function refresh(scope = "all") {
             throw new Error("Invalid or foreign-run incident response.");
           incidents = data.incidents.filter((item) => !item.clearedAt);
           incidentAsOf = data.asOf;
+          incidentAssessment = data;
           selectedIncident = refreshedIncidentSelection(selectedIncident, incidents);
           drawIncidents();
           drawDrawer();
@@ -688,6 +707,7 @@ async function refresh(scope = "all") {
           if (current()) {
             incidents = [];
             incidentAsOf = null;
+            incidentAssessment = null;
             selectedIncident = null;
             drawIncidents(error.message);
             drawDrawer();
@@ -754,6 +774,12 @@ async function loadContext() {
     )
       throw new Error("Approved run does not match the selected plant/catalog.");
     const url = authorizedFabricUrl(context.assistant.fabricUrl);
+    text(
+      "assistant-state",
+      context.assistant.available && context.assistant.kind === "bounded-fabric-evidence"
+        ? "Read-only Foundry answers use bounded, server-read Fabric evidence from the current public run. Questions are not saved as a conversation."
+        : "The Mining evidence assistant is unavailable. No question is sent while disabled.",
+    );
     if (context.assistant.available && url) {
       $("fabric-agent").href = url;
       $("fabric-agent").hidden = false;
@@ -807,9 +833,90 @@ async function loadContext() {
 }
 function invalidate() {
   requestEpoch++;
+  answerController?.abort();
+  answerController = null;
+  text("mining-answer", "");
+  text("mining-answer-status", "");
+  text("mining-answer-source", "");
+  $("mining-answer-evidence").hidden = true;
   reads.abort();
   polling.stop();
 }
+$("mining-ask").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (
+    mode !== "live" ||
+    !context?.assistant?.available ||
+    !context?.approvedRun ||
+    answerController
+  )
+    return;
+  const question = $("mining-question").value.trim();
+  if (!question || question.length > 1000) return;
+  const epoch = requestEpoch;
+  const runId = context.approvedRun.runId;
+  const controller = new AbortController();
+  answerController = controller;
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  text("mining-answer", "");
+  text("mining-answer-status", "Reading Fabric evidence and generating an interpretation...");
+  $("mining-answer-evidence").hidden = true;
+  configurePolling();
+  try {
+    const response = await fetch("/api/mining/demo/assistant", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ plantId: "D01", question }),
+      signal: controller.signal,
+    });
+    if (!response.ok)
+      throw new Error(
+        response.status === 429
+          ? "The shared assistant is busy. Wait a minute and try again."
+          : `The evidence assistant is unavailable (HTTP ${response.status}). Refresh the run and try again.`,
+      );
+    const data = await response.json();
+    if (
+      epoch !== requestEpoch ||
+      runId !== context?.approvedRun?.runId ||
+      controller.signal.aborted
+    )
+      return;
+    if (
+      !sameScope(data, runId, catalogVersion) ||
+      !sameScope(data.evidence, runId, catalogVersion) ||
+      data.kind !== "bounded-fabric-evidence" ||
+      data.nativeDataAgentInvoked !== false ||
+      typeof data.answer !== "string" ||
+      !data.answer.trim() ||
+      data.answer.length > 12_000 ||
+      !validAsOf(data.evidence.asOf, new Date().toISOString(), false)
+    )
+      throw new Error("The answer did not match the current run. Refresh and ask again.");
+    text("mining-answer", data.answer);
+    text(
+      "mining-answer-status",
+      `Generated interpretation for run ${runId}. Evidence cutoff ${timestamp(data.evidence.asOf)}; evidence quality ${data.evidence.quality}. Not a native Data Agent answer.`,
+    );
+    text("mining-answer-source", JSON.stringify(data.evidence, null, 2));
+    $("mining-answer-evidence").hidden = false;
+  } catch (error) {
+    if (epoch === requestEpoch)
+      text(
+        "mining-answer-status",
+        controller.signal.aborted
+          ? "The answer timed out. No answer is retained; try again."
+          : error.message,
+      );
+  } finally {
+    clearTimeout(timer);
+    if (answerController === controller) {
+      answerController = null;
+      configurePolling();
+    }
+  }
+});
 let demoRun = null;
 let demoBusy = false;
 let demoStatusEpoch = 0;

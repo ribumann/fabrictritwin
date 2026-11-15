@@ -8,6 +8,8 @@ import {
 import type { MiningReadingObservation, MiningStateObservation } from "./evaluator.js";
 import type { MiningIncidentRun, MiningIncidentSource } from "./runtime.js";
 import { createBoundedMiningQuery, MiningQueryError } from "../mining/read/bounded-query.js";
+import { expectedMiningEventIds } from "../mining/read/ingestion-dto.js";
+import type { MiningRunRecord } from "../mining/run-coordinator.js";
 
 type Observation = MiningReadingObservation | MiningStateObservation;
 type Query = ReturnType<typeof createBoundedMiningQuery>;
@@ -62,6 +64,30 @@ function fingerprint(observation: Observation): string {
           observation.sequence,
         ],
   );
+}
+
+export function assertReconciledIncidentObservations(
+  run: MiningRunRecord,
+  observations: readonly Observation[],
+  committed: readonly Observation[] = [],
+): void {
+  const expected = expectedMiningEventIds(run);
+  for (const [kind, family] of [
+    ["reading", "telemetry"],
+    ["state", "state"],
+  ] as const) {
+    const ids = observations.filter((row) => row.kind === kind).map((row) => row.eventId);
+    const hash = createHash("sha256")
+      .update([...ids].sort().join("\n"))
+      .digest("hex");
+    if (ids.length !== expected[family].count || hash !== expected[family].hash) {
+      invalid("The captured incident source does not match the complete run.");
+    }
+  }
+  const current = new Map(observations.map((row) => [row.eventId, fingerprint(row)]));
+  if (committed.some((row) => current.get(row.eventId) !== fingerprint(row))) {
+    invalid("The captured incident source conflicts with the durable journal.");
+  }
 }
 
 function mapRow(
@@ -149,9 +175,22 @@ function mapRow(
   };
 }
 
+export function assertFabricIncidentSourceReady(readiness: Record<string, unknown>[]): void {
+  const status = readiness[0];
+  if (
+    readiness.length !== 1 ||
+    status?.status !== "READY" ||
+    status.catalog_version !== D01_CATALOG_VERSION ||
+    status.profile_version !== D01_PUBLISH_PROFILE_VERSION ||
+    status.contract_version !== "d01-validated-source-v1"
+  ) {
+    throw new MiningQueryError("upstream", "The incident observation source is not ready.");
+  }
+}
+
 /**
- * Explicit, unmounted source. Visibility at query time is not a completeness
- * watermark, and raw ingestion time is not used as curated receipt provenance.
+ * Visibility at query time is not a completeness watermark, and raw ingestion
+ * time is not used as curated receipt provenance.
  */
 export function createFabricIncidentSource(
   run: MiningIncidentRun,
@@ -167,16 +206,7 @@ export function createFabricIncidentSource(
         invalid("Incident source time is outside the approved run.");
       }
       const readiness = await query({ kind: "source-readiness", runId, maxRows: 1 }, signal);
-      const status = readiness[0];
-      if (
-        readiness.length !== 1 ||
-        status.status !== "READY" ||
-        status.catalog_version !== D01_CATALOG_VERSION ||
-        status.profile_version !== D01_PUBLISH_PROFILE_VERSION ||
-        status.contract_version !== "d01-validated-source-v1"
-      ) {
-        throw new MiningQueryError("upstream", "The incident observation source is not ready.");
-      }
+      assertFabricIncidentSourceReady(readiness);
       const rows = await query(
         { kind: "incident-observations", runId, asOf, maxRows: 1000 },
         signal,

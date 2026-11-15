@@ -72,7 +72,7 @@ describe("public mining curated reads", () => {
       ),
     ).rejects.toThrow("offline");
     await expect(provider({ kind: "incidents", run, asOf: end }, signal)).rejects.toThrow(
-      "not connected",
+      "awaiting a completed demo run",
     );
   });
 });

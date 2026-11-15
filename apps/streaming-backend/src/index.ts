@@ -19,6 +19,7 @@ import { createMiningStartRouter } from "./api/mining-start.js";
 import { createMiningDemoHost, createMiningDemoRouter } from "./api/mining-demo.js";
 import { MiningPublisherHost } from "./mining/publisher-host.js";
 import { createBackendShutdown } from "./services/backend-shutdown.js";
+import { configuredMiningDemoIncidentProcessor } from "./mining-incidents/demo-runtime.js";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
@@ -27,6 +28,7 @@ const synthetic = resolveRuntimeProfile() === "synthetic";
 const runtime = synthetic ? new SyntheticRuntime() : undefined;
 const miningPublisherHost = synthetic ? undefined : new MiningPublisherHost();
 const miningDemoHost = synthetic ? undefined : createMiningDemoHost();
+const miningDemoIncidents = synthetic ? undefined : configuredMiningDemoIncidentProcessor();
 const alertListener = synthetic
   ? createDefaultAlertListener({
       athleteIds: [runtime!.dataset.athlete.athleteId],
@@ -35,7 +37,10 @@ const alertListener = synthetic
   : createDefaultAlertListener();
 
 app.use(express.json());
-app.use("/api/mining/demo", createMiningDemoRouter({ synthetic, host: miningDemoHost }));
+app.use(
+  "/api/mining/demo",
+  createMiningDemoRouter({ synthetic, host: miningDemoHost, incidents: miningDemoIncidents }),
+);
 app.use("/api/mining", createMiningStartRouter({ synthetic, host: miningPublisherHost }));
 app.use("/api/mining", createMiningCancelRouter({ synthetic }));
 app.use(
@@ -65,7 +70,11 @@ alertListener?.start();
 const closeServer = server.close.bind(server);
 const shutdown = createBackendShutdown({
   closePublisher: async () => {
-    await Promise.all([miningPublisherHost?.close(), miningDemoHost?.close()]);
+    await Promise.all([
+      miningPublisherHost?.close(),
+      miningDemoHost?.close(),
+      miningDemoIncidents?.close(),
+    ]);
   },
   stopBackgroundServices: () => {
     runtime?.close();
@@ -113,6 +122,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   process.once("SIGINT", () => handleShutdownSignal("SIGINT"));
   server.listen(port, () => {
     console.log(`[streaming-backend] listening on port ${port}`);
+    void miningDemoIncidents?.recoverCurrent().catch((cause: unknown) => {
+      console.error(
+        "[mining-demo-incidents] Startup recovery failed; reconciliation remains unavailable",
+        cause,
+      );
+    });
   });
 }
 

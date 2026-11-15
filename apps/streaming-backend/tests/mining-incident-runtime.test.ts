@@ -20,6 +20,15 @@ import {
   type MiningStateObservation,
 } from "../src/mining-incidents/evaluator.js";
 import { MiningCoordinationError, type StoredDocument } from "../src/mining/store.js";
+import { createD01Simulation } from "@triathlon-twin/simulator/mining";
+import {
+  MiningDemoIncidentProcessor,
+  demoIncidentPath,
+} from "../src/mining-incidents/demo-runtime.js";
+import { expectedMiningEventIds } from "../src/mining/read/ingestion-dto.js";
+import { createMiningDemoProvider } from "../src/mining/read/demo-provider.js";
+import type { MiningRunRecord } from "../src/mining/run-coordinator.js";
+import type { createBoundedMiningQuery } from "../src/mining/read/bounded-query.js";
 
 const START = Date.parse("2026-11-12T12:00:00.000Z");
 const iso = (minute: number) => new Date(START + minute * 60_000).toISOString();
@@ -92,6 +101,229 @@ class Store implements MiningIncidentStore {
     return this.documents.get(path)!;
   }
 }
+
+function demoFixture() {
+  const contract = createD01RunContract();
+  const record: MiningRunRecord = {
+    plantId: "D01",
+    runId: "11111111-1111-4111-8111-111111111111",
+    durationSeconds: 300,
+    scenario: "normal",
+    seed: 1,
+    startedAt: iso(0),
+    stopAt: iso(5),
+    authorityUntil: new Date(START + 305_000).toISOString(),
+    phase: "publisher_complete",
+    contract,
+  };
+  const simulation = createD01Simulation(
+    { ...record, startedAt: new Date(START) },
+    () => START + 300_000,
+  );
+  const rows: Record<string, unknown>[] = [];
+  for (let seconds = 5; seconds <= 300; seconds += 5) {
+    const { batch } = simulation.step(new Date(START + seconds * 1000));
+    if (!batch) continue;
+    for (const event of batch.events) {
+      rows.push({
+        ...event,
+        source:
+          event.entityType === "PlantTelemetry"
+            ? "mining_ValidatedTelemetry"
+            : "mining_ValidatedState",
+        received_at: iso(10),
+        catalog_version: contract.catalogVersion,
+        profile_version: contract.profileVersion,
+        source_contract_version: "d01-validated-source-v1",
+      });
+    }
+    simulation.acknowledgeBatch(batch.batch_id);
+  }
+  const expected = expectedMiningEventIds(record);
+  const empty = { count: 0, hash: createHash("sha256").update("").digest("hex") };
+  const state: { complete: boolean; record: MiningRunRecord | undefined } = {
+    complete: true,
+    record,
+  };
+  const store = new Store();
+  const query: ReturnType<typeof createBoundedMiningQuery> = vi.fn(async (input) => {
+    if (input.kind === "source-readiness")
+      return [
+        {
+          status: "READY",
+          catalog_version: contract.catalogVersion,
+          profile_version: contract.profileVersion,
+          contract_version: "d01-validated-source-v1",
+        },
+      ];
+    if (input.kind === "incident-observations") return structuredClone(rows);
+    if (input.kind !== "ingestion") throw new Error("Unexpected demo incident query.");
+    return [
+      "raw_telemetry",
+      "raw_state",
+      "validated_telemetry",
+      "validated_state",
+      "quarantine",
+    ].map((family) => {
+      const ids =
+        !state.complete || family === "quarantine"
+          ? empty
+          : family.endsWith("telemetry")
+            ? expected.telemetry
+            : expected.state;
+      return {
+        family,
+        source_status: "READY",
+        event_count: ids.count,
+        copies: ids.count,
+        conflicting_ids: 0,
+        event_ids_hash: ids.hash,
+      };
+    });
+  });
+  const dependencies = {
+    store,
+    query,
+    now: () => START + 600_000,
+    approvedRun: vi.fn(async () => state.record),
+  };
+  const read = () =>
+    createMiningDemoProvider(
+      { MINING_INGESTION_RECONCILIATION_ENABLED: "true" },
+      query,
+      dependencies.now,
+      store,
+    )({ kind: "incidents", run: record, asOf: iso(10) }, new AbortController().signal);
+  return { record, store, rows, state, dependencies, read };
+}
+
+describe("service-owned event-time demo reconciliation", () => {
+  it("does not manufacture an assessment on a read or adopt a foreign run", async () => {
+    const { dependencies, record, store, read } = demoFixture();
+    await expect(read()).rejects.toThrow("not complete");
+    const processor = new MiningDemoIncidentProcessor(dependencies);
+    await expect(processor.start("foreign-run")).rejects.toThrow("no longer the authorized");
+    expect(store.documents.size).toBe(0);
+    await processor.close();
+  });
+  it("journals the exact completed run separately and serves a pure, provenance-labelled read", async () => {
+    const { dependencies, store, record, read } = demoFixture();
+    const processor = new MiningDemoIncidentProcessor(dependencies);
+    await processor.start(record.runId);
+    const paths = [...store.documents.keys()];
+    expect(paths.every((path) => path.startsWith("public-demo-reconciliation/"))).toBe(true);
+    const journal = await readMiningIncidentJournal(
+      { read: (path, signal) => store.read(demoIncidentPath(path), signal) },
+      createD01VersionedIncidentRun({ ...record, contract: createD01RunContract() }),
+      { includeObservations: true },
+    );
+    expect(journal).toMatchObject({ asOf: iso(5), sourceObservedAt: iso(10) });
+    expect(journal?.observations).toHaveLength(537);
+    const writes = store.writes;
+    const documents = store.documents.size;
+    const leases = store.leases.size;
+    const result = await read();
+    expect(result).toMatchObject({
+      assessmentKind: "reconciled-event-time",
+      sourceObservedAt: iso(10),
+      refreshedAt: iso(10),
+    });
+    expect(result).not.toHaveProperty("observations");
+    expect([store.writes, store.documents.size, store.leases.size]).toEqual([
+      writes,
+      documents,
+      leases,
+    ]);
+    await processor.recoverCurrent();
+    expect(store.writes).toBe(writes);
+    await processor.close();
+  });
+
+  it("never writes while ingestion is pending or run approval is revoked", async () => {
+    const { dependencies, store, state, record } = demoFixture();
+    state.complete = false;
+    const processor = new MiningDemoIncidentProcessor({
+      ...dependencies,
+      wait: async () => {
+        expect(store.documents.size).toBe(0);
+        state.record = undefined;
+      },
+    });
+    await expect(processor.start(record.runId)).rejects.toThrow("no longer the authorized");
+    expect(store.documents.size).toBe(0);
+    await processor.close();
+  });
+
+  it("rejects a truncated capture despite green ingestion counts, without creating a journal", async () => {
+    const { dependencies, store, rows, record } = demoFixture();
+    rows.pop();
+    const processor = new MiningDemoIncidentProcessor(dependencies);
+    await expect(processor.start(record.runId)).rejects.toThrow("does not match the complete run");
+    expect(store.documents.size).toBe(0);
+    await processor.close();
+  });
+
+  it("recovers an unknown head commit without duplicating minutes", async () => {
+    const { dependencies, store, record, read } = demoFixture();
+    store.unknownWrite = true;
+    const processor = new MiningDemoIncidentProcessor(dependencies);
+    await expect(processor.start(record.runId)).rejects.toThrow("head commit is unconfirmed");
+    store.unknownWrite = false;
+    await processor.recoverCurrent();
+    expect(await read()).toMatchObject({ asOf: iso(5), assessmentKind: "reconciled-event-time" });
+    expect(store.leases.size).toBe(0);
+    await processor.close();
+  });
+
+  it("rejects changed source payloads on reads and recovery rather than serving stale journal success", async () => {
+    const { dependencies, store, record, rows, read } = demoFixture();
+    const processor = new MiningDemoIncidentProcessor(dependencies);
+    await processor.start(record.runId);
+    const writes = store.writes;
+    const reading = rows.find((row) => row.source === "mining_ValidatedTelemetry")!;
+    reading.value = Number(reading.value) + 1;
+    await expect(read()).rejects.toThrow("conflicts with the durable journal");
+    await expect(processor.recoverCurrent()).rejects.toThrow("conflicts with the durable journal");
+    expect(store.writes).toBe(writes);
+    await processor.close();
+  });
+
+  it.each(["AbortError", "Error"])(
+    "joins cancellation without swallowing an unrelated %s",
+    async (name) => {
+      const { dependencies, state, store, record } = demoFixture();
+      state.complete = false;
+      let entered!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const processor = new MiningDemoIncidentProcessor({
+        ...dependencies,
+        wait: async (_milliseconds, signal) => {
+          entered();
+          await new Promise<void>((_resolve, reject) =>
+            signal.addEventListener(
+              "abort",
+              () => {
+                const failure = new Error("Cancelled timer", { cause: signal.reason });
+                failure.name = name;
+                reject(failure);
+              },
+              { once: true },
+            ),
+          );
+        },
+      });
+      const work = processor.start(record.runId);
+      const failure = expect(work).rejects.toThrow("Cancelled timer");
+      await waiting;
+      if (name === "AbortError") await expect(processor.close()).resolves.toBeUndefined();
+      else await expect(processor.close()).rejects.toThrow("Cancelled timer");
+      await failure;
+      expect(store.documents.size).toBe(0);
+    },
+  );
+});
 
 function observations(minute: number, quality: "good" | "bad" = "good") {
   const rows: Array<MiningReadingObservation | MiningStateObservation> = [

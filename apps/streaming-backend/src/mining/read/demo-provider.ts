@@ -5,6 +5,21 @@ import {
   type MiningCuratedRequest,
 } from "./curated-provider.js";
 import { mapComparisonRows, mapTrendRows } from "./series-dto.js";
+import { configuredMiningStore } from "../blob-store.js";
+import { MiningQueryError } from "./bounded-query.js";
+import {
+  assertFabricIncidentSourceReady,
+  assertReconciledIncidentObservations,
+  createFabricIncidentSource,
+} from "../../mining-incidents/fabric-source.js";
+import { demoIncidentPath } from "../../mining-incidents/demo-runtime.js";
+import { createD01VersionedIncidentRun } from "../../mining-incidents/catalog.js";
+import {
+  readMiningIncidentJournal,
+  type MiningIncidentStore,
+} from "../../mining-incidents/runtime.js";
+import { mapCurrentIncidentJournal } from "./incident-dto.js";
+import { mapMiningIngestion } from "./ingestion-dto.js";
 
 function demoEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
@@ -25,11 +40,94 @@ export function createMiningDemoProvider(
     demoEnvironment(env),
   ),
   now: () => number = Date.now,
+  store: Pick<MiningIncidentStore, "read"> | undefined = configuredMiningStore(env),
 ): MiningCuratedProvider {
   return async (input: MiningCuratedRequest, signal: AbortSignal) => {
     if (input.kind === "context") return null;
     if (input.kind === "incidents") {
-      throw new Error("Incident assessments are not connected to the public demo.");
+      if (
+        env.MINING_INGESTION_RECONCILIATION_ENABLED !== "true" ||
+        !store ||
+        !input.run.contract ||
+        input.run.phase !== "publisher_complete"
+      ) {
+        throw new MiningQueryError(
+          "upstream",
+          "Incident reconciliation is awaiting a completed demo run.",
+        );
+      }
+      const capturedAt = new Date(now()).toISOString();
+      const [readiness, ingestion] = await Promise.all([
+        query({ kind: "source-readiness", runId: input.run.runId, maxRows: 1 }, signal),
+        query({ kind: "ingestion", runId: input.run.runId, asOf: capturedAt, maxRows: 5 }, signal),
+      ]);
+      assertFabricIncidentSourceReady(readiness);
+      if (mapMiningIngestion(input.run, capturedAt, ingestion).status !== "complete") {
+        throw new MiningQueryError(
+          "upstream",
+          "Incident reconciliation is awaiting complete validated ingestion.",
+        );
+      }
+      const definition = createD01VersionedIncidentRun({
+        ...input.run,
+        contract: input.run.contract,
+      });
+      const journal = await readMiningIncidentJournal(
+        { read: (path, currentSignal) => store.read(demoIncidentPath(path), currentSignal) },
+        definition,
+        { signal, includeObservations: true },
+      );
+      if (!journal || journal.asOf !== input.run.stopAt || !journal.sourceObservedAt) {
+        throw new MiningQueryError(
+          "upstream",
+          "The durable incident reconciliation is not complete.",
+        );
+      }
+      assertReconciledIncidentObservations(input.run, journal.observations ?? []);
+      if (
+        Date.parse(journal.asOf) > Date.parse(input.asOf) ||
+        Date.parse(journal.sourceObservedAt) > now()
+      ) {
+        throw new MiningQueryError(
+          "malformed",
+          "Incident evidence is beyond the requested or current time.",
+        );
+      }
+      const source = await createFabricIncidentSource(definition, query, now).read({
+        runId: input.run.runId,
+        asOf: input.run.stopAt,
+        committed: [],
+        signal,
+      });
+      assertReconciledIncidentObservations(input.run, source.observations, journal.observations);
+      const confirmation = await query(
+        {
+          kind: "ingestion",
+          runId: input.run.runId,
+          asOf: new Date(now()).toISOString(),
+          maxRows: 5,
+        },
+        signal,
+      );
+      if (
+        mapMiningIngestion(input.run, new Date(now()).toISOString(), confirmation).status !==
+        "complete"
+      ) {
+        throw new MiningQueryError(
+          "upstream",
+          "Incident ingestion reconciliation changed during the read.",
+        );
+      }
+      signal.throwIfAborted();
+      const mapped = mapCurrentIncidentJournal({ run: input.run, journal });
+      return {
+        ...mapped,
+        assessmentKind: "reconciled-event-time" as const,
+        sourceObservedAt: journal.sourceObservedAt,
+        refreshedAt: new Date(now()).toISOString(),
+        totalIncidents: mapped.incidents.length,
+        incidents: mapped.incidents.slice(0, 20),
+      };
     }
     if (input.kind === "overview")
       return readMiningOverview(

@@ -14,7 +14,8 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$OntologyDefinitionSha256,
     [Parameter(Mandatory)][string]$GraphPreimagePath,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$GraphPreimageSha256,
-    [Parameter(Mandatory)][string]$OneLakeTablesPath
+    [Parameter(Mandatory)][string]$OneLakeTablesPath,
+    [switch]$IncludeAllProperties
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -72,6 +73,8 @@ if ($platform.metadata.type -cne 'GraphModel' -or
 }
 $nodes = @()
 $nodeTables = @()
+$legacyNodes = @()
+$legacyNodeTables = @()
 $edges = @()
 $edgeTables = @()
 $sources = @()
@@ -86,7 +89,23 @@ foreach ($type in $ownership.entityTypes) {
         $table -notmatch "(?m)^\s+entityName: $name\r?$") {
         throw "Missing approved catalog binding for $name."
     }
-    foreach ($column in @('id', 'label')) {
+    $catalogTable = @($catalogTables | Where-Object { $_.name -ceq $name })
+    if ($catalogTable.Count -ne 1) { throw "Missing pinned catalog table $name." }
+    $columns = @(($catalogTable[0].csv | ConvertFrom-Csv | Select-Object -First 1).PSObject.Properties.Name)
+    if ($columns -cnotcontains 'id' -or $columns -cnotcontains 'label') {
+        throw "Missing graph identity columns for $name."
+    }
+    $selectedColumns = if ($IncludeAllProperties) { $columns } else { @('id', 'label') }
+    if ($IncludeAllProperties) {
+        $entityProperties = @([regex]::Matches($entity, '(?m)^\tproperty (\w+)\r?$') |
+            ForEach-Object { $_.Groups[1].Value })
+        if ($entityProperties.Count -ne $columns.Count -or
+            @($entityProperties | Where-Object { $_ -cnotin $columns }).Count -ne 0 -or
+            @($entityProperties | Select-Object -Unique).Count -ne $columns.Count) {
+            throw "Ontology properties differ from the pinned catalog for $name."
+        }
+    }
+    foreach ($column in $selectedColumns) {
         $columnBody = [regex]::Match($table, "(?ms)^\tcolumn $column\r?\n(.*?)(?=^\tcolumn |^\tpartition |\z)").Groups[1].Value
         $propertyBody = [regex]::Match($entity, "(?ms)^\tproperty $column\r?\n(.*?)(?=^\tproperty |\z)").Groups[1].Value
         if ($columnBody -notmatch "(?m)^\t\tsourceColumn: $column\r?$" -or
@@ -99,10 +118,18 @@ foreach ($type in $ownership.entityTypes) {
     $aliases[$name] = Read-Lineage $entity
     $nodes += @{
         alias = $aliases[$name]; labels = @($name); primaryKeyProperties = @('id')
-        properties = @(@{ name = 'id'; type = 'STRING' }, @{ name = 'label'; type = 'STRING' })
+        properties = @($selectedColumns | ForEach-Object { @{ name = $_; type = 'STRING' } })
     }
     $nodeTables += @{
         id = (Read-Lineage $table); nodeTypeAlias = $aliases[$name]; dataSourceName = $name
+        propertyMappings = @($selectedColumns | ForEach-Object { @{ propertyName = $_; sourceColumn = $_ } })
+    }
+    $legacyNodes += @{
+        alias = $aliases[$name]; labels = @($name); primaryKeyProperties = @('id')
+        properties = @(@{ name = 'id'; type = 'STRING' }, @{ name = 'label'; type = 'STRING' })
+    }
+    $legacyNodeTables += @{
+        id = $nodeTables[-1].id; nodeTypeAlias = $aliases[$name]; dataSourceName = $name
         propertyMappings = @(
             @{ propertyName = 'id'; sourceColumn = 'id' },
             @{ propertyName = 'label'; sourceColumn = 'label' }
@@ -165,7 +192,12 @@ $replacements = @{
     'dataSources.json' = @{ '$schema' = "$schemaRoot/dataSources/1.0.0/schema.json"; dataSources = $sources }
     'graphDefinition.json' = @{ '$schema' = "$schemaRoot/graphDefinition/1.0.0/schema.json"; nodeTables = $nodeTables; edgeTables = $edgeTables }
 }
+$legacyReplacements = @{
+    'graphType.json' = @{ '$schema' = "$schemaRoot/graphType/1.0.0/schema.json"; nodeTypes = $legacyNodes; edgeTypes = $edges }
+    'graphDefinition.json' = @{ '$schema' = "$schemaRoot/graphDefinition/1.0.0/schema.json"; nodeTables = $legacyNodeTables; edgeTables = $edgeTables }
+}
 $parts = @()
+$projectionModes = @{}
 foreach ($part in $graph.Values) {
     if ($replacements.ContainsKey($part.path)) {
         $json = $replacements[$part.path] | ConvertTo-Json -Depth 20 -Compress
@@ -177,9 +209,21 @@ foreach ($part in $graph.Values) {
         $oldNode = [System.Text.Json.Nodes.JsonNode]::Parse(($old | ConvertTo-Json -Depth 20 -Compress))
         $desiredNode = [System.Text.Json.Nodes.JsonNode]::Parse($json)
         $emptyNode = [System.Text.Json.Nodes.JsonNode]::Parse(($empty | ConvertTo-Json -Depth 20 -Compress))
-        if (![System.Text.Json.Nodes.JsonNode]::DeepEquals($oldNode, $desiredNode) -and
-            ![System.Text.Json.Nodes.JsonNode]::DeepEquals($oldNode, $emptyNode)) {
+        if ([System.Text.Json.Nodes.JsonNode]::DeepEquals($oldNode, $desiredNode)) {
+            if ($legacyReplacements.ContainsKey($part.path)) { $projectionModes[$part.path] = 'desired' }
+            $parts += $part
+            continue
+        }
+        $legacyNode = $null
+        if ($IncludeAllProperties -and $legacyReplacements.ContainsKey($part.path)) {
+            $legacyNode = [System.Text.Json.Nodes.JsonNode]::Parse(($legacyReplacements[$part.path] | ConvertTo-Json -Depth 20 -Compress))
+        }
+        if (![System.Text.Json.Nodes.JsonNode]::DeepEquals($oldNode, $emptyNode) -and
+            ($null -eq $legacyNode -or ![System.Text.Json.Nodes.JsonNode]::DeepEquals($oldNode, $legacyNode))) {
             throw "Existing graph configuration differs from the reviewed Mining contract: $($part.path)"
+        }
+        if ($legacyReplacements.ContainsKey($part.path)) {
+            $projectionModes[$part.path] = if ([System.Text.Json.Nodes.JsonNode]::DeepEquals($oldNode, $emptyNode)) { 'empty' } else { 'legacy' }
         }
         $parts += @{
             path = $part.path; payloadType = 'InlineBase64'
@@ -189,5 +233,8 @@ foreach ($part in $graph.Values) {
 }
 foreach ($path in $replacements.Keys) {
     if (!$graph.ContainsKey($path)) { throw "Required native graph part missing: $path" }
+}
+if ($IncludeAllProperties -and $projectionModes['graphType.json'] -cne $projectionModes['graphDefinition.json']) {
+    throw 'Existing graph type and mappings have inconsistent projection states.'
 }
 @{ definition = @{ parts = $parts } }

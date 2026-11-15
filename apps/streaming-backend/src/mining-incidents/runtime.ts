@@ -26,7 +26,7 @@ export interface MiningIncidentRun {
   startedAt: string;
   endsAt: string;
   tags: readonly MiningTag[];
-  /** Present only for a prospective schema-2 journal; absent on legacy schema 1. */
+  /** Pinned schema-2 contract; absent on legacy schema 1. */
   contract?: D01RunContract;
 }
 
@@ -170,6 +170,7 @@ class Replay {
   lastMinute = -1;
   observations = 0;
   acks = 0;
+  sourceObservedAt: string | null = null;
   private lastArrival = -Infinity;
 
   constructor(private readonly run: MiningIncidentRun) {
@@ -186,6 +187,7 @@ class Replay {
       if (utc(command.observation.timestamp) > utc(this.run.endsAt))
         invalid("Incident observation is outside the approved run.");
       this.lastArrival = received;
+      this.sourceObservedAt = command.receivedAt;
       if (++this.observations > 4096) invalid("Incident journal observation budget exceeded.");
       this.evaluator.observe(command.observation, command.receivedAt);
     } else if (command.kind === "evaluate") {
@@ -272,6 +274,7 @@ function snapshot(run: MiningIncidentRun, state: Replay) {
         : new Date(utc(run.startedAt) + state.lastMinute * MINUTE).toISOString(),
     incidents: state.evaluator.active(),
     assessments: state.evaluator.activeAssessments(),
+    sourceObservedAt: state.sourceObservedAt,
   };
 }
 
@@ -288,7 +291,12 @@ function outbox(state: Replay, afterId?: string, limit = 100): MiningIncidentTra
 export async function readMiningIncidentJournal(
   store: Pick<MiningIncidentStore, "read">,
   input: MiningIncidentRun,
-  options: { signal?: AbortSignal; afterId?: string; limit?: number } = {},
+  options: {
+    signal?: AbortSignal;
+    afterId?: string;
+    limit?: number;
+    includeObservations?: boolean;
+  } = {},
 ) {
   const run = definition(input);
   const read = async (path: string) => {
@@ -300,8 +308,18 @@ export async function readMiningIncidentJournal(
   const document = await read(headPath(run.runId));
   if (!document) return undefined;
   const checkpoint = head(document.value, digest(run), run.contract ? 2 : 1);
-  const { state } = await loadJournal(run, checkpoint, read);
-  return { ...snapshot(run, state), notifications: outbox(state, options.afterId, options.limit) };
+  const { state, journal } = await loadJournal(run, checkpoint, read);
+  return {
+    ...snapshot(run, state),
+    notifications: outbox(state, options.afterId, options.limit),
+    ...(options.includeObservations
+      ? {
+          observations: journal.flatMap((command) =>
+            command.kind === "observe" ? [command.observation] : [],
+          ),
+        }
+      : {}),
+  };
 }
 
 /**

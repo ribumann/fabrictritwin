@@ -19,6 +19,8 @@ import {
   validAsOf,
   currentIncidentQuery,
   validCurrentAssessmentAsOf,
+  validIncidentAssessment,
+  incidentAssessmentLabel,
   validSeries,
   seriesQuery,
   verifiedRunIngestion,
@@ -52,6 +54,30 @@ const loadAppearanceBundle = () =>
 
 afterEach(() => vi.useRealTimers());
 describe("mining request lifecycle", () => {
+  it("distinguishes freshly rechecked reconciled event time from live assessment freshness", () => {
+    const now = Date.parse("2026-01-01T12:10:00.000Z");
+    const data = {
+      assessmentKind: "reconciled-event-time",
+      asOf: "2026-01-01T12:05:00.000Z",
+      sourceObservedAt: "2026-01-01T12:06:00.000Z",
+      refreshedAt: "2026-01-01T12:10:00.000Z",
+    };
+    expect(validIncidentAssessment(data, now)).toBe(true);
+    expect(validIncidentAssessment({ asOf: data.asOf }, now)).toBe(false);
+    expect(validIncidentAssessment({ ...data, refreshedAt: data.sourceObservedAt }, now)).toBe(
+      false,
+    );
+    expect(
+      validIncidentAssessment({ ...data, sourceObservedAt: "2026-01-01T12:11:00Z" }, now),
+    ).toBe(false);
+    expect(
+      validIncidentAssessment({ ...data, sourceObservedAt: "2026-01-01T12:04:00Z" }, now),
+    ).toBe(false);
+    expect(validIncidentAssessment({ ...data, assessmentKind: "fabricated" }, now)).toBe(false);
+    expect(incidentAssessmentLabel(data)).toMatch(
+      /Reconciled event time.*source captured.*rechecked.*not a live assessment/,
+    );
+  });
   it("validates live service cutoffs at response time while keeping replay cutoffs exact", () => {
     const requested = "2026-01-01T12:00:00.000Z";
     const received = Date.parse("2026-01-01T12:00:25.000Z");

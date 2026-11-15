@@ -5,6 +5,8 @@ import { createMiningDemoRouter } from "../src/api/mining-demo.js";
 import { MiningPublisherHost } from "../src/mining/publisher-host.js";
 import { MiningRunCoordinator } from "../src/mining/run-coordinator.js";
 import type { MiningStore, StoredDocument } from "../src/mining/store.js";
+import type { MiningAnswer } from "../src/mining/assistant.js";
+import type { MiningCuratedProvider } from "../src/mining/read/curated-provider.js";
 
 const principal = "11111111-1111-4111-8111-111111111111";
 const tenant = "22222222-2222-4222-8222-222222222222";
@@ -23,7 +25,11 @@ const env = {
   MINING_CURATED_QUERY_VERSION: "d01-g5-query-v1",
 };
 
-function setup(configuration: NodeJS.ProcessEnv = env) {
+function setup(
+  configuration: NodeJS.ProcessEnv = env,
+  incidents?: { start(runId: string): Promise<void> },
+  assistant?: { answer: MiningAnswer; curated: MiningCuratedProvider },
+) {
   const documents = new Map<string, StoredDocument>();
   const leases = new Set<string>();
   const store: MiningStore = {
@@ -73,12 +79,121 @@ function setup(configuration: NodeJS.ProcessEnv = env) {
   app.use(express.json());
   app.use(
     "/demo",
-    createMiningDemoRouter({ synthetic: false, env: configuration, store, host, verifyClaims }),
+    createMiningDemoRouter({
+      synthetic: false,
+      env: configuration,
+      store,
+      host,
+      verifyClaims,
+      incidents,
+      ...assistant,
+    }),
   );
   return { app, start, verifyClaims, documents, store };
 }
 
 describe("public mining demo service boundary", () => {
+  it("scopes assistant evidence to the admitted marked run and rejects caller-selected scope", async () => {
+    const answer = vi.fn<MiningAnswer>().mockResolvedValue("The latest sample quality is stale.");
+    const metric = {
+      value: null,
+      unit: "t/h",
+      coverage: null,
+      quality: "missing" as const,
+      windowStart: "2026-01-01T11:00:00.000Z",
+      windowEnd: "2026-01-01T11:05:00.000Z",
+    };
+    const curated = vi.fn<MiningCuratedProvider>().mockImplementation(async (input) => ({
+      plantId: "D01",
+      runId: input.run.runId,
+      catalogVersion: "test",
+      asOf: "2026-01-01T11:05:00.000Z",
+      refreshedAt: "2026-01-01T11:06:00.000Z",
+      quality: "stale",
+      latest: { modules: [], readings: [] },
+      summary: {
+        throughput: metric,
+        runningLines: metric,
+        grossProcessWaterIntensity: metric,
+        energyIntensity: metric,
+      },
+    }));
+    const enabled = {
+      ...env,
+      MINING_PUBLIC_DEMO_ASSISTANT_ENABLED: "true",
+      MINING_INGESTION_RECONCILIATION_ENABLED: "true",
+      FOUNDRY_PROJECT_ENDPOINT: "https://example.services.ai.azure.com/api/projects/mining",
+      ATHLETE_ASSISTANT_MODEL_DEPLOYMENT_NAME: "demo-model",
+    };
+    const { app, store } = setup(enabled, undefined, { answer, curated });
+    const runId = "44444444-4444-4444-8444-444444444444";
+    await new MiningRunCoordinator(store).start({
+      plantId: "D01",
+      requestId: runId,
+      durationSeconds: 300,
+    });
+    const ask = () => request(app).post("/demo/assistant");
+    const question = { plantId: "D01", question: "Is the latest evidence fresh?" };
+    expect((await ask().send(question)).status).toBe(404);
+    expect(answer).not.toHaveBeenCalled();
+    await store.create(`public-demo/${runId}.json`, { version: 1, runId });
+    for (const body of [
+      { ...question, runId: "other" },
+      { ...question, query: "print 1" },
+      { ...question, question: "x".repeat(1001) },
+      { ...question, question: " " },
+    ]) {
+      expect((await ask().send(body)).status).toBe(400);
+    }
+    const response = await ask().send(question);
+    expect(response.status).toBe(200);
+    expect(curated).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "overview", run: expect.objectContaining({ runId }) }),
+      expect.any(AbortSignal),
+    );
+    expect(answer).toHaveBeenCalledWith(
+      question.question,
+      expect.stringContaining(runId),
+      expect.any(AbortSignal),
+    );
+    expect(response.body).toMatchObject({
+      runId,
+      kind: "bounded-fabric-evidence",
+      nativeDataAgentInvoked: false,
+      evidence: { runId, quality: "stale" },
+    });
+    curated.mockRejectedValueOnce(new Error("Fabric offline"));
+    expect((await ask().send(question)).status).toBe(503);
+    expect(answer).toHaveBeenCalledTimes(1);
+    const disabled = setup(env, undefined, { answer, curated });
+    expect((await request(disabled.app).post("/demo/assistant").send(question)).status).toBe(503);
+  });
+  it.each(["publisher_complete", "running"] as const)(
+    "activates reconciliation only after %s completion, never from a GET",
+    async (phase) => {
+      const incidents = { start: vi.fn(async () => {}) };
+      const { app, start } = setup(env, incidents);
+      start.mockImplementationOnce((input) => {
+        const status = {
+          runId: input.requestId,
+          admission: "accepted" as const,
+          phase: "running" as const,
+          stopRequested: false,
+        };
+        return {
+          admission: Promise.resolve({ kind: "started", status }),
+          completion: Promise.resolve({ ...status, phase }),
+        };
+      });
+      const response = await request(app).post("/demo/runs/start").send({ plantId: "D01" });
+      expect(response.status).toBe(202);
+      const calls = phase === "publisher_complete" ? 1 : 0;
+      expect(incidents.start).toHaveBeenCalledTimes(calls);
+      if (calls) expect(incidents.start).toHaveBeenCalledWith(response.body.runId);
+      await request(app).get("/demo/incidents");
+      expect(incidents.start).toHaveBeenCalledTimes(calls);
+    },
+  );
   it("is disabled by default and rejects callers other than the configured service", async () => {
     const disabled = setup({});
     expect(

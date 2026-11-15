@@ -17,6 +17,12 @@ import type {
   MiningCuratedRequest,
 } from "../mining/read/curated-provider.js";
 import { validateMiningReadQuery, type MiningReadRoute } from "./mining-read.js";
+import type { MiningDemoIncidentProcessor } from "../mining-incidents/demo-runtime.js";
+import {
+  createMiningAnswer,
+  miningAssistantConfigured,
+  type MiningAnswer,
+} from "../mining/assistant.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -31,6 +37,8 @@ interface Options {
   store?: MiningStore;
   verifyClaims?: (req: Request, signal: AbortSignal) => Promise<JWTPayload | undefined>;
   curated?: MiningCuratedProvider;
+  incidents?: Pick<MiningDemoIncidentProcessor, "start">;
+  answer?: MiningAnswer;
 }
 
 function error(res: Response, status: number, code: string, message: string): void {
@@ -53,6 +61,9 @@ export function createMiningDemoRouter(options: Options): Router {
     ((req: Request, signal: AbortSignal) => verifyMcpCallerClaimsWithErrors(req, signal, env));
   const host = options.host ?? createMiningDemoHost(env);
   const curated = options.curated ?? createMiningDemoProvider(env);
+  const answer = options.answer ?? createMiningAnswer(env);
+  let answering = false;
+  let questionTimes: number[] = [];
 
   router.use(async (req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
@@ -122,13 +133,13 @@ export function createMiningDemoRouter(options: Options): Router {
       value.runId === id
     );
   };
-  const fail = (res: Response, cause: unknown) => {
+  const fail = (res: Response, cause: unknown, unavailableCode = "mining_demo_unavailable") => {
     console.error("[mining-demo] Request failed", cause);
     if (res.headersSent || res.destroyed) return;
     if (cause instanceof MiningCoordinationError && cause.code === "conflict") {
       error(res, 409, "mining_demo_busy", "A run is active or the demo cooldown has not elapsed.");
     } else {
-      error(res, 503, "mining_demo_unavailable", "The mining demo is unavailable; check status.");
+      error(res, 503, unavailableCode, "The mining demo is unavailable; check status.");
     }
   };
 
@@ -204,7 +215,10 @@ export function createMiningDemoRouter(options: Options): Router {
             approvedRun: run,
             catalogVersion: D01_CATALOG_VERSION,
             readAvailable: true,
-            assistant: { available: false },
+            assistant: {
+              available: miningAssistantConfigured(env),
+              kind: "bounded-fabric-evidence",
+            },
             ...(!run
               ? { unavailableReason: "Start a public demo run to view mining telemetry." }
               : {}),
@@ -215,19 +229,19 @@ export function createMiningDemoRouter(options: Options): Router {
           error(res, 404, "mining_demo_run_not_found", "No admitted public demo run is available.");
           return;
         }
-        if (route === "incidents") {
+        let input: MiningCuratedRequest;
+        if (route === "incidents" && demo.stopRequested) {
           error(
             res,
             503,
             "mining_incidents_unavailable",
-            "Incident assessments are not connected.",
+            "Stopped runs do not have a complete incident reconciliation.",
           );
           return;
         }
-        let input: MiningCuratedRequest;
-        if (route === "overview") {
+        if (route === "overview" || route === "incidents") {
           input = {
-            kind: "overview",
+            kind: route,
             run: demo.run,
             asOf: new Date((req.query.asOf as string | undefined) ?? Date.now()).toISOString(),
           };
@@ -256,6 +270,20 @@ export function createMiningDemoRouter(options: Options): Router {
               : { ...window, kind: "compare" };
         }
         const data = await curated(input, signal);
+        if (route === "incidents") {
+          const latest = await coordinator.currentStatus(signal);
+          if (
+            latest?.admission !== "accepted" ||
+            latest.runId !== run.runId ||
+            latest.stopRequested ||
+            latest.phase !== "publisher_complete"
+          ) {
+            throw new MiningCoordinationError(
+              "prerequisite",
+              "The completed demo run changed during the incident read.",
+            );
+          }
+        }
         if (res.headersSent || res.destroyed) return;
         res.json(
           route === "overview"
@@ -270,10 +298,99 @@ export function createMiningDemoRouter(options: Options): Router {
             : data,
         );
       } catch (cause) {
-        fail(res, cause);
+        fail(res, cause, route === "incidents" ? "mining_incidents_unavailable" : undefined);
       }
     });
   }
+  router.post("/assistant", async (req, res) => {
+    if (env.MINING_PUBLIC_DEMO_READ_ENABLED !== "true" || !miningAssistantConfigured(env)) {
+      error(res, 503, "mining_assistant_unavailable", "The mining evidence assistant is disabled.");
+      return;
+    }
+    const body: unknown = req.body;
+    if (
+      Object.keys(req.query).length ||
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      Object.keys(body).length !== 2 ||
+      !("plantId" in body) ||
+      body.plantId !== "D01" ||
+      !("question" in body) ||
+      typeof body.question !== "string" ||
+      !body.question.trim() ||
+      body.question.length > 1000
+    ) {
+      error(
+        res,
+        400,
+        "invalid_mining_question",
+        "Provide D01 and a question of 1-1000 characters.",
+      );
+      return;
+    }
+    const now = Date.now();
+    questionTimes = questionTimes.filter((time) => now - time < 60_000);
+    if (answering || questionTimes.length >= 6) {
+      res.setHeader("Retry-After", "60");
+      error(
+        res,
+        429,
+        "mining_assistant_busy",
+        "The shared demo assistant is busy; try again later.",
+      );
+      return;
+    }
+    questionTimes.push(now);
+    answering = true;
+    try {
+      assertMiningDemoQueryConfiguration(env);
+      const { store, coordinator } = dependencies();
+      const signal: AbortSignal = res.locals.miningDemoSignal;
+      const status = await coordinator.currentStatus(signal);
+      if (
+        status?.admission !== "accepted" ||
+        !status.run?.contract ||
+        !(await isDemoRun(store, status.runId, signal))
+      ) {
+        error(res, 404, "mining_demo_run_not_found", "Start a public demo run before asking.");
+        return;
+      }
+      const asOf = new Date(now).toISOString();
+      const overview = await curated({ kind: "overview", run: status.run, asOf }, signal);
+      const evidence = JSON.stringify(overview);
+      if (!overview || !("latest" in overview) || Buffer.byteLength(evidence) > 65_536) {
+        throw new Error("Mining assistant evidence is unavailable or exceeds its bound.");
+      }
+      const text = await answer(body.question.trim(), evidence, signal);
+      const latest = await coordinator.currentStatus(signal);
+      if (latest?.runId !== status.runId || latest.stopRequested !== status.stopRequested) {
+        throw new Error("The public run changed while answering; ask again.");
+      }
+      signal.throwIfAborted();
+      if (!res.headersSent && !res.destroyed) {
+        res.json({
+          plantId: "D01",
+          runId: status.runId,
+          catalogVersion: D01_CATALOG_VERSION,
+          answer: text,
+          kind: "bounded-fabric-evidence",
+          nativeDataAgentInvoked: false,
+          groundedOn: [
+            "validated latest readings",
+            "five-minute summary",
+            "event-ID reconciliation",
+          ],
+          evidence: overview,
+          refreshedAt: new Date().toISOString(),
+        });
+      }
+    } catch (cause) {
+      fail(res, cause, "mining_assistant_unavailable");
+    } finally {
+      answering = false;
+    }
+  });
   router.post("/runs/start", async (req, res) => {
     if (
       Object.keys(req.query).length ||
@@ -296,6 +413,29 @@ export function createMiningDemoRouter(options: Options): Router {
       signal.throwIfAborted();
       const execution = host.start({ plantId: "D01", requestId: runId, durationSeconds }, signal);
       const admission = await execution.admission;
+      const incidents = options.incidents;
+      if (incidents) {
+        void execution.completion
+          .then(
+            (status) => {
+              if (status.phase === "publisher_complete" && !status.stopRequested) {
+                return incidents.start(runId);
+              }
+            },
+            (cause: unknown) => {
+              console.error(
+                "[mining-demo-incidents] Publisher did not complete; reconciliation was not activated",
+                cause,
+              );
+            },
+          )
+          .catch((cause: unknown) => {
+            console.error(
+              "[mining-demo-incidents] Completion-triggered reconciliation failed",
+              cause,
+            );
+          });
+      }
       if (res.headersSent || res.destroyed) return;
       if (
         admission.kind !== "started" ||
