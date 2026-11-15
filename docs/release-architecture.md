@@ -256,10 +256,12 @@ flowchart LR
 
 The graph has 199 nodes and 248 directed edges; its 50 Module -> Stream -> Module
 paths matched the catalog. It is a static catalog projection, not a live graph
-or time-series binding. Ontology ALM source resolution, the parent warning,
-full properties including `Tag.unit`, and supported hosted projection changes
-remain unresolved. A narrow read-only ALM mapping investigation is in progress;
-no new permission or credential need has been established for that step.
+or time-series binding. A separate read-only query through the supported
+Ontology MCP consumer resolved the intended Lakehouse and returned the 56-tag
+count with three actual engineering-unit values. Native entity metadata also
+exposes `unit`; this is static Tag-binding evidence, not proof of every binding.
+Internal ALM marker translation is still undocumented. The graph's parent
+warning, its missing `Tag.unit` projection, and time-series binding remain unresolved.
 Supported hosted projection changes require the ontology's **Manage graph**
 workflow. Offline candidate generation did not update a hosted graph.
 
@@ -298,11 +300,10 @@ exception; do not disable the delegation or add a competing auto-resume loop.
 The always-on Fabric-backed target requires coordination for an approved
 governance exception. An optional native Data Agent bridge would need a scoped
 identity/permission decision after supported feasibility is established.
-No workspace role was granted. Ontology
-ALM/projection validation (including the narrow read-only mapping
-investigation) and snapshot model/report correction remain ongoing technical
-work; no permission or credential need has been established for the current
-ALM investigation. No credentials, permissions, capacity, or Fabric resources
+No workspace role was granted. Broader ontology/projection validation and
+snapshot model/report correction remain ongoing technical work; no permission
+or credential need was established for the successful static Tag query.
+No credentials, permissions, capacity, or Fabric resources
 were changed for this documentation. The overall release is not declared
 complete.
 
