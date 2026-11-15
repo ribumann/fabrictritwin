@@ -55,6 +55,96 @@ const loadAppearanceBundle = () =>
   );
 
 afterEach(() => vi.useRealTimers());
+describe("mining chart legends", () => {
+  it("shows each series range while preserving the shared axis and quality gaps", () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const chart = tree.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "chart",
+    );
+    if (!chart) throw new Error("Missing mining chart function");
+    class Element {
+      children: Element[] = [];
+      attributes: Record<string, string> = {};
+      className = "";
+      namespaceURI = "http://www.w3.org/2000/svg";
+      constructor(
+        public tag: string,
+        public content = "",
+      ) {}
+      replaceChildren() {
+        this.children = [];
+      }
+      append(...children: Element[]) {
+        this.children.push(...children);
+      }
+      prepend(child: Element) {
+        this.children.unshift(child);
+      }
+      setAttribute(name: string, value: string) {
+        this.attributes[name] = value;
+      }
+    }
+    const rows = [
+      { seriesId: "A", value: 10, minute: 0, quality: "good" },
+      { seriesId: "A", value: -500, minute: 1, quality: "bad" },
+      { seriesId: "A", value: 20, minute: 2, quality: "good" },
+      { seriesId: "B", value: 100, minute: 0, quality: "good" },
+      { seriesId: "B", value: 120, minute: 1, quality: "good" },
+      { seriesId: "C", value: 200, minute: 0, quality: "good" },
+      { seriesId: "C", value: 220, minute: 1, quality: "good" },
+      { seriesId: "C", value: 999, minute: 2, quality: "uncertain" },
+    ].map(({ minute, ...row }) => ({
+      ...row,
+      unit: "t/h",
+      coverage: 1,
+      timestamp: `2026-11-15T20:0${minute}:00.000Z`,
+    }));
+    const data = {
+      binMinutes: 1,
+      windowStart: "2026-11-15T20:00:00.000Z",
+      windowEnd: "2026-11-15T20:03:00.000Z",
+      rows,
+    };
+    const original = JSON.stringify(data);
+    const context = {
+      catalog: { telemetry_tags: ["A", "B", "C"].map((id) => ({ id, unit: "t/h" })) },
+      usable,
+      number: String,
+      timestamp: formatTimestamp,
+      coverage: String,
+      node: (tag: string, content?: string) => new Element(tag, content),
+      document: { createElementNS: (_namespace: string, tag: string) => new Element(tag) },
+      chart: undefined as undefined | ((container: Element, data: object) => void),
+    };
+    runInNewContext(`${chart.getText(tree)}; this.chart = chart;`, context);
+    if (!context.chart) throw new Error("Mining chart not loaded");
+    const container = new Element("div");
+    context.chart(container, data);
+    expect(
+      container.children
+        .filter((child) => child.tag === "p")
+        .slice(0, 3)
+        .map((child) => child.content),
+    ).toEqual([
+      "A (t/h): 10 – 20 · solid line",
+      "B (t/h): 100 – 120 · dashed line",
+      "C (t/h): 200 – 220 · dotted line",
+    ]);
+    const curves = container.children[0].children;
+    expect(curves).toHaveLength(4);
+    expect(curves[0].attributes.points).toBe("40,165");
+    expect(curves[1].attributes.points).toBe(`400,${165 - (10 / 210) * 120}`);
+    expect(curves[3].attributes.points).toBe(`40,${165 - (190 / 210) * 120} 220,45`);
+    expect(JSON.stringify(data)).toBe(original);
+  });
+});
 describe("mining request lifecycle", () => {
   it.each([
     { mode: "replay", scope: "all" },
