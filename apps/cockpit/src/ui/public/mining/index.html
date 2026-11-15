@@ -175,15 +175,30 @@
       <section class="card" aria-labelledby="ask-heading">
         <h2 id="ask-heading">Ask / inspect evidence</h2>
         <p id="assistant-state">
-          Mining assistant unavailable until an approved grounded Fabric connection is configured.
-          No question is sent by this shell.
+          Checking availability of the read-only Mining evidence assistant.
         </p>
+        <form id="mining-ask">
+          <label for="mining-question">Question about the current public D01 run</label>
+          <textarea id="mining-question" rows="3" maxlength="1000" required disabled></textarea>
+          <button id="mining-ask-submit" type="submit" disabled>Ask about this run</button>
+        </form>
+        <p id="mining-answer-status" role="status"></p>
+        <p id="mining-answer"></p>
+        <details id="mining-answer-evidence" hidden>
+          <summary>Inspect the exact Fabric evidence supplied to the model</summary>
+          <pre id="mining-answer-source"></pre>
+        </details>
         <ul>
           <li>Why is Line B processing less ore than A and C in the last 15 minutes?</li>
           <li>Which DMS line has been outside its density band, for how long?</li>
           <li>Did a shared water issue affect all three lines?</li>
           <li>Show evidence for the bearing warning and compare it with normal load.</li>
         </ul>
+        <p class="muted">
+          Generated interpretations can be wrong. Check the source times and quality below each
+          answer. This assistant cannot operate equipment and does not invoke a native Fabric Data
+          Agent. Do not enter personal information or secrets.
+        </p>
         <a id="fabric-agent" hidden target="_blank" rel="noopener noreferrer"
           >Open data agent in Fabric</a
         >
