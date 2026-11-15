@@ -88,7 +88,7 @@ definition update, refresh, upload or apply operation.
 
 Each invocation initializes a fresh session, sends the initialized notification,
 discovers the actual tool schema and validates JSON-RPC IDs/errors and native
-`isError`. It proposes protocol `2024-11-05`, accepts that or `2025-03-26`,
+`isError`. It proposes protocol `2025-06-18`, also accepts `2024-11-05` or `2025-03-26`,
 and supports JSON or finite SSE responses with a 2 MiB UTF-8 parsing budget
 and a 120-second HTTP timeout. `Invoke-WebRequest` buffers the body before
 this size check; it is not a streaming download or memory-allocation cap.
@@ -109,8 +109,11 @@ it does not expose the internal `ONT_ALM_*` translation mechanism, prove
 every entity binding, clear the parent-ontology warning, add graph properties,
 or verify time-series bindings. Graph eligibility and live telemetry remain
 separate questions; historical telemetry must not be presented as live.
-The reusable client is offline-tested; its implementation does not repeat
-that hosted acceptance call. Its output always has
+The reusable client is offline-tested and its initialization, schema discovery
+and `ListEntities -EntityName mining_D01_Tag` were verified against the native
+service on 2026-11-15 with negotiated protocol `2025-06-18`. That metadata-only
+check does not repeat the historical SQL acceptance call; `ListRules` and
+`VerifyTags` have not been hosted-verified through this client. Its output always has
 `evidenceKind = NativeToolTextNotStructuredExecutionTrace` and
 `acceptanceVerified = false`: inspect actual text, including textual failures,
 before making any acceptance claim.

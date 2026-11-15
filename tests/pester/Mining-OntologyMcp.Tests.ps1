@@ -76,6 +76,7 @@ Describe 'Scoped read-only Mining Ontology MCP consumer' {
                         capabilities = @{ tools = @{} }; serverInfo = @{ name = 'fixture'; version = '1' }
                     }
                     if ($script:fault -eq 'negotiated') { $result.protocolVersion = '2025-03-26' }
+                    if ($script:fault -eq 'negotiated-current') { $result.protocolVersion = '2025-06-18' }
                     if ($script:fault -eq 'capability') { $result.capabilities.Remove('tools') }
                     if ($script:fault -eq 'session') { $responseHeaders['Mcp-Session-Id'] = @("bad`r`nsession") }
                 }
@@ -148,7 +149,7 @@ Describe 'Scoped read-only Mining Ontology MCP consumer' {
     It 'initializes, discovers and lists fully qualified entities on one pinned endpoint' {
         $value = . $script:consumer @script:scope -EntityName mining_D01_Tag
         $script:calls.message.method | Should -Be @('initialize', 'notifications/initialized', 'tools/list', 'tools/call')
-        $script:calls[0].message.params.protocolVersion | Should -BeExactly '2024-11-05'
+        $script:calls[0].message.params.protocolVersion | Should -BeExactly '2025-06-18'
         $script:calls[1].message.Contains('id') | Should -BeFalse
         @($script:calls | Select-Object -ExpandProperty uri -Unique) | Should -Be @(
             "https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/$($script:scope.WorkspaceId)/items/$($script:scope.OntologyId)/ontologyEndpoint"
@@ -169,11 +170,14 @@ Describe 'Scoped read-only Mining Ontology MCP consumer' {
         (. $script:consumer @script:scope).content | Should -Be @('native source/result text')
     }
 
-    It 'propagates a supported negotiated protocol on subsequent requests' {
-        $script:fault = 'negotiated'
+    It 'propagates supported negotiated protocol <version> on subsequent requests' -ForEach @(
+        @{ fault = 'negotiated'; version = '2025-03-26' }
+        @{ fault = 'negotiated-current'; version = '2025-06-18' }
+    ) {
+        $script:fault = $fault
         $null = . $script:consumer @script:scope
         foreach ($call in $script:calls | Select-Object -Skip 1) {
-            $call.protocol | Should -BeExactly '2025-03-26'
+            $call.protocol | Should -BeExactly $version
         }
     }
 

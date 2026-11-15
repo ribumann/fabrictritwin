@@ -77,7 +77,7 @@ try {
     }
     $credential = $null
     $claims = $null
-    $protocolVersion = '2024-11-05'
+    $protocolVersion = '2025-06-18'
 
     function Invoke-OntologyRpc {
         param([string]$Method, [Collections.IDictionary]$Parameters, [int]$Id)
@@ -154,7 +154,7 @@ try {
         capabilities = @{}
         clientInfo = @{ name = 'mining-ontology-readonly'; version = '1.0' }
     } 1
-    if ($initialized.result.protocolVersion -cnotin @('2024-11-05', '2025-03-26') -or
+    if ($initialized.result.protocolVersion -cnotin @('2024-11-05', '2025-03-26', '2025-06-18') -or
         -not $initialized.result.Contains('capabilities') -or
         -not $initialized.result.capabilities.Contains('tools')) {
         throw 'Ontology MCP did not negotiate the supported protocol and tools capability.'
