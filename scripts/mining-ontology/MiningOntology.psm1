@@ -101,8 +101,97 @@ function Read-MiningCatalog {
 function ConvertTo-MiningCsv {
     param([Parameter(Mandatory)][array]$Rows)
     if ($Rows.Count -eq 0) { throw 'Empty catalog table.' }
+    foreach ($row in $Rows) {
+        foreach ($value in $row.Values) {
+            if ([Text.Encoding]::UTF8.GetByteCount([string]$value) -gt 8000) {
+                throw 'Catalog field exceeds the SQL endpoint 8000-byte string limit.'
+            }
+        }
+    }
     # Explicit LF and UTF-8 bytes make receipts independent of the host platform.
     (@($Rows | ForEach-Object { [pscustomobject]$_ } | ConvertTo-Csv) -join "`n") + "`n"
+}
+
+function ConvertTo-MiningLoadCsv {
+    param([Parameter(Mandatory)][string]$Csv)
+    $rows = @($Csv | ConvertFrom-Csv)
+    if ($rows.Count -eq 0) { throw 'Empty catalog table.' }
+    $columns = @($rows[0].PSObject.Properties.Name)
+    $lines = [Collections.Generic.List[string]]::new()
+    foreach ($values in @((,$columns) + @($rows | ForEach-Object {
+        $row = $_
+        ,@($columns | ForEach-Object { [string]$row.$_ })
+    }))) {
+        $quoted = @($values | ForEach-Object { '"' + ([string]$_).Replace('\', '\\').Replace('"', '\"') + '"' })
+        $lines.Add($quoted -join ',')
+    }
+    return ($lines -join "`n") + "`n"
+}
+
+function Get-MiningCatalogRows {
+    param($Catalog, $Ownership)
+    $rows = @{}
+    foreach ($type in $Ownership.entityTypes) { $rows[$type.name] = [Collections.Generic.List[object]]::new() }
+    $plantMetadata = [ordered]@{}
+    $catalogKeys = [string[]]@($Catalog.Keys)
+    [Array]::Sort($catalogKeys, [StringComparer]::Ordinal)
+    foreach ($key in $catalogKeys) {
+        if ($key -cnotin @('modules', 'equipment', 'streams', 'telemetry_tags', 'source', 'telemetry_event_contract')) { $plantMetadata[$key] = $Catalog[$key] }
+    }
+    $rows.Plant.Add([ordered]@{
+        id = 'D01'; label = $Catalog.name; parent_id = ''; unit = $Catalog.units
+        metadata_json = ConvertTo-MiningJson $plantMetadata
+        source_json = ConvertTo-MiningJson $Catalog.source
+        telemetry_event_contract_json = ConvertTo-MiningJson $Catalog.telemetry_event_contract
+    })
+    foreach ($line in @('A', 'B', 'C', 'shared')) {
+        $rows.Line.Add([ordered]@{ id = "D01.$line"; label = $line; parent_id = 'D01'; unit = ''; metadata_json = ConvertTo-MiningJson ([ordered]@{ plant_id = 'D01'; line = $line }) })
+    }
+    foreach ($module in $Catalog.modules) {
+        $rows.Module.Add([ordered]@{ id = $module.id; label = $module.label; parent_id = "D01.$($module.line)"; unit = $Catalog.units; metadata_json = ConvertTo-MiningJson $module })
+    }
+    foreach ($equipment in $Catalog.equipment) {
+        $rows.Equipment.Add([ordered]@{ id = $equipment.id; label = $equipment.name; parent_id = $equipment.module_id; unit = ''; metadata_json = ConvertTo-MiningJson $equipment })
+    }
+    foreach ($tag in $Catalog.telemetry_tags) {
+        $rows.Tag.Add([ordered]@{ id = $tag.id; label = $tag.metric; parent_id = $tag.equipment_id; unit = $tag.unit; metadata_json = ConvertTo-MiningJson $tag })
+    }
+    foreach ($stream in $Catalog.streams) {
+        $rows.Stream.Add([ordered]@{ id = $stream.id; label = $stream.id; parent_id = $stream.source.module_id; unit = $Catalog.units; metadata_json = ConvertTo-MiningJson $stream })
+    }
+    return $rows
+}
+
+function Get-MiningRelationshipRows {
+    param($Catalog, $Rows, $Relationship)
+    $links = if ($Relationship.name -eq 'ModuleSendsStream') {
+        @($Catalog.streams | ForEach-Object { [ordered]@{ source_id = $_.source.module_id; target_id = $_.id } })
+    } elseif ($Relationship.name -eq 'StreamTargetsModule') {
+        @($Catalog.streams | ForEach-Object { [ordered]@{ source_id = $_.id; target_id = $_.target.module_id } })
+    } else {
+        @($Rows[$Relationship.target].ToArray() | ForEach-Object { [ordered]@{ source_id = $_.parent_id; target_id = $_.id } })
+    }
+    return ,(Get-MiningSortedRows $links -Keys @('source_id', 'target_id'))
+}
+
+function New-MiningCatalogTables {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$CatalogPath)
+    $catalog = Read-MiningCatalog $CatalogPath
+    $ownership = Get-Content -LiteralPath $script:OwnershipPath -Raw | ConvertFrom-Json -AsHashtable
+    $rows = Get-MiningCatalogRows $catalog $ownership
+    $tables = [Collections.Generic.List[object]]::new()
+    foreach ($type in $ownership.entityTypes) {
+        $tableRows = Get-MiningSortedRows $rows[$type.name].ToArray()
+        $csv = ConvertTo-MiningCsv $tableRows
+        $tables.Add([ordered]@{ name = "mining_D01_$($type.name)"; rowCount = $tableRows.Count; sha256 = Get-MiningTextHash $csv; csv = $csv })
+    }
+    foreach ($relationship in $ownership.relationships) {
+        $links = Get-MiningRelationshipRows $catalog $rows $relationship
+        $csv = ConvertTo-MiningCsv $links
+        $tables.Add([ordered]@{ name = "mining_D01_$($relationship.name)"; rowCount = $links.Count; sha256 = Get-MiningTextHash $csv; csv = $csv })
+    }
+    return ,$tables.ToArray()
 }
 
 function New-MiningPart {
@@ -192,30 +281,7 @@ function New-MiningOntologyPlan {
     $baselineMap = Get-MiningPartMap $baseline
     $currentMap = Get-MiningPartMap $current
     Assert-MiningTarget $target $baseline
-    $rows = @{}
-    foreach ($type in $ownership.entityTypes) { $rows[$type.name] = [Collections.Generic.List[object]]::new() }
-    $plantMetadata = [ordered]@{}
-    $catalogKeys = [string[]]@($catalog.Keys)
-    [Array]::Sort($catalogKeys, [StringComparer]::Ordinal)
-    foreach ($key in $catalogKeys) {
-        if ($key -cnotin @('modules', 'equipment', 'streams', 'telemetry_tags')) { $plantMetadata[$key] = $catalog[$key] }
-    }
-    $rows.Plant.Add([ordered]@{ id = 'D01'; label = $catalog.name; parent_id = ''; unit = $catalog.units; metadata_json = ConvertTo-MiningJson $plantMetadata })
-    foreach ($line in @('A', 'B', 'C', 'shared')) {
-        $rows.Line.Add([ordered]@{ id = "D01.$line"; label = $line; parent_id = 'D01'; unit = ''; metadata_json = ConvertTo-MiningJson ([ordered]@{ plant_id = 'D01'; line = $line }) })
-    }
-    foreach ($module in $catalog.modules) {
-        $rows.Module.Add([ordered]@{ id = $module.id; label = $module.label; parent_id = "D01.$($module.line)"; unit = $catalog.units; metadata_json = ConvertTo-MiningJson $module })
-    }
-    foreach ($equipment in $catalog.equipment) {
-        $rows.Equipment.Add([ordered]@{ id = $equipment.id; label = $equipment.name; parent_id = $equipment.module_id; unit = ''; metadata_json = ConvertTo-MiningJson $equipment })
-    }
-    foreach ($tag in $catalog.telemetry_tags) {
-        $rows.Tag.Add([ordered]@{ id = $tag.id; label = $tag.metric; parent_id = $tag.equipment_id; unit = $tag.unit; metadata_json = ConvertTo-MiningJson $tag })
-    }
-    foreach ($stream in $catalog.streams) {
-        $rows.Stream.Add([ordered]@{ id = $stream.id; label = $stream.id; parent_id = $stream.source.module_id; unit = $catalog.units; metadata_json = ConvertTo-MiningJson $stream })
-    }
+    $rows = Get-MiningCatalogRows $catalog $ownership
     $parts = [Collections.Generic.List[object]]::new()
     $tables = [Collections.Generic.List[object]]::new()
     $types = @{}
@@ -229,6 +295,10 @@ function New-MiningOntologyPlan {
         $bindings = @()
         $columns = @('id', 'label', 'parent_id', 'unit', 'metadata_json')
         $suffixes = @('Id', 'Label', 'Parent', 'Unit', 'Metadata')
+        if ($type.name -ceq 'Plant') {
+            $columns += @('source_json', 'telemetry_event_contract_json')
+            $suffixes += @('Source', 'TelemetryEventContract')
+        }
         for ($i = 0; $i -lt $columns.Count; $i++) {
             $propertyId = ([long]$type.propertyBase + $i + 1).ToString([Globalization.CultureInfo]::InvariantCulture)
             $propertyName = "mining$($type.name)$($suffixes[$i])"
@@ -268,14 +338,7 @@ function New-MiningOntologyPlan {
             source = @{ entityTypeId = $types[$relationship.source].id }
             target = @{ entityTypeId = $types[$relationship.target].id }
         })))
-        $links = if ($relationship.name -eq 'ModuleSendsStream') {
-            @($catalog.streams | ForEach-Object { [ordered]@{ source_id = $_.source.module_id; target_id = $_.id } })
-        } elseif ($relationship.name -eq 'StreamTargetsModule') {
-            @($catalog.streams | ForEach-Object { [ordered]@{ source_id = $_.id; target_id = $_.target.module_id } })
-        } else {
-            @($rows[$relationship.target].ToArray() | ForEach-Object { [ordered]@{ source_id = $_.parent_id; target_id = $_.id } })
-        }
-        $links = Get-MiningSortedRows $links -Keys @('source_id', 'target_id')
+        $links = Get-MiningRelationshipRows $catalog $rows $relationship
         $tableName = "mining_D01_$($relationship.name)"
         $csv = ConvertTo-MiningCsv $links
         $tables.Add([ordered]@{ name = $tableName; rowCount = $links.Count; sha256 = Get-MiningTextHash $csv; csv = $csv })
@@ -378,4 +441,4 @@ function Get-MiningPlanReceipt {
 }
 
 . (Join-Path $PSScriptRoot 'StaticLoader.ps1')
-Export-ModuleMember -Function New-MiningOntologyPlan, Export-MiningOntologyPlan, Invoke-MiningStaticApply, New-MiningLiveClient
+Export-ModuleMember -Function New-MiningCatalogTables, Invoke-MiningCatalogLoad, New-MiningOntologyPlan, Export-MiningOntologyPlan, Invoke-MiningStaticApply, New-MiningLiveClient

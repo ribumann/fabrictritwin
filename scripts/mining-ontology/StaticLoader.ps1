@@ -28,6 +28,12 @@ function Get-MiningSqlConnectionString {
     $builder.ConnectionString
 }
 
+function ConvertTo-MiningRequestBytes {
+    param($Body)
+    if ($Body -is [byte[]]) { return ,$Body }
+    return ,([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $Body -Compress -Depth 100)))
+}
+
 function New-MiningLiveClient {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Target)
@@ -51,6 +57,7 @@ function New-MiningLiveClient {
         }
         $tokens[$entry[0]] = $token.accessToken
     }
+    $convertRequestBytes = ${function:ConvertTo-MiningRequestBytes}
     $request = {
         param($Request)
         $handler = [Net.Http.HttpClientHandler]::new()
@@ -61,9 +68,7 @@ function New-MiningLiveClient {
         $message.Headers.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $tokens[$Request.audience])
         foreach ($key in $Request.headers.Keys) { $null = $message.Headers.TryAddWithoutValidation($key, [string]$Request.headers[$key]) }
         if ($null -ne $Request.body) {
-            $bytes = if ($Request.body -is [byte[]]) { $Request.body } else {
-                [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $Request.body -Compress -Depth 100))
-            }
+            [byte[]]$bytes = & $convertRequestBytes $Request.body
             $message.Content = [Net.Http.ByteArrayContent]::new([byte[]]$bytes)
             $message.Content.Headers.ContentType = [Net.Http.Headers.MediaTypeHeaderValue]::new($Request.contentType)
         }
@@ -139,11 +144,16 @@ function Wait-MiningOperation {
     $guidPattern = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
     $general = "^/v1/operations/$guidPattern$"
     $scoped = "^/v1/workspaces/$($Target.WorkspaceId)/lakehouses/$($Target.StaticLakehouseId)/operations/$guidPattern$"
+    $fabricRedirect = $location.Host -cmatch '^wabi-[a-z0-9-]+-redirect\.analysis\.windows\.net$' -and
+        $location.AbsolutePath -match $general
     if (-not $location.IsAbsoluteUri -or $location.Scheme -cne 'https' -or
-        $location.Host -cne 'api.fabric.microsoft.com' -or $location.Port -ne 443 -or
+        ($location.Host -cne 'api.fabric.microsoft.com' -and -not $fabricRedirect) -or $location.Port -ne 443 -or
         $location.UserInfo -or $location.Query -or $location.Fragment -or
         ($location.AbsolutePath -notmatch $general -and $location.AbsolutePath -notmatch $scoped)) {
         throw 'Untrusted or unsupported operation Location; reconcile the acknowledged operation without resubmission.'
+    }
+    if ($fabricRedirect) {
+        $location = [uri]"https://api.fabric.microsoft.com$($location.AbsolutePath)"
     }
     for ($i = 0; $i -lt $MaxPolls; $i++) {
         $delay = $PollSeconds
@@ -184,7 +194,7 @@ function Read-MiningLiveDefinition {
 }
 
 function Assert-MiningLivePrerequisites {
-    param($Client, $Target, $Tables)
+    param($Client, $Target, $Tables, [switch]$CatalogOnly)
     Assert-MiningClientTarget $Target $Client
     $base = "https://api.fabric.microsoft.com/v1/workspaces/$($Target.WorkspaceId)"
     $response = Invoke-MiningHttp $Client GET "$base/lakehouses/$($Target.StaticLakehouseId)"
@@ -198,9 +208,11 @@ function Assert-MiningLivePrerequisites {
         $lakehouse.properties.sqlEndpointProperties.connectionString -cne $Target.SqlServer) {
         throw 'Live schema-enabled source Lakehouse/SQL endpoint does not match the reviewed target.'
     }
-    $response = Invoke-MiningHttp $Client GET "$base/items/$($Target.OntologyId)"
-    Assert-MiningHttpStatus $response
-    if ($response.body.id -ine $Target.OntologyId -or $response.body.type -cne 'Ontology') { throw 'Live ontology target mismatch.' }
+    if (-not $CatalogOnly) {
+        $response = Invoke-MiningHttp $Client GET "$base/items/$($Target.OntologyId)"
+        Assert-MiningHttpStatus $response
+        if ($response.body.id -ine $Target.OntologyId -or $response.body.type -cne 'Ontology') { throw 'Live ontology target mismatch.' }
+    }
     # A complete shortcut inventory, not a not-found response, proves local paths are not redirected.
     $response = Invoke-MiningHttp $Client GET "$base/items/$($Target.StaticLakehouseId)/shortcuts"
     Assert-MiningHttpStatus $response
@@ -241,7 +253,7 @@ function Get-MiningTableState {
     $https = "https://onelake.dfs.fabric.microsoft.com/$($Target.WorkspaceId)/$root"
     $abfs = "abfss://$($Target.WorkspaceId)@onelake.dfs.fabric.microsoft.com/$root"
     if ($metadata.name -cne $name -or $metadata.schema_name -cne 'dbo' -or
-        $metadata.catalog_name -ine $Target.StaticLakehouseId -or
+        $metadata.catalog_name -inotIn @($Target.StaticLakehouseId, "$($Target.SqlDatabase).Lakehouse") -or
         $metadata.storage_location.TrimEnd('/') -cnotin @($https, $abfs)) { throw "Not an exact local native table: $name." }
     $expected = @($Table.csv | ConvertFrom-Csv)
     $columns = [string[]]@($expected[0].PSObject.Properties.Name)
@@ -363,6 +375,101 @@ function Send-MiningCsv {
     if ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([byte[]]$readback.body)).ToLowerInvariant() -cne $Table.sha256) {
         throw 'CSV readback does not match reviewed bytes; no table load submitted.'
     }
+}
+
+function Invoke-MiningCatalogLoad {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$CatalogPath,
+        [Parameter(Mandatory)][hashtable]$Target,
+        [Parameter(Mandatory)][string]$ReceiptPath,
+        [ValidateSet('Apply', 'Verify')][string]$Mode = 'Verify',
+        $Client,
+        [ValidateRange(1, 120)][int]$MaxPolls = 60,
+        [ValidateRange(0, 30)][int]$PollSeconds = 5
+    )
+    foreach ($field in @('TenantId', 'SubscriptionId', 'WorkspaceId', 'StaticLakehouseId')) {
+        $id = [guid]::Empty
+        if (-not $Target.Contains($field) -or -not [guid]::TryParseExact($Target[$field], 'D', [ref]$id) -or $id -eq [guid]::Empty) {
+            throw "Invalid exact target $field."
+        }
+    }
+    if (-not $Target.Contains('SourceSchema') -or $Target.SourceSchema -cne 'dbo') {
+        throw 'Catalog loading requires the dbo schema.'
+    }
+    $tables = New-MiningCatalogTables -CatalogPath $CatalogPath
+    $uploads = @($tables | ForEach-Object {
+        $csv = ConvertTo-MiningLoadCsv $_.csv
+        [ordered]@{ name = $_.name; csv = $csv; sha256 = Get-MiningTextHash $csv }
+    })
+    $requests = @($uploads | ForEach-Object {
+        [ordered]@{
+            metadataUri = "https://onelake.table.fabric.microsoft.com/delta/$($Target.WorkspaceId)/$($Target.StaticLakehouseId)/api/2.1/unity-catalog/tables/$($Target.StaticLakehouseId).dbo.$($_.name)"
+            uri = "https://api.fabric.microsoft.com/v1/workspaces/$($Target.WorkspaceId)/lakehouses/$($Target.StaticLakehouseId)/schemas/dbo/tables/$($_.name)/load?beta=true"
+            body = [ordered]@{
+                relativePath = "Files/mining-D01/$($_.sha256)/$($_.name).csv"
+                pathType = 'File'; mode = 'Overwrite'; recursive = $false
+                formatOptions = [ordered]@{ format = 'Csv'; header = $true; delimiter = ',' }
+            }
+        }
+    })
+    if ($Mode -eq 'Apply' -and (Test-Path -LiteralPath $ReceiptPath)) {
+        throw 'Receipt already exists; reconcile its recorded operations before applying again.'
+    }
+    if ($null -eq $Client) { $Client = New-MiningLiveClient $Target }
+    Assert-MiningLivePrerequisites $Client $Target $tables -CatalogOnly
+    $states = @()
+    for ($i = 0; $i -lt $tables.Count; $i++) {
+        $states += Get-MiningTableState $Client $Target $tables[$i] $requests[$i]
+    }
+    if ($Mode -eq 'Verify') {
+        if (@($states | Where-Object { -not $_.exists }).Count -gt 0) { throw 'Catalog tables are incomplete; no writes performed.' }
+        return [ordered]@{ status = 'VerifiedCatalog'; tables = @($tables | ForEach-Object { @{ name = $_.name; rowCount = $_.rowCount; sha256 = $_.sha256 } }) }
+    }
+    $receipt = [ordered]@{
+        formatVersion = 1; status = 'Prepared'; target = $Target
+        catalogSha256 = (Get-FileHash -LiteralPath $CatalogPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        operations = [Collections.Generic.List[object]]::new(); tables = [Collections.Generic.List[object]]::new()
+    }
+    $stream = [IO.FileStream]::new([IO.Path]::GetFullPath($ReceiptPath), [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    try {
+        Save-MiningApplyReceipt $stream $receipt
+        for ($i = 0; $i -lt $tables.Count; $i++) {
+            $table = $tables[$i]
+            $request = $requests[$i]
+            $entry = [ordered]@{ name = $table.name; status = 'Pending'; preexisting = $states[$i].exists; sha256 = $table.sha256; sourceSha256 = $uploads[$i].sha256 }
+            $receipt.tables.Add($entry)
+            Save-MiningApplyReceipt $stream $receipt
+            if (-not $states[$i].exists) {
+                Send-MiningCsv $Client $Target $uploads[$i] $request $receipt $stream $MaxPolls $PollSeconds
+                $fresh = Get-MiningTableState $Client $Target $table $request
+                if ($fresh.exists) { throw 'Table appeared during upload; no overwrite submitted.' }
+                Invoke-MiningRecordedWrite $Client POST $request.uri Fabric $request.body @{} $receipt $stream $Target $MaxPolls $PollSeconds
+            }
+            $state = $null
+            for ($attempt = 0; $attempt -lt $MaxPolls; $attempt++) {
+                try {
+                    $state = Get-MiningTableState $Client $Target $table $request
+                } catch {
+                    if ($_.Exception.Message -cne "Metadata/SQL visibility disagrees for $($table.name); wait for endpoint synchronization and verify.") { throw }
+                }
+                if ($state -and $state.exists) { break }
+                if ($attempt -lt $MaxPolls - 1) { & $Client.sleep $PollSeconds }
+            }
+            if (-not $state -or -not $state.exists) { throw "Loaded table $($table.name) is not visible yet; reconcile without reloading." }
+            $entry.status = 'RowsVerified'
+            $entry.rowCount = $state.rowCount
+            Save-MiningApplyReceipt $stream $receipt
+        }
+        $receipt.status = 'VerifiedCatalog'
+        Save-MiningApplyReceipt $stream $receipt
+        return $receipt
+    } catch {
+        $receipt.status = 'NeedsReconciliation'
+        $receipt.error = $_.Exception.Message
+        Save-MiningApplyReceipt $stream $receipt
+        throw
+    } finally { $stream.Dispose() }
 }
 
 function Invoke-MiningStaticApply {

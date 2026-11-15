@@ -38,6 +38,8 @@ Describe 'D01 additive OLD JSON ontology source' {
         $script:catalog = [ordered]@{
             schema_version = 1; plant_id = 'D01'; name = 'Fixture plant'
             units = 'meters'; coordinates = 'right-handed-y-up'
+            source = @{ provenance = 'fixture' }
+            telemetry_event_contract = @{ version = 'fixture' }
             modules = @(); equipment = @(); telemetry_tags = @(); streams = @()
         }
         for ($i = 0; $i -lt 24; $i++) {
@@ -132,6 +134,19 @@ Describe 'D01 additive OLD JSON ontology source' {
         Should -Invoke Invoke-RestMethod -Times 0
     }
 
+    It 'exports catalog tables without requiring an ontology target' {
+        $tables = New-MiningCatalogTables -CatalogPath $script:catalogPath
+        $plan = New-MiningOntologyPlan @script:arguments
+        $tables | Should -HaveCount 12
+        foreach ($table in $tables) {
+            $planned = $plan.tables | Where-Object name -eq $table.name
+            $table.rowCount | Should -Be $planned.rowCount
+            $table.sha256 | Should -BeExactly $planned.sha256
+            $table.csv | Should -BeExactly $planned.csv
+        }
+        Should -Invoke Invoke-WebRequest -Times 0
+    }
+
     It 'preserves all athlete and unowned parts including their byte payloads' {
         $plan = New-MiningOntologyPlan @script:arguments
         for ($i = 0; $i -lt $script:baseline.parts.Count; $i++) {
@@ -142,6 +157,10 @@ Describe 'D01 additive OLD JSON ontology source' {
 
     It 'preserves authored spatial/stream metadata and units and creates no readings for untagged children' {
         $plan = New-MiningOntologyPlan @script:arguments
+        $plant = ($plan.tables | Where-Object name -eq 'mining_D01_Plant').csv | ConvertFrom-Csv
+        ($plant.source_json | ConvertFrom-Json).provenance | Should -BeExactly 'fixture'
+        ($plant.telemetry_event_contract_json | ConvertFrom-Json).version | Should -BeExactly 'fixture'
+        ($plant.metadata_json | ConvertFrom-Json).plant_id | Should -BeExactly 'D01'
         $modules = ($plan.tables | Where-Object name -eq 'mining_D01_Module').csv | ConvertFrom-Csv
         $module = $modules | Where-Object id -eq 'D01.A.module0'
         $metadata = $module.metadata_json | ConvertFrom-Json
@@ -155,6 +174,12 @@ Describe 'D01 additive OLD JSON ontology source' {
         ($streams[0].metadata_json | ConvertFrom-Json).route_points_m | Should -HaveCount 2
         ($plan.tables | Where-Object name -eq 'mining_D01_ModuleSendsStream').csv |
             Should -Match '"D01.A.module0","process-0"'
+    }
+
+    It 'rejects a catalog field that would be truncated by the SQL endpoint' {
+        $script:catalog.source.provenance = 'x' * 8001
+        Write-Fixture $script:catalogPath $script:catalog
+        { New-MiningCatalogTables -CatalogPath $script:catalogPath } | Should -Throw '*8000-byte string limit*'
     }
 
     It 'uses unique native IDs, GUID bindings, and property-key references' {

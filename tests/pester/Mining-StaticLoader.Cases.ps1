@@ -7,8 +7,8 @@ BeforeAll {
             calls = [Collections.Generic.List[object]]::new()
             files = @{}; directories = @{}; tables = @{}; definition = $Baseline
             definitionReads = 0; driftOnRead = 0; lostUpdateResponse = $false
-            operationStatus = 'Succeeded'; operationHost = 'api.fabric.microsoft.com'
-            metadataAccess = 1; rowAccess = 1; columnMapping = 'none'
+            operationStatus = 'Succeeded'; operationHost = 'api.fabric.microsoft.com'; operationCore = $false
+            metadataAccess = 1; rowAccess = 1; columnMapping = 'none'; catalogName = $target.StaticLakehouseId
             rowFault = ''; rejectedHeaders = $false; shortcuts = @(); continuation = ''
             definitionLro = $false; updateImmediate = $false; sqlLag = $false; columnFault = ''
             deltaFault = ''; createFailure = $false; loadFailure = $false
@@ -39,7 +39,11 @@ BeforeAll {
                 if ($state.loadFailure) { $response.statusCode = 403; $response.body = @{ errorCode = 'InsufficientPrivileges' }; return $response }
                 $state.tables[$Matches[1]] = $true
                 $response.statusCode = 202
-                $response.headers.Location = "https://$($state.operationHost)/v1/workspaces/$($target.WorkspaceId)/lakehouses/$($target.StaticLakehouseId)/operations/00000000-0000-0000-0000-000000000010"
+                $response.headers.Location = if ($state.operationCore) {
+                    "https://$($state.operationHost)/v1/operations/00000000-0000-0000-0000-000000000010"
+                } else {
+                    "https://$($state.operationHost)/v1/workspaces/$($target.WorkspaceId)/lakehouses/$($target.StaticLakehouseId)/operations/00000000-0000-0000-0000-000000000010"
+                }
             } elseif ($path -match '/operations/[^/]+/result$') {
                 $response.body = @{ definition = $state.definition }
             } elseif ($path -match '/operations/') {
@@ -68,7 +72,7 @@ BeforeAll {
                 $columns = @(@($table.csv | ConvertFrom-Csv)[0].PSObject.Properties.Name | ForEach-Object { @{ name = $_; type_name = 'STRING' } })
                 if ($state.columnFault -eq 'duplicate') { $columns[-1] = $columns[0] }
                 $response.body = @{
-                    name = $name; schema_name = 'dbo'; catalog_name = $target.StaticLakehouseId
+                    name = $name; schema_name = 'dbo'; catalog_name = $state.catalogName
                     storage_location = "https://onelake.dfs.fabric.microsoft.com/$($target.WorkspaceId)/$($target.StaticLakehouseId)/Tables/dbo/$name"
                     columns = $columns
                 }
@@ -145,6 +149,43 @@ BeforeEach {
         ApproveStaticWrites = $true; AcknowledgeNonAtomicUpdate = $true; ExclusiveWriterWindowId = 'fixture-reviewed-window'
         Client = $script:client; MaxPolls = 2; PollSeconds = 0
     }
+}
+
+It 'loads and verifies the catalog without reading or updating an ontology' {
+    $result = Invoke-MiningCatalogLoad -CatalogPath $script:catalogPath -Target $script:target `
+        -ReceiptPath $script:applyArgs.ReceiptPath -Mode Apply -Client $script:client -MaxPolls 2 -PollSeconds 0
+    $result.status | Should -BeExactly 'VerifiedCatalog'
+    $result.tables | Should -HaveCount 12
+    @($script:client.state.calls | Where-Object { $_.uri -match '/(getDefinition|updateDefinition)$' }) | Should -HaveCount 0
+    @($script:client.state.calls | Where-Object { $_.uri -like '*load?beta=true' }) | Should -HaveCount 12
+    $verified = Invoke-MiningCatalogLoad -CatalogPath $script:catalogPath -Target $script:target `
+        -ReceiptPath $script:applyArgs.ReceiptPath -Mode Verify -Client $script:client -MaxPolls 2 -PollSeconds 0
+    $verified.status | Should -BeExactly 'VerifiedCatalog'
+}
+
+It 'does not retry a catalog load with an existing receipt' {
+    [IO.File]::WriteAllText($script:applyArgs.ReceiptPath, 'unresolved')
+    { Invoke-MiningCatalogLoad -CatalogPath $script:catalogPath -Target $script:target `
+        -ReceiptPath $script:applyArgs.ReceiptPath -Mode Apply -Client $script:client } | Should -Throw '*Receipt already exists*'
+    $script:client.state.calls | Should -HaveCount 0
+}
+
+It 'polls a Fabric regional operation through the canonical Fabric API only' {
+    $script:client.state.operationHost = 'wabi-west-us3-a-primary-redirect.analysis.windows.net'
+    $script:client.state.operationCore = $true
+    $result = Invoke-MiningCatalogLoad -CatalogPath $script:catalogPath -Target $script:target `
+        -ReceiptPath $script:applyArgs.ReceiptPath -Mode Apply -Client $script:client -MaxPolls 2 -PollSeconds 0
+    $result.status | Should -BeExactly 'VerifiedCatalog'
+    $polls = @($script:client.state.calls | Where-Object { $_.method -eq 'GET' -and $_.uri -match '/v1/operations/' })
+    $polls.Count | Should -BeGreaterThan 0
+    @($polls | Where-Object { ([uri]$_.uri).Host -ne 'api.fabric.microsoft.com' }) | Should -HaveCount 0
+}
+
+It 'accepts the native Lakehouse catalog name while verifying the exact storage path' {
+    $script:client.state.catalogName = "$($script:target.SqlDatabase).Lakehouse"
+    $result = Invoke-MiningCatalogLoad -CatalogPath $script:catalogPath -Target $script:target `
+        -ReceiptPath $script:applyArgs.ReceiptPath -Mode Apply -Client $script:client -MaxPolls 2 -PollSeconds 0
+    $result.status | Should -BeExactly 'VerifiedCatalog'
 }
 
 It 'uploads schema-scoped static CSVs, verifies every row and preserves the full unrelated native definition' {
@@ -363,6 +404,23 @@ It 'preserves flushed preimages in an append-only journal and blocks a torn fina
     (Get-Content -LiteralPath $script:applyArgs.ReceiptPath -TotalCount 1) | Should -BeExactly $records[0]
 }
 
+It 'preserves empty request bodies for OneLake directory and file creation' {
+    $bytes = & (Get-Module MiningOntology) {
+        ConvertTo-MiningRequestBytes ([byte[]]@())
+    }
+    ($null -eq $bytes) | Should -BeFalse
+    $bytes.GetType().FullName | Should -BeExactly 'System.Byte[]'
+    $bytes.Length | Should -Be 0
+}
+
+It 'escapes quotes and backslashes for the Lakehouse CSV loader' {
+    $value = & (Get-Module MiningOntology) {
+        $canonical = @([pscustomobject]@{ id = '1'; metadata_json = '{"text":"a\b,c"}' } | ConvertTo-Csv) -join "`n"
+        ConvertTo-MiningLoadCsv $canonical
+    }
+    $value | Should -BeExactly ("`"id`",`"metadata_json`"`n`"1`",`"{\`"text\`":\`"a\\b,c\`"}`"`n")
+}
+
 It 'constructs the real encrypted SqlClient connection string without connecting' {
     $value = & (Get-Module MiningOntology) {
         param($Target)
@@ -402,6 +460,14 @@ It 'validates native client token tenant, caller, audience and lifetime without 
     $native.context.callerObjectId | Should -BeExactly $script:target.CallerObjectId
     $native.request | Should -BeOfType ([scriptblock])
     $native.query | Should -BeOfType ([scriptblock])
+    $failure = $null
+    try {
+        & $native.request @{
+            method = 'PUT'; uri = 'http://127.0.0.1:1/'; audience = 'Storage'
+            headers = @{}; body = [byte[]]@(); contentType = 'application/octet-stream'; responseType = 'Bytes'
+        }
+    } catch { $failure = $_.Exception.GetBaseException() }
+    $failure | Should -BeOfType ([System.Net.Sockets.SocketException])
     Should -Invoke az -ModuleName MiningOntology -Times 3 -Exactly
     foreach ($fault in @('tenant', 'caller', 'audience', 'expiry')) {
         $script:tokenFault = $fault
