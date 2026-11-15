@@ -26,7 +26,11 @@ Receipts describe **generated local bytes**, not loaded Delta rows. Six
 namespaced types model Plant -> Line (including shared) -> Module -> Equipment
 -> Tag, plus Stream. Directed Module -> Stream -> Module links preserve all
 50 material/utility routes. Original identifiers, units, authored dimensions,
-positions, ports, routing and evidence remain in `metadata_json`; logical
+positions, ports, routing and evidence remain in `metadata_json`; Plant source
+provenance and the telemetry contract use separate `source_json` and
+`telemetry_event_contract_json` columns to preserve their complete JSON within
+the SQL analytics endpoint's 8,000-byte string limit. Oversized fields fail
+before any network request. Logical
 equipment gets no invented geometry or readings. Only the 56 catalog tags
 exist. The source Lakehouse holds catalog data, never a telemetry copy.
 
@@ -40,6 +44,38 @@ the desired snapshot has no added parts. `-Mode Verify` compares snapshots
 **offline**; it does not prove active instances or source data.
 
 ## Reviewed static apply
+
+### Catalog-only loading
+
+The catalog can be loaded into a new, Mining-owned schema-enabled Lakehouse
+without reading or changing an ontology. Import the module and supply an exact
+target containing `TenantId`, `SubscriptionId`, `WorkspaceId`,
+`StaticLakehouseId`, `SourceSchema` (`dbo`), `CallerObjectId`, `SqlEndpointId`,
+`SqlServer` and `SqlDatabase`, resolved from the live Lakehouse:
+
+```powershell
+Import-Module .\scripts\mining-ontology\MiningOntology.psm1
+Invoke-MiningCatalogLoad -CatalogPath $catalog -Target $target `
+  -ReceiptPath $newPrivateReceipt -Mode Apply
+Invoke-MiningCatalogLoad -CatalogPath $catalog -Target $target `
+  -ReceiptPath $newPrivateReceipt -Mode Verify
+```
+
+Verify is read-only and requires all twelve tables to match exactly. Apply
+requires authorized writes, uses the same source/SQL preflight and row
+verification as static apply, and refuses an existing receipt. After an
+interruption, reconcile each acknowledged operation and actual table content
+first. A new receipt can continue loading absent tables only after every
+existing table matches; it never overwrites or repairs a mismatched table.
+Catalog loading is not ontology deployment or proof of active twin instances.
+
+Canonical receipt CSV uses doubled quotes; upload CSV uses the Lakehouse
+loader's backslash escaping for quotes and backslashes. Each representation
+has its own hash. Native regional operation locations are validated, then
+polled by operation ID only through `api.fabric.microsoft.com`, never by
+sending credentials to the returned redirect host.
+
+### Ontology apply
 
 `plan.ps1` stays offline (its legacy Apply mode remains blocked).
 `apply.ps1` provides the separate executor, defaulting to **read-only Verify**.
