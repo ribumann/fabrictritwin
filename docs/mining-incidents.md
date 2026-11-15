@@ -85,7 +85,7 @@ stops, disconnected owners and incorrect run bindings. Both callbacks receive
 cancellation. A managed identity with storage access is not permission to
 activate a run. Anonymous clients must not supply these callbacks.
 
-The injected `MiningIncidentSource.read({runId, asOf, signal})` must return only
+The injected `MiningIncidentSource.read({runId, asOf, committed, signal})` must return only
 strictly validated, curated G5 observations and their actual `receivedAt` time.
 Arrival order in the returned array is preserved; receipt times cannot move
 backwards. Do not fabricate healthy readings, derive authority from raw or
@@ -94,6 +94,14 @@ completion. Query/DTO agreement with the curated-source owner is an integration
 prerequisite. The adapter should return newly observed arrivals, including late
 arrivals, rather than repeatedly returning its whole historical lookback.
 Observation commands, including repeats, have a total budget of 4,096 per run.
+`committed` contains observations already durably journaled, including after
+recovery; sources can use it to identify new arrivals and detect conflicting
+reused event IDs. `fabric-source.ts` is an unmounted, bounded adapter for the
+validated tables. It checks source readiness and catalog/run bindings and uses
+actual query receipt time, but the result is only what was visible then: it is
+not a completeness watermark, and it does not establish a curated ingestion
+timestamp or authorize activation. The adapter is not yet a production incident
+connection.
 
 `processMinute(asOf)` accepts consecutive run-relative minute boundaries,
 starting at minute zero, never future minutes. Repeating an already committed
