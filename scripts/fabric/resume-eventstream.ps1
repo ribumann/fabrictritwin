@@ -64,7 +64,7 @@ $baseUri = "https://api.fabric.microsoft.com/v1/workspaces/$WorkspaceId/eventstr
 if ($Profile -eq 'Mining') {
     try {
         $workspaceResponse = Invoke-WebRequest -Method GET -Uri "https://api.fabric.microsoft.com/v1/workspaces/$WorkspaceId" `
-            -Headers $headers -SkipHttpErrorCheck -TimeoutSec 60 -Verbose:$false -Debug:$false -ErrorAction Stop
+            -Headers $headers -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 60 -Verbose:$false -Debug:$false -ErrorAction Stop
     } catch { throw 'Mining workspace request failed before a response was received. Details suppressed.' }
     if ([int]$workspaceResponse.StatusCode -ne 200) {
         throw "Mining workspace read failed with HTTP $($workspaceResponse.StatusCode)."
@@ -81,7 +81,7 @@ function Invoke-EventstreamRequest {
     param([ValidateSet('GET', 'POST')][string]$Method, [ValidateSet('topology', 'resume')][string]$Operation)
     $parameters = @{
         Method = $Method; Uri = "$baseUri/$Operation"; Headers = $headers
-        SkipHttpErrorCheck = $true; TimeoutSec = 60
+        SkipHttpErrorCheck = $true; MaximumRedirection = 0; TimeoutSec = 60
         Verbose = $false; Debug = $false; ErrorAction = 'Stop'
     }
     if ($Method -eq 'POST') {
@@ -148,7 +148,10 @@ function Assert-ExpectedTopology {
             }
             $conditions = @($filter[0].properties.conditions)
             if ($conditions.Count -ne 1 -or $conditions[0].column.node -cne $profileDefinition.Main -or
-                $conditions[0].column.columnName -cne 'entityType' -or $null -ne $conditions[0].column.columnPath -or
+                $conditions[0].column.columnName -cne 'entityType' -or
+                $null -eq $conditions[0].column.PSObject.Properties['columnPathSegments'] -or
+                $null -ne $conditions[0].column.columnPathSegments -or
+                $null -ne $conditions[0].column.PSObject.Properties['columnPath'] -or
                 $conditions[0].column.expressionType -cne 'ColumnReference' -or
                 $conditions[0].operatorType -cne 'Equals' -or $conditions[0].value.expressionType -cne 'Literal' -or
                 $conditions[0].value.dataType -cne 'Nvarchar(max)' -or $conditions[0].value.value -cne $pair.Entity) {

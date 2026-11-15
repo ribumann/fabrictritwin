@@ -50,11 +50,11 @@ BeforeAll {
             )
             operators = @(
                 @{ name = 'mining_state_filter'; type = 'Filter'; inputNodes = @(@{ name = 'mining_main_stream' }); properties = @{ conditions = @(
-                    @{ column = @{ node = 'mining_main_stream'; columnName = 'entityType'; columnPath = $null; expressionType = 'ColumnReference' }
+                    @{ column = @{ node = 'mining_main_stream'; columnName = 'entityType'; columnPathSegments = $null; expressionType = 'ColumnReference' }
                         operatorType = 'Equals'; value = @{ dataType = 'Nvarchar(max)'; value = 'PlantStateEvent'; expressionType = 'Literal' } }
                 ) } }
                 @{ name = 'mining_telemetry_filter'; type = 'Filter'; inputNodes = @(@{ name = 'mining_main_stream' }); properties = @{ conditions = @(
-                    @{ column = @{ node = 'mining_main_stream'; columnName = 'entityType'; columnPath = $null; expressionType = 'ColumnReference' }
+                    @{ column = @{ node = 'mining_main_stream'; columnName = 'entityType'; columnPathSegments = $null; expressionType = 'ColumnReference' }
                         operatorType = 'Equals'; value = @{ dataType = 'Nvarchar(max)'; value = 'PlantTelemetry'; expressionType = 'Literal' } }
                 ) } }
             )
@@ -130,7 +130,8 @@ Describe 'Guarded Eventstream recovery' {
         $result.Resumed | Should -Contain 'mining_telemetry_stream'
         $result.IngestionVerified | Should -BeFalse
         Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter {
-            $Method -eq 'POST' -and ($Body | ConvertFrom-Json).startType -eq 'WhenLastStopped'
+            $Method -eq 'POST' -and $MaximumRedirection -eq 0 -and
+            ($Body | ConvertFrom-Json).startType -eq 'WhenLastStopped'
         }
     }
 
@@ -198,6 +199,51 @@ Describe 'Guarded Eventstream recovery' {
         $global:EventstreamTestTopology.operators += @{ name = 'extra'; type = 'Filter' }
         { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*Unexpected Mining operators*'
         Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'rejects missing or non-null native column path segments' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $global:EventstreamTestTopology.operators[0].properties.conditions[0].column.columnPathSegments = @('nested')
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*filter condition*'
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $global:EventstreamTestTopology.operators[0].properties.conditions[0].column.Remove('columnPathSegments')
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*filter condition*'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'disables redirects and stops on a workspace or topology redirect' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        Mock Invoke-WebRequest { return @{ StatusCode = 302; Content = '' } }
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*HTTP 302*'
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter { $MaximumRedirection -eq 0 -and $Method -eq 'GET' }
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+
+        Mock Invoke-WebRequest {
+            if ($Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$($global:EventstreamTestArguments.WorkspaceId)") {
+                return @{ StatusCode = 200; Content = (@{ id = $global:EventstreamTestArguments.WorkspaceId; capacityId = $global:MiningWorkspaceCapacity } | ConvertTo-Json) }
+            }
+            return @{ StatusCode = 302; Content = '' }
+        }
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*HTTP 302*'
+        Should -Invoke Invoke-WebRequest -Times 3 -Exactly -ParameterFilter { $MaximumRedirection -eq 0 -and $Method -eq 'GET' }
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'does not follow a resume redirect' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        Mock Invoke-WebRequest {
+            if ($Method -eq 'POST') { return @{ StatusCode = 302; Content = '' } }
+            if ($Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$($global:EventstreamTestArguments.WorkspaceId)") {
+                return @{ StatusCode = 200; Content = (@{ id = $global:EventstreamTestArguments.WorkspaceId; capacityId = $global:MiningWorkspaceCapacity } | ConvertTo-Json) }
+            }
+            return @{ StatusCode = 200; Content = ($global:EventstreamTestTopology | ConvertTo-Json -Depth 20) }
+        }
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*HTTP 302*'
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter { $Method -eq 'POST' -and $MaximumRedirection -eq 0 }
+        Should -Invoke Invoke-WebRequest -Times 3 -Exactly
     }
 
     It 'rejects a different Mining target' {
