@@ -72,6 +72,20 @@ generation failure, not a credential denial or successful monitoring. Do not
 blindly regenerate an unknown request; inspect its exact playbook status first and
 honor source throttling.
 
+After capacity recovery and exact-run source capture, a bounded generation retry
+(`124f90c4-f13b-44e9-b556-26598d85dc1a`) reported `Completed`, but its summary
+contained no business entities or rules. Both the specific playbook and committed
+rule inventories were empty. Native readback returned `Unconfigured`, no
+monitored rules, and zero recorded operations in the reviewed time range. The
+saved instructions still contained the corrected query, the sole source was the
+Mining KQL database, and the action inventory was empty. This is **not** accepted
+monitoring, and the agent remains unstarted. No cause for the empty generated
+playbook has been established.
+
+The published definition schema reserves the playbook's extended structure for
+future documentation. Do not invent an internal playbook payload or substitute an
+empty item for a working rule to bypass this limitation.
+
 No notification recipient, Teams message, external action or plant control was
 configured or invoked. Native monitoring/activity acceptance and standalone
 Activator rules remain incomplete.

@@ -122,8 +122,9 @@ static catalog, not live telemetry. Ontology full-property/time-series binding
 and standalone Activator acceptance remain incomplete. The
 [Mining Operations Agent](docs/mining-operations-agent.md) is stopped pending
 native rule acceptance: its first generated freshness query was incorrect, and a
-subsequent generation hit source throttling. Item creation or playbook generation
-alone is not treated as a working native capability.
+subsequent generation hit source throttling. A post-recovery retry reported
+`Completed` but produced no rules; native state remains `Unconfigured`. Item
+creation or playbook generation alone is not treated as a working native capability.
 
 The public demo controls and reads are separately opt-in and do not replace the
 protected delegated APIs. See the [mining architecture and dated
