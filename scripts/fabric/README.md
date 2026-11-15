@@ -49,6 +49,13 @@ Do not substitute direct Kusto ingestion, WebSocket counts, or absence of
 ingestion errors for this check. Stop at any permission/credential/consent denial.
 Connection strings must stay in memory and must not appear in logs or files.
 
+For the separate Mining Eventstream, use the same command with the Mining
+workspace, Eventstream and KQL database IDs and add `-Profile Mining`. The
+profile validates its own state/telemetry streams, raw tables and mappings; it
+does not touch the triathlon Eventstream. Once it reports Running, start one
+bounded Mining demo run and reconcile raw, validated and quarantined event
+IDs for that run. Routing status alone does not establish ingestion.
+
 Official references:
 
 - [Get Eventstream topology](https://learn.microsoft.com/en-us/rest/api/fabric/eventstream/topology/get-eventstream-topology)
