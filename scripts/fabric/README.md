@@ -182,16 +182,16 @@ modify the triathlon Eventstream, Eventhouse, tables, or functions. Mining route
 remain explicitly filtered by the v2 `entityType` values `PlantTelemetry` and
 `PlantStateEvent`. The mining-owned object inventory is:
 
-| Owned object                                         | Purpose and retention                                                                |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `mining_TelemetryRaw`, `mining_PlantStateEvents`     | Full v2 JSON and a separate `timestamp_raw` string projection; 7-day soft-delete     |
-| `mining_PlantCatalog`, `mining_PublishProfile`       | Versioned catalog/profile inputs; no added retention policy                          |
-| `mining_SourceContract`                              | Version and readiness evidence, including timestamp-shape and exclusive-writer gates |
-| `mining_ValidatedTelemetry`, `mining_ValidatedState` | Typed curated rows; empty while source and writer gates are closed; 7-day soft-delete |
-| `mining_Quarantine`                                  | Raw event, timestamp projection, disposition and reason codes; 7-day soft-delete     |
-| `mining_AlertTransitions`, `mining_IncidentLedger`   | Separate alert-transition and approved incident sources; 30-day soft-delete          |
-| `mining_telemetry_raw_json_map`, `mining_state_raw_json_map` | Root-document JSON mappings on the two mining raw tables                       |
-| Mining telemetry/state routes                       | Separate Eventstream filters, derived streams and raw-table destinations             |
+| Owned object                                                 | Purpose and retention                                                                 |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `mining_TelemetryRaw`, `mining_PlantStateEvents`             | Full v2 JSON and a separate `timestamp_raw` string projection; 7-day soft-delete      |
+| `mining_PlantCatalog`, `mining_PublishProfile`               | Versioned catalog/profile inputs; no added retention policy                           |
+| `mining_SourceContract`                                      | Version and readiness evidence, including timestamp-shape and exclusive-writer gates  |
+| `mining_ValidatedTelemetry`, `mining_ValidatedState`         | Typed curated rows; empty while source and writer gates are closed; 7-day soft-delete |
+| `mining_Quarantine`                                          | Raw event, timestamp projection, disposition and reason codes; 7-day soft-delete      |
+| `mining_AlertTransitions`, `mining_IncidentLedger`           | Separate alert-transition and approved incident sources; 30-day soft-delete           |
+| `mining_telemetry_raw_json_map`, `mining_state_raw_json_map` | Root-document JSON mappings on the two mining raw tables                              |
+| Mining telemetry/state routes                                | Separate Eventstream filters, derived streams and raw-table destinations              |
 
 `scripts/fabric/apply-mining-definitions.ps1` applies the mining-owned KQL
 tables, scoped retention policies and functions after validating the exact
