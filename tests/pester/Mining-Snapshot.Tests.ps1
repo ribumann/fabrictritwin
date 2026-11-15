@@ -86,6 +86,20 @@ Describe 'Reconciled immutable Mining snapshots' {
         ($bundle.tables[0].csv | ConvertFrom-Csv).received_at_utc | Should -BeExactly $input.Telemetry[0].received_at
     }
 
+    It 'rejects mismatched <field> with an explicit Int32 sequence in <family>' -ForEach @(
+        foreach ($family in @('Telemetry', 'State')) {
+            foreach ($field in @('run_id', 'plant_id', 'catalog_version', 'source_contract_version')) {
+                @{ family = $family; field = $field }
+            }
+        }
+    ) {
+        $fixture = New-SnapshotTestInput
+        $row = $fixture[$family][0]
+        $row.sequence = [int]$row.sequence
+        $row[$field] = 'wrong'
+        { New-MiningSnapshotBundle @fixture } | Should -Throw '*source contract mismatch*'
+    }
+
     It 'rejects <fault> before any native request' -TestCases @(
         @{ fault = 'wrong exact event set' }, @{ fault = 'quarantine' }, @{ fault = 'conflicting source identities' }
         @{ fault = 'conflicting duplicate payload' }, @{ fault = 'wrong catalog join' }
@@ -275,8 +289,11 @@ Describe 'Kusto envelope fail-closed behavior' {
                             $response.headers = @{ RequestId = 'correlation-only'; Date = 'Sun, 15 Nov 2026 18:02:39 GMT'; Authorization = 'must-not-persist' }
                         }
                     } else {
-                        $status = if ($state.fault -eq 'refresh') { 'Failed' } else { 'Completed' }
+                        $status = if ($state.fault -eq 'refresh') { 'Failed' } elseif ($state.fault -eq 'duplicate-refresh-pending') { 'Unknown' } else { 'Completed' }
                         $response.body = @{ value = @(@{ requestId = $state.refreshId; status = $status }) }
+                        if ($state.fault -in @('duplicate-refresh', 'duplicate-refresh-pending')) {
+                            $response.body.value *= 2
+                        }
                     }
                 } elseif ($uri.AbsolutePath -match '/reports/') {
                     $response.body = @{ datasetId = $state.modelId }
@@ -340,6 +357,26 @@ Describe 'Kusto envelope fail-closed behavior' {
             $operation.responseMetadata.RequestId | Should -BeExactly 'correlation-only'
             $operation.responseMetadata.Contains('Authorization') | Should -BeFalse
             @($script:native.calls | Where-Object { $_.method -eq 'POST' -and $_.uri -match '/refreshes$' }).Count | Should -Be 1
+        }
+
+        It 'rejects duplicate matching-type <type> items without writes' -ForEach @(
+            @{ type = 'SemanticModel' }, @{ type = 'Report' }
+        ) {
+            $script:native.items += @($script:native.items | Where-Object type -CEQ $type)[0].Clone()
+            { Invoke-MiningSnapshotDeployment $script:bundle $script:target $script:client $script:receiptPath -Mode Apply } |
+                Should -Throw '*Ambiguous or wrong-type snapshot item*'
+            @($script:native.calls | Where-Object { $_.method -eq 'POST' -and $_.uri -notmatch '/(getDefinition|executeQueries)$' }).Count |
+                Should -Be 0
+        }
+
+        It 'immediately rejects duplicate exact refresh request identities: <fault>' -ForEach @(
+            @{ fault = 'duplicate-refresh' }, @{ fault = 'duplicate-refresh-pending' }
+        ) {
+            $script:native.fault = $fault
+            { Invoke-MiningSnapshotDeployment $script:bundle $script:target $script:client $script:receiptPath -Mode Apply } |
+                Should -Throw '*Snapshot refresh failed*'
+            @($script:native.calls | Where-Object { $_.method -eq 'GET' -and $_.uri -match '/refreshes\?' }).Count | Should -Be 1
+            @($script:native.calls | Where-Object { $_.uri -match '/executeQueries$' }).Count | Should -Be 0
         }
 
         It 'reconciles repeated actual state observations without losing event multiplicity: <fault>' -TestCases @(

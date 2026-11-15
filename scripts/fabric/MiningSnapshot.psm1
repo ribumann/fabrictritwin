@@ -149,7 +149,7 @@ function New-MiningSnapshotBundle {
             $received = Get-SnapshotInstant $row.received_at
             if ($row.run_id -cne $Run.runId -or $row.plant_id -cne 'D01' -or
                 $row.catalog_version -cne $catalogVersion -or $row.source_contract_version -cne 'd01-validated-source-v1' -or
-                $row.sequence -isnot [long] -and $row.sequence -isnot [int] -or
+                ($row.sequence -isnot [long] -and $row.sequence -isnot [int]) -or
                 $row.sequence -lt 1 -or $row.sequence -gt 9007199254740991 -or
                 $row.event_id -cne (Get-SnapshotHash "$($Run.runId):$($row.sequence)") -or
                 $row.payload_fingerprint -cnotmatch '^[a-f0-9]{64}$' -or
@@ -529,7 +529,7 @@ function Invoke-MiningSnapshotDeployment {
         }
         foreach ($type in @('SemanticModel', 'Report')) {
             $matches = @($inventory | Where-Object { $_.displayName -ieq $names[$type] })
-            if ($matches.Count -gt 1 -or $matches.Count -eq 1 -and $matches[0].type -cne $type) { throw 'Ambiguous or wrong-type snapshot item.' }
+            if ($matches.Count -gt 1 -or ($matches.Count -eq 1 -and $matches[0].type -cne $type)) { throw 'Ambiguous or wrong-type snapshot item.' }
             $modelId = if ($type -ceq 'Report') { [guid]$receipt.items.SemanticModel } else { [guid]'00000000-0000-0000-0000-000000000001' }
             $definitions = New-MiningSnapshotDefinitions $Bundle $definitionTarget $modelId
             $definition = if ($type -ceq 'Report') { $definitions.report } else { $definitions.semanticModel }
@@ -596,7 +596,7 @@ function Invoke-MiningSnapshotDeployment {
                 $history = (Invoke-SnapshotHttp $Client GET "$powerBi/datasets/$modelId/refreshes?`$top=20" PowerBi).body
                 $exact = @($history.value | Where-Object { $_.requestId -ieq $refreshId })
                 if ($exact.Count -eq 1 -and $exact[0].status -ceq 'Completed') { $completed = $true; break }
-                if ($exact.Count -gt 1 -or $exact.Count -eq 1 -and $exact[0].status -cnotin @('Unknown', 'InProgress', 'NotStarted')) {
+                if ($exact.Count -gt 1 -or ($exact.Count -eq 1 -and $exact[0].status -cnotin @('Unknown', 'InProgress', 'NotStarted'))) {
                     throw "Snapshot refresh failed: $($exact | ConvertTo-Json -Depth 20 -Compress)"
                 }
             }
