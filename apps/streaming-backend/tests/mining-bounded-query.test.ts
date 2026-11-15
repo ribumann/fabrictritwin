@@ -76,6 +76,21 @@ function fixture(result: unknown = frames(), targetUri = uri) {
 }
 
 describe("bounded mining query transport", () => {
+  it("reconciles only the exact run through the fixed nonfuture ingestion query", async () => {
+    const f = fixture();
+    const scope = { runId: input.runId, maxRows: 5, kind: "ingestion" as const };
+    await f.query({ ...scope, asOf: input.end });
+    const body = JSON.parse(String(f.request.mock.calls[2][1]?.body));
+    expect(body.csl).toBe(
+      "declare query_parameters(plant:string, run:string, asof:datetime); mining_RunIngestion(plant, run, asof)",
+    );
+    expect(body.csl).not.toContain(input.runId);
+    expect(body.properties.Parameters.asof).toBe("datetime(2026-01-01T12:00:00.000Z)");
+    await expect(f.query({ ...scope, asOf: "2026-01-01T12:00:01.000Z" })).rejects.toThrow(
+      "nonfuture",
+    );
+    expect(f.request).toHaveBeenCalledTimes(3);
+  });
   it.each([uri, "https://example.z6.kusto.fabric.microsoft.com"])(
     "uses the verified resource and fixed parameterized comparison query on %s",
     async (targetUri) => {

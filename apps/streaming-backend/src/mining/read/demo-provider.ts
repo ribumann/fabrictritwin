@@ -31,7 +31,14 @@ export function createMiningDemoProvider(
     if (input.kind === "incidents") {
       throw new Error("Incident assessments are not connected to the public demo.");
     }
-    if (input.kind === "overview") return readMiningOverview(input, query, now, signal);
+    if (input.kind === "overview")
+      return readMiningOverview(
+        input,
+        query,
+        now,
+        signal,
+        env.MINING_INGESTION_RECONCILIATION_ENABLED === "true",
+      );
     if (input.kind !== "trend" && input.kind !== "compare") {
       throw new Error("Unsupported public mining read.");
     }

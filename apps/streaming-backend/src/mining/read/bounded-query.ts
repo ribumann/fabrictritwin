@@ -19,6 +19,7 @@ type Query =
   | (Scope & { kind: "incidents"; asOf: string })
   | (Scope & { kind: "incident-observations"; asOf: string })
   | (Scope & { kind: "source-readiness" })
+  | (Scope & { kind: "ingestion"; asOf: string })
   | (Scope & { kind: "summary"; start: string; end: string })
   | (Scope & {
       kind: "trend";
@@ -354,6 +355,10 @@ async function prepare(
   const head = "declare query_parameters(plant:string, run:string";
   if (input.kind === "source-readiness") {
     return `${head}); mining_SourceReadiness()`;
+  }
+  if (input.kind === "ingestion") {
+    properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
+    return `${head}, asof:datetime); mining_RunIngestion(plant, run, asof)`;
   }
   if (input.kind === "incident-observations") {
     properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);

@@ -129,6 +129,32 @@ deduplication/reconciliation remains necessary; no exactly-once claim is made.
 `publisher_complete` means only sender completion, never Fabric ingress,
 validation, curated counts or incident acceptance.
 
+### Eventhouse ingestion reconciliation
+
+Deploy `infra/fabric/eventhouse/MiningRunIngestion.kql` only to the approved
+Mining database after its raw, validated and quarantine sources report ready.
+Then explicitly set `MINING_INGESTION_RECONCILIATION_ENABLED=true` on the backend.
+The default remains off so an existing deployment without the new function
+continues to report ingestion as unknown.
+
+An overview read queries exactly five event families at its requested UTC
+receipt cutoff. The backend replays the persisted, versioned run offline
+without sending events and compares the SHA-256 hashes of sorted distinct
+event IDs for both raw and validated telemetry and state. Publisher completion,
+equal row counts, or repeated identical deliveries alone do not establish
+ingestion completion. Conflicting validated payloads or any quarantined IDs
+prevent completion. Unsupported legacy run contracts, malformed results,
+truncated ID sets and query errors fail explicitly rather than inventing success.
+
+The overview returns `pending` when nothing is observed, `partial` for incomplete
+evidence, `complete` only when every expected ID is present in both sources and
+the publisher completed, or `unknown` when source readiness fails. Counts,
+expected-ID hashes, the receipt cutoff and provenance accompany the result.
+These are ingestion evidence, not proof that a report, ontology graph, incident
+processor or assistant consumed the data. Status/start/cancel endpoints remain
+coordination-only and explicitly unknown; the Cockpit uses timestamped overview
+evidence only for the matching run.
+
 ## Final-batch boundary: explicit activation decision
 
 The simulator cannot emit its terminal batch until model `stopAt`; the original

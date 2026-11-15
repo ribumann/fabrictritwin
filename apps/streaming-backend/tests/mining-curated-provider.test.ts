@@ -134,7 +134,7 @@ function proof(): MiningProofReceipt {
   };
 }
 
-function setup(principal = viewer) {
+function setup(principal = viewer, reconcileIngestion = false) {
   const receipt = proof();
   let bytes = Buffer.from(canonical(receipt));
   const run: MiningRunRecord = {
@@ -265,6 +265,7 @@ function setup(principal = viewer) {
   });
   const env = {
     MINING_READ_ENABLED: "true",
+    MINING_INGESTION_RECONCILIATION_ENABLED: reconcileIngestion ? "true" : undefined,
     MINING_VIEWER_PRINCIPAL_IDS: viewer,
     MINING_APPROVED_RUN_ID: id,
     MINING_APPROVED_CATALOG_VERSION: D01_CATALOG_VERSION,
@@ -759,6 +760,43 @@ describe("explicit curated read composition", () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  it("maps opt-in reconciliation into the overview run and surfaces read failures", async () => {
+    const fixture = setup(viewer, true);
+    const original = fixture.dependencies.query.getMockImplementation()!;
+    fixture.dependencies.query.mockImplementation(async (input, signal) => {
+      if (input.kind !== "ingestion") return original(input, signal);
+      return [
+        "raw_telemetry",
+        "raw_state",
+        "validated_telemetry",
+        "validated_state",
+        "quarantine",
+      ].map((family) => ({
+        family,
+        source_status: "READY",
+        event_count: 0,
+        copies: 0,
+        conflicting_ids: 0,
+        event_ids_hash: createHash("sha256").update("").digest("hex"),
+      }));
+    });
+    const response = await request(fixture.app).get("/api/mining/overview").query({ asOf });
+    expect(response.status).toBe(200);
+    expect(response.body.run.ingestionStatus).toBe("pending");
+    expect(response.body.ingestion).toMatchObject({
+      status: "pending",
+      asOf,
+      provenance: "fabric-event-id-reconciliation-v1",
+    });
+    fixture.dependencies.query.mockImplementation(async (input, signal) => {
+      if (input.kind === "ingestion") throw new Error("Reconciliation unavailable");
+      return original(input, signal);
+    });
+    expect((await request(fixture.app).get("/api/mining/overview").query({ asOf })).status).toBe(
+      503,
+    );
   });
 
   it("forwards normalized bounded series requests only after every gate", async () => {
