@@ -32,6 +32,28 @@ BeforeAll {
             )
         }
     }
+    function New-MiningTestTopology {
+        @{
+            sources = @(@{ name = 'mining_custom_endpoint'; type = 'CustomEndpoint'; status = 'Running' })
+            streams = @(
+                @{ name = 'mining_main_stream'; type = 'DefaultStream'; status = 'Running'; inputNodes = @(@{ name = 'mining_custom_endpoint' }) }
+                @{ name = 'mining_state_stream'; type = 'DerivedStream'; status = 'Paused'; inputNodes = @(@{ name = 'mining_state_filter' }) }
+                @{ name = 'mining_telemetry_stream'; type = 'DerivedStream'; status = 'Paused'; inputNodes = @(@{ name = 'mining_telemetry_filter' }) }
+            )
+            destinations = @(
+                @{ name = 'mining_state_raw_ingestion'; type = 'Eventhouse'; status = 'Running'; inputNodes = @(@{ name = 'mining_state_stream' }); properties = @{
+                    dataIngestionMode = 'DirectIngestion'; workspaceId = $script:Arguments.WorkspaceId
+                    itemId = $script:Arguments.KqlDatabaseId; tableName = 'mining_PlantStateEvents'
+                    mappingRuleName = 'mining_state_raw_json_map'; connectionName = 'existing-state'
+                } }
+                @{ name = 'mining_telemetry_raw_ingestion'; type = 'Eventhouse'; status = 'Running'; inputNodes = @(@{ name = 'mining_telemetry_stream' }); properties = @{
+                    dataIngestionMode = 'DirectIngestion'; workspaceId = $script:Arguments.WorkspaceId
+                    itemId = $script:Arguments.KqlDatabaseId; tableName = 'mining_TelemetryRaw'
+                    mappingRuleName = 'mining_telemetry_raw_json_map'; connectionName = 'existing-telemetry'
+                } }
+            )
+        }
+    }
 }
 
 Describe 'Guarded Eventstream recovery' {
@@ -71,7 +93,33 @@ Describe 'Guarded Eventstream recovery' {
             $Method -eq 'POST' -and $Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$($global:EventstreamTestArguments.WorkspaceId)/eventstreams/$($global:EventstreamTestArguments.EventstreamId)/resume" -and
             ($Body | ConvertFrom-Json).startType -eq 'WhenLastStopped'
         }
+
         Should -Invoke Invoke-WebRequest -Times 2 -Exactly -ParameterFilter { $Method -eq 'GET' }
+    }
+
+    It 'resumes only the exact Mining profile while preserving its checkpoint' {
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $result = & $script:ResumeScript @script:Arguments -Profile Mining
+        $result.Status | Should -Be 'Running'
+        $result.Resumed | Should -Contain 'mining_state_stream'
+        $result.Resumed | Should -Contain 'mining_telemetry_stream'
+        $result.IngestionVerified | Should -BeFalse
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'POST' -and ($Body | ConvertFrom-Json).startType -eq 'WhenLastStopped'
+        }
+    }
+
+    It 'rejects a Mining mapping that points at a different raw schema' {
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $global:EventstreamTestTopology.destinations[0].properties.mappingRuleName = 'wrong_mapping'
+        { & $script:ResumeScript @script:Arguments -Profile Mining } | Should -Throw '*Unexpected mining state Eventhouse reference*'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'never resumes Mining under the default Triathlon profile' {
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        { & $script:ResumeScript @script:Arguments } | Should -Throw '*Unexpected Eventstream topology*'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
     }
 
     It 'supports explicit Now without rewriting the definition or source' {

@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-Resumes the two paused derived streams in the existing triathlon Eventstream.
+Resumes paused derived streams in an existing triathlon or Mining Eventstream.
 .DESCRIPTION
 Checks the explicit subscription/tenant and exact source, streams, and destination
 references before using the documented Eventstream resume API. Does not change
@@ -15,6 +15,7 @@ param(
     [Parameter(Mandatory)][guid]$WorkspaceId,
     [Parameter(Mandatory)][guid]$EventstreamId,
     [Parameter(Mandatory)][guid]$KqlDatabaseId,
+    [ValidateSet('Triathlon', 'Mining')][string]$Profile = 'Triathlon',
     [ValidateSet('Now', 'WhenLastStopped')][string]$StartType = 'WhenLastStopped',
     [ValidateRange(1, 900)][int]$TimeoutSeconds = 180,
     [ValidateRange(1, 30)][int]$PollIntervalSeconds = 5
@@ -54,37 +55,52 @@ function Invoke-EventstreamRequest {
     }
 }
 
-function Assert-TriathlonTopology {
+$profileDefinition = if ($Profile -eq 'Mining') {
+    @{
+        Source = 'mining_custom_endpoint'; Main = 'mining_main_stream'
+        Pairs = @(
+            @{ Label = 'mining state'; Stream = 'mining_state_stream'; Filter = 'mining_state_filter'; Destination = 'mining_state_raw_ingestion'; Table = 'mining_PlantStateEvents'; Mapping = 'mining_state_raw_json_map' }
+            @{ Label = 'mining telemetry'; Stream = 'mining_telemetry_stream'; Filter = 'mining_telemetry_filter'; Destination = 'mining_telemetry_raw_ingestion'; Table = 'mining_TelemetryRaw'; Mapping = 'mining_telemetry_raw_json_map' }
+        )
+    }
+} else {
+    @{
+        Source = 'triathlon_custom_endpoint'; Main = 'triathlon_main_stream'
+        Pairs = @(
+            @{ Label = 'racesplit'; Stream = 'racesplit_stream'; Filter = 'racesplit_filter'; Destination = 'racesplit_direct_ingestion'; Table = 'RaceSplit'; Mapping = 'racesplit_json_map' }
+            @{ Label = 'sessionmetric'; Stream = 'sessionmetric_stream'; Filter = 'sessionmetric_filter'; Destination = 'sessionmetric_direct_ingestion'; Table = 'SessionMetric'; Mapping = 'sessionmetric_json_map' }
+        )
+    }
+}
+
+function Assert-ExpectedTopology {
     param([object]$Topology)
     $sources = @($Topology.sources)
     $destinations = @($Topology.destinations)
     $streams = @($Topology.streams)
     if ($sources.Count -ne 1 -or $sources[0].type -ne 'CustomEndpoint' -or
-        $sources[0].name -ne 'triathlon_custom_endpoint' -or $destinations.Count -ne 2 -or $streams.Count -ne 3) {
+        $sources[0].name -ne $profileDefinition.Source -or $destinations.Count -ne 2 -or $streams.Count -ne 3) {
         throw 'Unexpected Eventstream topology; refusing an eventstream-wide resume.'
     }
-    $default = @($streams | Where-Object { $_.name -eq 'triathlon_main_stream' })
+    $default = @($streams | Where-Object { $_.name -eq $profileDefinition.Main })
     if ($default.Count -ne 1 -or $default[0].type -ne 'DefaultStream' -or
         @($default[0].inputNodes).Count -ne 1 -or $default[0].inputNodes[0].name -ne $sources[0].name) {
         throw 'Unexpected default stream reference.'
     }
-    foreach ($pair in @(
-        @{ Prefix = 'racesplit'; Table = 'RaceSplit' },
-        @{ Prefix = 'sessionmetric'; Table = 'SessionMetric' }
-    )) {
-        $stream = @($streams | Where-Object { $_.name -eq "$($pair.Prefix)_stream" })
-        $destination = @($destinations | Where-Object { $_.name -eq "$($pair.Prefix)_direct_ingestion" })
+    foreach ($pair in $profileDefinition.Pairs) {
+        $stream = @($streams | Where-Object { $_.name -eq $pair.Stream })
+        $destination = @($destinations | Where-Object { $_.name -eq $pair.Destination })
         if ($stream.Count -ne 1 -or $stream[0].type -ne 'DerivedStream' -or
-            @($stream[0].inputNodes).Count -ne 1 -or $stream[0].inputNodes[0].name -ne "$($pair.Prefix)_filter" -or
+            @($stream[0].inputNodes).Count -ne 1 -or $stream[0].inputNodes[0].name -ne $pair.Filter -or
             $destination.Count -ne 1 -or $destination[0].type -ne 'Eventhouse') {
-            throw "Unexpected $($pair.Prefix) stream or destination."
+            throw "Unexpected $($pair.Label) stream or destination."
         }
         $properties = $destination[0].properties
         if ($properties.dataIngestionMode -ne 'DirectIngestion' -or $properties.workspaceId -ne $WorkspaceId.ToString() -or
             $properties.itemId -ne $KqlDatabaseId.ToString() -or $properties.tableName -ne $pair.Table -or
-            $properties.mappingRuleName -ne "$($pair.Prefix)_json_map" -or -not $properties.connectionName -or
+            $properties.mappingRuleName -ne $pair.Mapping -or -not $properties.connectionName -or
             @($destination[0].inputNodes).Count -ne 1 -or $destination[0].inputNodes[0].name -ne $stream[0].name) {
-            throw "Unexpected $($pair.Prefix) Eventhouse reference."
+            throw "Unexpected $($pair.Label) Eventhouse reference."
         }
     }
     if ($sources[0].status -ne 'Running' -or $default[0].status -ne 'Running') {
@@ -106,7 +122,7 @@ function Assert-TriathlonTopology {
 }
 
 $topology = Invoke-EventstreamRequest -Method GET -Operation topology
-Assert-TriathlonTopology $topology
+Assert-ExpectedTopology $topology
 $paused = @($topology.streams | Where-Object { $_.type -eq 'DerivedStream' -and $_.status -eq 'Paused' })
 if ($paused.Count -gt 0) {
     if (-not $PSCmdlet.ShouldProcess("$WorkspaceId/$EventstreamId", "Resume paused derived streams ($StartType)")) {
@@ -119,7 +135,7 @@ while (@($topology.streams | Where-Object { $_.type -eq 'DerivedStream' -and $_.
     if ([DateTime]::UtcNow -ge $deadline) { throw 'Timed out waiting for both derived streams to report Running.' }
     Start-Sleep -Seconds $PollIntervalSeconds
     $topology = Invoke-EventstreamRequest -Method GET -Operation topology
-    Assert-TriathlonTopology $topology
+    Assert-ExpectedTopology $topology
 }
 [pscustomobject]@{
     Status = 'Running'
