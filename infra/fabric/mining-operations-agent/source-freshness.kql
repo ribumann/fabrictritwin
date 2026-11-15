@@ -1,0 +1,7 @@
+declare query_parameters(startTime:datetime, endTime:datetime);
+mining_ValidatedTelemetry
+| where plant_id == 'D01'
+| where timestamp between (endTime - 15m .. endTime)
+| summarize EventsLast5m=countif(timestamp > endTime - 5m), arg_max(timestamp, run_id)
+| extend Id='D01', Timestamp=endTime, NoEventsInLast5m=(EventsLast5m == 0)
+| project Id, Timestamp, NoEventsInLast5m, EventsLast5m, LastSampleTime=timestamp, LatestRunId=run_id
