@@ -213,6 +213,8 @@ Invoke-Pester -Path .\tests\pester\Mining-Snapshot.Tests.ps1,
 These are credential-free unit/regression tests, not live deployment proof.
 Run `python tests\python\test_mining_snapshot_parquet.py` in the writer environment
 to verify deterministic Parquet bytes and exact submicrosecond string preservation.
+CI and Copilot setup install the pinned writer dependency and run these tests
+alongside the credential-free PowerShell tests.
 The snapshot has no scheduled refresh or automatic Eventhouse-to-Lakehouse sync.
 The public cockpit is unchanged, and the native report is not published to the
 internet. Do not bind the topology Data Agent to this model implicitly.
