@@ -25,7 +25,9 @@ export function expectedMiningEventIds(run: MiningRunRecord) {
   ) {
     throw new MiningQueryError("invalid", "Invalid persisted ingestion run window.");
   }
-  const simulation = createD01Simulation({ ...run, startedAt: new Date(start) });
+  const simulation = createD01Simulation({ ...run, startedAt: new Date(start) }, () =>
+    Date.parse(run.stopAt),
+  );
   const ids = { telemetry: new Set<string>(), state: new Set<string>() };
   for (let seconds = 5; seconds <= run.durationSeconds; seconds += 5) {
     simulation.step(new Date(start + seconds * 1000));

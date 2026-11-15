@@ -77,14 +77,15 @@ const idleCurrents: Record<string, number> = {
   thickener: 18,
 };
 
-function assertValidRunOptions(options: CreateD01SimulationOptions): void {
+function assertValidRunOptions(options: CreateD01SimulationOptions, now: number): void {
+  if (!Number.isFinite(now)) throw new TypeError("The D01 simulation clock must be finite.");
   if (options.runId.trim().length === 0) {
     throw new TypeError("runId must not be empty.");
   }
   if (!(options.startedAt instanceof Date) || Number.isNaN(options.startedAt.valueOf())) {
     throw new TypeError("startedAt must be a valid Date.");
   }
-  if (options.startedAt.valueOf() > Date.now()) {
+  if (options.startedAt.valueOf() > now) {
     throw new RangeError("startedAt cannot be in the future.");
   }
   const duration = options.durationSeconds ?? defaultDurationSeconds;
@@ -171,8 +172,11 @@ export class D01PlantSimulator {
   private lastDmsTelemetryElapsedSeconds = 0;
   private lastDmsTelemetryTimestamp = "";
 
-  constructor(options: CreateD01SimulationOptions) {
-    assertValidRunOptions(options);
+  constructor(
+    options: CreateD01SimulationOptions,
+    private readonly now: () => number = () => Date.now(),
+  ) {
+    assertValidRunOptions(options, this.now());
     this.runId = options.runId;
     this.seed = options.seed ?? 1;
     this.scenario = options.scenario ?? "normal";
@@ -252,7 +256,9 @@ export class D01PlantSimulator {
     if (!(at instanceof Date) || Number.isNaN(at.valueOf()) || at.valueOf() !== expectedTime) {
       throw new RangeError("D01 steps must be supplied at exact 5-second UTC intervals.");
     }
-    if (expectedTime > Date.now()) {
+    const now = this.now();
+    if (!Number.isFinite(now)) throw new TypeError("The D01 simulation clock must be finite.");
+    if (expectedTime > now) {
       throw new RangeError("A D01 step cannot emit a future timestamp.");
     }
 
@@ -924,6 +930,9 @@ export class D01PlantSimulator {
   }
 }
 
-export function createD01Simulation(options: CreateD01SimulationOptions): D01PlantSimulator {
-  return new D01PlantSimulator(options);
+export function createD01Simulation(
+  options: CreateD01SimulationOptions,
+  now?: () => number,
+): D01PlantSimulator {
+  return new D01PlantSimulator(options, now);
 }
