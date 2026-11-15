@@ -312,6 +312,17 @@ describe("D01 mining contracts and catalog", () => {
     expect(() => live.step(new Date(live.startedAt.valueOf() + 5000))).toThrow(/future timestamp/);
     expect(live.elapsedSecondsSoFar).toBe(0);
   });
+  it("supports an explicit finite offline clock without changing default wall-time guards", () => {
+    const startedAt = new Date();
+    let clock = startedAt.valueOf() + 5000;
+    const replay = createD01Simulation({ runId, startedAt, durationSeconds: 5 }, () => clock);
+    expect(replay.step(new Date(clock)).completed).toBe(true);
+    expect(() => createD01Simulation({ runId, startedAt }, () => NaN)).toThrow(/clock/);
+    const invalid = createD01Simulation({ runId, startedAt }, () => clock);
+    clock = NaN;
+    expect(() => invalid.step(new Date(startedAt.valueOf() + 5000))).toThrow(/clock/);
+    expect(invalid.elapsedSecondsSoFar).toBe(0);
+  });
 });
 
 describe("D01 deterministic bounded simulator", () => {

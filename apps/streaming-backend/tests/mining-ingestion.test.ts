@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createD01RunContract } from "../src/mining-incidents/catalog.js";
 import { expectedMiningEventIds, mapMiningIngestion } from "../src/mining/read/ingestion-dto.js";
 import type { MiningRunRecord } from "../src/mining/run-coordinator.js";
@@ -41,6 +41,20 @@ function results(): Record<string, unknown>[] {
 }
 
 describe("exact Fabric ingestion reconciliation", () => {
+  it("calculates the full expected sets while the real publisher is still running", () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse(run.startedAt));
+    try {
+      expect(expectedMiningEventIds({ ...run, phase: "running" })).toMatchObject({
+        telemetry: { count: 505 },
+        state: { count: 32 },
+      });
+      expect(
+        mapMiningIngestion({ ...run, phase: "running" }, run.startedAt, results()).status,
+      ).toBe("partial");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
   it("requires the entire expected telemetry and state ID sets, not just publisher success", () => {
     expect(expectedMiningEventIds(run)).toMatchObject({
       telemetry: { count: 505 },
