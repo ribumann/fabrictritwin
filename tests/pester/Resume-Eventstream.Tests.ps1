@@ -10,6 +10,14 @@ BeforeAll {
         TimeoutSeconds = 1
         PollIntervalSeconds = 1
     }
+    $script:MiningArguments = @{
+        SubscriptionId = '86677b6e-28fc-48e4-8988-5ab9e568eece'
+        TenantId = 'ecd6dfda-d2ce-47a8-9901-e35f31fe18dd'
+        WorkspaceId = 'db05aacb-bd7c-405a-a19b-90cc1c67d87b'
+        EventstreamId = '6fca8489-4a0d-452b-8df1-217b91b9b557'
+        KqlDatabaseId = '62177ca4-73f8-4573-b0c6-8e9317e7dacc'
+        TimeoutSeconds = 1; PollIntervalSeconds = 1; Profile = 'Mining'
+    }
     function New-TestTopology {
         @{
             sources = @(@{ name = 'triathlon_custom_endpoint'; type = 'CustomEndpoint'; status = 'Running' })
@@ -40,15 +48,25 @@ BeforeAll {
                 @{ name = 'mining_state_stream'; type = 'DerivedStream'; status = 'Paused'; inputNodes = @(@{ name = 'mining_state_filter' }) }
                 @{ name = 'mining_telemetry_stream'; type = 'DerivedStream'; status = 'Paused'; inputNodes = @(@{ name = 'mining_telemetry_filter' }) }
             )
+            operators = @(
+                @{ name = 'mining_state_filter'; type = 'Filter'; inputNodes = @(@{ name = 'mining_main_stream' }); properties = @{ conditions = @(
+                    @{ column = @{ node = 'mining_main_stream'; columnName = 'entityType'; columnPathSegments = $null; expressionType = 'ColumnReference' }
+                        operatorType = 'Equals'; value = @{ dataType = 'Nvarchar(max)'; value = 'PlantStateEvent'; expressionType = 'Literal' } }
+                ) } }
+                @{ name = 'mining_telemetry_filter'; type = 'Filter'; inputNodes = @(@{ name = 'mining_main_stream' }); properties = @{ conditions = @(
+                    @{ column = @{ node = 'mining_main_stream'; columnName = 'entityType'; columnPathSegments = $null; expressionType = 'ColumnReference' }
+                        operatorType = 'Equals'; value = @{ dataType = 'Nvarchar(max)'; value = 'PlantTelemetry'; expressionType = 'Literal' } }
+                ) } }
+            )
             destinations = @(
                 @{ name = 'mining_state_raw_ingestion'; type = 'Eventhouse'; status = 'Running'; inputNodes = @(@{ name = 'mining_state_stream' }); properties = @{
-                    dataIngestionMode = 'DirectIngestion'; workspaceId = $script:Arguments.WorkspaceId
-                    itemId = $script:Arguments.KqlDatabaseId; tableName = 'mining_PlantStateEvents'
+                    dataIngestionMode = 'DirectIngestion'; workspaceId = $script:MiningArguments.WorkspaceId
+                    itemId = $script:MiningArguments.KqlDatabaseId; tableName = 'mining_PlantStateEvents'
                     mappingRuleName = 'mining_state_raw_json_map'; connectionName = 'existing-state'
                 } }
                 @{ name = 'mining_telemetry_raw_ingestion'; type = 'Eventhouse'; status = 'Running'; inputNodes = @(@{ name = 'mining_telemetry_stream' }); properties = @{
-                    dataIngestionMode = 'DirectIngestion'; workspaceId = $script:Arguments.WorkspaceId
-                    itemId = $script:Arguments.KqlDatabaseId; tableName = 'mining_TelemetryRaw'
+                    dataIngestionMode = 'DirectIngestion'; workspaceId = $script:MiningArguments.WorkspaceId
+                    itemId = $script:MiningArguments.KqlDatabaseId; tableName = 'mining_TelemetryRaw'
                     mappingRuleName = 'mining_telemetry_raw_json_map'; connectionName = 'existing-telemetry'
                 } }
             )
@@ -61,6 +79,8 @@ Describe 'Guarded Eventstream recovery' {
         $script:Topology = New-TestTopology
         $global:EventstreamTestArguments = $script:Arguments
         $global:EventstreamTestTopology = $script:Topology
+        $global:MiningCapacityState = 'Active'
+        $global:MiningWorkspaceCapacity = 'bd00d528-b25d-4960-bd09-a70f8aa11e2c'
         Mock az {
             $global:LASTEXITCODE = 0
             if ($args -notcontains '--subscription' -or $args -notcontains $global:EventstreamTestArguments.SubscriptionId) {
@@ -69,9 +89,13 @@ Describe 'Guarded Eventstream recovery' {
             if ($args -contains 'get-access-token') {
                 return (@{ accessToken = 'test-token'; tenant = $global:EventstreamTestArguments.TenantId } | ConvertTo-Json)
             }
+            if ($args -contains 'resource') { return $global:MiningCapacityState }
             return (@{ id = $global:EventstreamTestArguments.SubscriptionId; tenantId = $global:EventstreamTestArguments.TenantId } | ConvertTo-Json)
         }
         Mock Invoke-WebRequest {
+            if ($Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$($global:EventstreamTestArguments.WorkspaceId)") {
+                return @{ StatusCode = 200; Content = (@{ id = $global:EventstreamTestArguments.WorkspaceId; capacityId = $global:MiningWorkspaceCapacity } | ConvertTo-Json) }
+            }
             if ($Method -eq 'POST') {
                 foreach ($stream in $global:EventstreamTestTopology.streams) { $stream.status = 'Running' }
                 return @{ StatusCode = 200; Content = '' }
@@ -81,7 +105,7 @@ Describe 'Guarded Eventstream recovery' {
         Mock Start-Sleep {}
     }
     AfterEach {
-        Remove-Variable EventstreamTestArguments, EventstreamTestTopology -Scope Global
+        Remove-Variable EventstreamTestArguments, EventstreamTestTopology, MiningCapacityState, MiningWorkspaceCapacity -Scope Global
     }
 
     It 'resumes once, preserves the last checkpoint by default, and verifies Running' {
@@ -99,20 +123,23 @@ Describe 'Guarded Eventstream recovery' {
 
     It 'resumes only the exact Mining profile while preserving its checkpoint' {
         $global:EventstreamTestTopology = New-MiningTestTopology
-        $result = & $script:ResumeScript @script:Arguments -Profile Mining
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $result = & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery
         $result.Status | Should -Be 'Running'
         $result.Resumed | Should -Contain 'mining_state_stream'
         $result.Resumed | Should -Contain 'mining_telemetry_stream'
         $result.IngestionVerified | Should -BeFalse
         Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter {
-            $Method -eq 'POST' -and ($Body | ConvertFrom-Json).startType -eq 'WhenLastStopped'
+            $Method -eq 'POST' -and $MaximumRedirection -eq 0 -and
+            ($Body | ConvertFrom-Json).startType -eq 'WhenLastStopped'
         }
     }
 
     It 'rejects a Mining mapping that points at a different raw schema' {
         $global:EventstreamTestTopology = New-MiningTestTopology
+        $global:EventstreamTestArguments = $script:MiningArguments
         $global:EventstreamTestTopology.destinations[0].properties.mappingRuleName = 'wrong_mapping'
-        { & $script:ResumeScript @script:Arguments -Profile Mining } | Should -Throw '*Unexpected mining state Eventhouse reference*'
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*Unexpected mining state Eventhouse reference*'
         Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
     }
 
@@ -120,6 +147,132 @@ Describe 'Guarded Eventstream recovery' {
         $global:EventstreamTestTopology = New-MiningTestTopology
         { & $script:ResumeScript @script:Arguments } | Should -Throw '*Unexpected Eventstream topology*'
         Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'defaults Mining to a read-only preflight' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $result = & $script:ResumeScript @script:MiningArguments
+        $result.Status | Should -Be 'PreflightPaused'
+        $result.Paused.Count | Should -Be 2
+        $result.IngestionVerified | Should -BeFalse
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'defers inactive capacity before any Fabric request' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:MiningCapacityState = 'Paused'
+        $result = & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery
+        $result.Status | Should -Be 'DeferredCapacityNotActive'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly
+    }
+
+    It 'fails closed on an unknown capacity state and forbids skipping the checkpoint' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:MiningCapacityState = ''
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*missing or unrecognized*'
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery -StartType Now } | Should -Throw '*requires WhenLastStopped*'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly
+    }
+
+    It 'honors WhatIf for the explicitly enabled Mining write' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $result = & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery -WhatIf
+        $result.Status | Should -Be 'NotApplied'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'rejects a workspace on another capacity' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:MiningWorkspaceCapacity = '00000000-0000-0000-0000-000000000099'
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*not assigned*'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'rejects a changed Mining filter or unexpected operator' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $global:EventstreamTestTopology.operators[0].properties.conditions[0].value.value = 'PlantTelemetry'
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*filter condition*'
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $global:EventstreamTestTopology.operators += @{ name = 'extra'; type = 'Filter' }
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*Unexpected Mining operators*'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'rejects missing or non-null native column path segments' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $global:EventstreamTestTopology.operators[0].properties.conditions[0].column.columnPathSegments = @('nested')
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*filter condition*'
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        $global:EventstreamTestTopology.operators[0].properties.conditions[0].column.Remove('columnPathSegments')
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*filter condition*'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'disables redirects and stops on a workspace or topology redirect' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        Mock Invoke-WebRequest { return @{ StatusCode = 302; Content = '' } }
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*HTTP 302*'
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter { $MaximumRedirection -eq 0 -and $Method -eq 'GET' }
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+
+        Mock Invoke-WebRequest {
+            if ($Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$($global:EventstreamTestArguments.WorkspaceId)") {
+                return @{ StatusCode = 200; Content = (@{ id = $global:EventstreamTestArguments.WorkspaceId; capacityId = $global:MiningWorkspaceCapacity } | ConvertTo-Json) }
+            }
+            return @{ StatusCode = 302; Content = '' }
+        }
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*HTTP 302*'
+        Should -Invoke Invoke-WebRequest -Times 3 -Exactly -ParameterFilter { $MaximumRedirection -eq 0 -and $Method -eq 'GET' }
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+    }
+
+    It 'does not follow a resume redirect' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        Mock Invoke-WebRequest {
+            if ($Method -eq 'POST') { return @{ StatusCode = 302; Content = '' } }
+            if ($Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$($global:EventstreamTestArguments.WorkspaceId)") {
+                return @{ StatusCode = 200; Content = (@{ id = $global:EventstreamTestArguments.WorkspaceId; capacityId = $global:MiningWorkspaceCapacity } | ConvertTo-Json) }
+            }
+            return @{ StatusCode = 200; Content = ($global:EventstreamTestTopology | ConvertTo-Json -Depth 20) }
+        }
+        { & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery } | Should -Throw '*HTTP 302*'
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter { $Method -eq 'POST' -and $MaximumRedirection -eq 0 }
+        Should -Invoke Invoke-WebRequest -Times 3 -Exactly
+    }
+
+    It 'rejects a different Mining target' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $arguments = $script:MiningArguments.Clone()
+        $arguments.EventstreamId = '00000000-0000-0000-0000-000000000099'
+        { & $script:ResumeScript @arguments -ApplyMiningRecovery } | Should -Throw '*approved exact scope*'
+        Should -Invoke Invoke-WebRequest -Times 0 -Exactly
+    }
+
+    It 'rechecks capacity immediately before applying' {
+        $global:EventstreamTestArguments = $script:MiningArguments
+        $global:EventstreamTestTopology = New-MiningTestTopology
+        Mock az {
+            $global:LASTEXITCODE = 0
+            if ($args -contains 'get-access-token') { return (@{ accessToken = 'test-token'; tenant = $global:EventstreamTestArguments.TenantId } | ConvertTo-Json) }
+            if ($args -contains 'resource') {
+                $global:MiningCapacityReads++
+                if ($global:MiningCapacityReads -eq 1) { return 'Active' }
+                return 'Paused'
+            }
+            return (@{ id = $global:EventstreamTestArguments.SubscriptionId; tenantId = $global:EventstreamTestArguments.TenantId } | ConvertTo-Json)
+        }
+        $global:MiningCapacityReads = 0
+        try {
+            $result = & $script:ResumeScript @script:MiningArguments -ApplyMiningRecovery
+            $result.Status | Should -Be 'DeferredCapacityNotActive'
+            Should -Invoke Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Method -eq 'POST' }
+        } finally { Remove-Variable MiningCapacityReads -Scope Global }
     }
 
     It 'supports explicit Now without rewriting the definition or source' {
