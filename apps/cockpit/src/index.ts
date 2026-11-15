@@ -34,7 +34,7 @@ const proxyOptions = {
 
 app.use(express.json());
 app.get(["/mining", "/mining/"], (_req, res) => {
-  res.sendFile(path.join(publicDir, "mining", "index.html"));
+  res.sendFile(path.join("mining", "index.html"), { root: publicDir });
 });
 const generatedPublicDir = path.resolve(publicDir, "../../../dist/ui/public");
 app.get(["/mining/catalog.json", "/mining/catalog-receipt.json"], (req, res) => {

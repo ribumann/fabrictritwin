@@ -13,7 +13,8 @@ import {
   validOverview,
   validAsOf,
   currentIncidentQuery,
-  validCurrentAssessmentAsOf,
+  validIncidentAssessment,
+  incidentAssessmentLabel,
   validSeries,
   seriesQuery,
   verifiedRunIngestion,
@@ -54,6 +55,7 @@ let catalog,
   selectedIncident = null;
 let incidents = [];
 let incidentAsOf = null;
+let incidentAssessment = null;
 let mode = "live";
 let replayTime = null;
 let appearanceMode = "clean";
@@ -275,7 +277,7 @@ function drawIncidentEvidence() {
     : "";
   text(
     "incident-evidence",
-    `${selectedIncident.title} · rule ${selectedIncident.ruleId} · scope ${selectedIncident.scopeId} · ${selectedIncident.verification} · assessed ${timestamp(incidentAsOf)} · raised ${timestamp(selectedIncident.raisedAt)} · acknowledged ${selectedIncident.acknowledgedAt ? timestamp(selectedIncident.acknowledgedAt) : "not acknowledged"} (separate from assessment time). Current hold: ${hold}; evidence window: ${timestamp(selectedIncident.evidenceWindowStart)} to ${timestamp(selectedIncident.evidenceWindowEnd)}. ${evidence}${moduleContext}`,
+    `${selectedIncident.title} · rule ${selectedIncident.ruleId} · scope ${selectedIncident.scopeId} · ${selectedIncident.verification} · ${incidentAssessmentLabel(incidentAssessment)} · raised ${timestamp(selectedIncident.raisedAt)} · acknowledged ${selectedIncident.acknowledgedAt ? timestamp(selectedIncident.acknowledgedAt) : "not acknowledged"} (separate from assessment time). Current hold: ${hold}; evidence window: ${timestamp(selectedIncident.evidenceWindowStart)} to ${timestamp(selectedIncident.evidenceWindowEnd)}. ${evidence}${moduleContext}`,
   );
 }
 function drawDrawer() {
@@ -408,16 +410,14 @@ function selectIncident(incident) {
   drawPlant();
   drawDrawer();
 }
-function drawIncidents(emptyMessage = "No active incidents at the latest measured assessment.") {
+function drawIncidents(emptyMessage = "Unknown - incident assessment unavailable.") {
   const container = $("incidents");
   container.replaceChildren();
   text(
     "incident-status",
-    incidents.length
-      ? `Top three active incidents · assessed ${timestamp(incidentAsOf)} · advisory only`
-      : incidentAsOf
-        ? `No active incidents at the measured assessment ${timestamp(incidentAsOf)}.`
-        : emptyMessage,
+    incidentAsOf
+      ? `${incidents.length ? "Top three active incidents" : "No active incidents"} · ${incidentAssessmentLabel(incidentAssessment)}`
+      : emptyMessage,
   );
   for (const incident of incidents.slice(0, 3)) {
     const item = node("li");
@@ -561,6 +561,7 @@ function clearReadState(message) {
   overview = null;
   incidents = [];
   incidentAsOf = null;
+  incidentAssessment = null;
   selectedIncident = null;
   text("connection", message);
   drawOverview();
@@ -573,8 +574,11 @@ async function refresh(scope = "all") {
   if (mode === "replay") {
     incidents = [];
     incidentAsOf = null;
+    incidentAssessment = null;
     selectedIncident = null;
-    drawIncidents("Incident assessments are current-only; historical assessments are unavailable in replay.");
+    drawIncidents(
+      "Incident assessments are current-only; historical assessments are unavailable in replay.",
+    );
     drawDrawer();
   }
   if (document.hidden || !context?.readAvailable || !context?.approvedRun) return;
@@ -648,7 +652,7 @@ async function refresh(scope = "all") {
           if (!current()) return;
           if (
             !sameScope(data, params.runId, catalogVersion) ||
-            !validCurrentAssessmentAsOf(data.asOf) ||
+            !validIncidentAssessment(data) ||
             !Array.isArray(data.incidents) ||
             data.incidents.length > 20 ||
             data.incidents.some(
@@ -681,6 +685,7 @@ async function refresh(scope = "all") {
             throw new Error("Invalid or foreign-run incident response.");
           incidents = data.incidents.filter((item) => !item.clearedAt);
           incidentAsOf = data.asOf;
+          incidentAssessment = data;
           selectedIncident = refreshedIncidentSelection(selectedIncident, incidents);
           drawIncidents();
           drawDrawer();
@@ -688,6 +693,7 @@ async function refresh(scope = "all") {
           if (current()) {
             incidents = [];
             incidentAsOf = null;
+            incidentAssessment = null;
             selectedIncident = null;
             drawIncidents(error.message);
             drawDrawer();
