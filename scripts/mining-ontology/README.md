@@ -42,6 +42,90 @@ References: [current TMDL definition](https://learn.microsoft.com/rest/api/fabri
 [current ontology overview](https://learn.microsoft.com/fabric/iq/ontology/overview),
 [optional graph materialization](https://learn.microsoft.com/fabric/iq/ontology/how-to-use-ontology-graph).
 
+## Catalog-backed native graph
+
+`New-MiningGraphDefinition.ps1` prepares the graph associated with a selected
+Mining-owned ontology. It is **offline**, requires PowerShell 7.4+ (the
+GitHub Actions runner already provides it), and performs no cloud writes or
+refreshes. Save and review complete native ontology and graph snapshots first:
+bare `{"parts":[...]}` definitions and wrapped `{"definition":{"parts":[...]}}`
+responses are supported.
+
+```powershell
+$request = .\scripts\mining-ontology\New-MiningGraphDefinition.ps1 `
+  -CatalogPath $catalog -OntologyId $observedOntologyId `
+  -OntologyDefinitionPath $ontologySnapshot `
+  -OntologyDefinitionSha256 $reviewedOntologyHash `
+  -GraphPreimagePath $graphSnapshot -GraphPreimageSha256 $reviewedGraphHash `
+  -OneLakeTablesPath $observedOneLakeTablesPath
+```
+
+The source root must be the exact HTTPS `oneLakeTablesPath` returned by the
+**static source Lakehouse**, not the ontology-generated Eventhouse. Graph
+Delta sources require its equivalent
+`abfss://<workspace>@onelake.dfs.fabric.microsoft.com/<lakehouse>/Tables/dbo/<table>`
+representation. HTTPS Delta paths fail native graph validation.
+
+The generator reuses the pinned catalog and preserves current native entity,
+relationship, and backing-table lineage identities. Six node types expose
+`id` and `label`; six directed edge types explicitly map both endpoint
+properties, node keys, and composite edge identities. `ModuleSendsStream` and
+`StreamTargetsModule` retain opposite directions. It rejects reversed or
+changed physical bindings, stale snapshot hashes, foreign graph metadata,
+and existing graph configurations that differ from this contract. Only an
+empty native shell or an equivalent generated configuration is accepted;
+custom configurations require separate review, not forced replacement.
+`.platform`, styling, settings, and other parts retain their original payloads.
+
+For deployment, resolve and verify the exact Mining graph item and caller
+separately. Re-read the graph immediately before submitting, reject preimage
+drift, and journal the reviewed request hash **before** calling
+`POST /v1/workspaces/<workspace>/items/<graph>/updateDefinition`. Omit the
+optional `format` field. Reconcile the returned operation before retrying;
+unknown delivery is not failure. Read back all parts afterward: native JSON
+formatting can differ without structural drift, and Fabric can add default
+scaling settings. Unexpected changes still require investigation; preserved
+`.platform` bytes must match.
+
+An accepted definition can start a refresh automatically. Inspect
+`GET /v1/workspaces/<workspace>/items/<graph>/jobs/instances` before requesting
+another refresh. Require the actual job to finish with `Completed` and no
+failure reason, then run real graph queries. For the pinned catalog, expect
+**199 nodes and 248 edges**, but counts alone are insufficient: compare each
+type's actual IDs and directed endpoint pairs with the catalog tables.
+
+The authenticated [GQL Query API](https://learn.microsoft.com/fabric/graph/gql-query-api)
+uses `POST /v1/workspaces/<workspace>/graphModels/<graph>/executeQuery?beta=true`
+with `{"query":"..."}`. HTTP 200 is not query success: inspect `status.code`,
+additional statuses, and any continuation. Continue the same query with the
+opaque, once-percent-encoded `nextPage` token; do not restart it. GQL reserves
+`label`, so quote that property:
+
+```gql
+MATCH (n:mining_D01_Plant)
+RETURN n.id AS id, n.`label` AS node_label
+LIMIT 2
+```
+
+This is an explicit **static catalog graph**, not proof that the ontology's
+normalized ALM source references resolve, that all ontology properties are
+materialized, or that live telemetry is bound. A portal warning that the
+parent ontology has changed must remain visible until that integration is
+verified. Do not clear it by blindly regenerating sources. Graph, ontology,
+and OneLake remain private; only the Cockpit is publicly accessible. The
+beta query API is for this demonstration, not a production availability claim.
+
+```mermaid
+flowchart LR
+  Catalog["Pinned D01 catalog"] --> Lakehouse["12 verified dbo Delta tables"]
+  Catalog --> Ontology["6 keyed ontology entities + 6 directed relationships"]
+  Ontology -->|"reviewed native lineage identities"| Definition["Offline graph definition"]
+  Lakehouse -->|"exact ABFSS sources"| Definition
+  Definition -->|"guarded update + observed refresh"| Graph["Native catalog graph"]
+  Graph -->|"authenticated GQL"| Evidence["Actual IDs, endpoints and paths"]
+  Telemetry["Live Eventstream / KQL data"] -.->|"separate binding still required"| Ontology
+```
+
 ## Legacy additive source
 
 This additive **old-experience JSON** source consumes the simulator-owned
