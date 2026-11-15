@@ -1,5 +1,49 @@
 # D01 native ontology static source
 
+## Current-experience TMDL definition
+
+For new Mining-owned ontologies, use the current TMDL format, not the additive
+old-experience executor below. Generate a definition from the same pinned
+catalog and an observed Lakehouse SQL endpoint:
+
+```powershell
+$definition = .\scripts\mining-ontology\New-MiningTmdlDefinition.ps1 `
+  -CatalogPath $catalog -SqlServer $observedSqlHostname `
+  -SqlDatabase $observedLakehouseName -LogicalId $logicalId
+```
+
+This command is offline: it generates twelve DirectLake backing tables, six
+keyed entity types and six directed entity relationships. Each relationship
+uses its actual catalog junction table and two native table relationships;
+Stream -> Module is kept distinct from Module -> Stream. No telemetry, graph
+instances, refresh jobs or synthetic observations are generated.
+
+Deploy only to a new Mining-owned ontology through Fabric's
+`create item` / `updateDefinition` API. Verify the catalog first. Before an
+update, read and preserve the complete live definition and its platform-owned
+`.platform` part, check that no other writer changed the preimage, and replace
+the generated `.platform` part with the live part. Journal the operation
+before submission, reconcile its terminal status without resubmitting it,
+then read the resulting definition. Fabric can normalize SQL expressions
+to `ONT_ALM_*` relative references and assign omitted lineage tags; a
+byte-for-byte definition comparison is therefore not an instance-access test.
+
+The current ontology is a virtual semantic/context layer, not a general-purpose
+query engine. Verify a consumer against the bound sources separately. In the
+private Fabric portal, inspect the entity property bindings and source rows.
+For relationship traversal, choose **Manage graph**, select eligible catalog
+entities/relationships, materialize them, and run a real path query. Graph
+materialization is optional and explicit; source updates require separate
+refresh verification. A successful definition write proves neither those
+instances nor an assistant answer. Browser sign-in is required for portal
+checks and is separate from Azure CLI API access.
+
+References: [current TMDL definition](https://learn.microsoft.com/rest/api/fabric/articles/item-management/definitions/ontology-definition),
+[current ontology overview](https://learn.microsoft.com/fabric/iq/ontology/overview),
+[optional graph materialization](https://learn.microsoft.com/fabric/iq/ontology/how-to-use-ontology-graph).
+
+## Legacy additive source
+
 This additive **old-experience JSON** source consumes the simulator-owned
 `apps/simulator/src/mining/plant-catalog.json` at its pinned byte hash. It does
 not copy the catalog or modify the athlete templates. Merge the canonical
