@@ -1,15 +1,15 @@
 # Release architecture
 
-These diagrams separate the **live Azure/Fabric topology**, the **account-free
-synthetic target**, and the **protected image-release lane**. Arrows describe
-data or request paths, not proof of availability. No operator-specific resource
-names, identities, athlete identifiers, credentials, or raw measurements belong
-here.
+These diagrams distinguish the **public D01 Mining demo** (generated synthetic
+events sent to private Fabric), **private static Mining projections**, the
+**account-free local synthetic target**, and the **protected image-release
+lane**. Arrows describe data or request paths, not proof of availability. No
+operator-specific identities, credentials, athlete identifiers, or raw
+measurements belong here.
 
-Source baseline: main after the public mining demo and classifier corrections. Status snapshot:
-**14 November 2026**. These diagrams describe checked-in source and dated
-observations, not proof of the current resources or serving revision in any
-tenant.
+Source baseline: main through merged PR #83. Status snapshot: **15 November
+2026**. These diagrams describe checked-in source and dated observations, not a
+guarantee about current resources or the serving revision in any tenant.
 
 ## Live request and identity boundaries
 
@@ -149,65 +149,152 @@ Sources: [daily generator](../apps/simulator/src/index.ts),
 [KQL definitions](../infra/fabric/eventhouse/DatabaseSchema.kql),
 and [live simulation](../apps/streaming-backend/src/api/simulate.ts).
 
-## Isolated D01 mining path: readiness gated
+## Public D01 Mining demo: service boundary and private source
 
 ```mermaid
 flowchart LR
-    Browser["Public browser"]
-    Cockpit["Cockpit mining view"]
-    Backend["Authenticated backend demo boundary"]
-    State["Private run coordination"]
-    Publisher["Bounded D01 publisher"]
-    Stream["Separate Mining Eventstream<br/>CustomEndpoint"]
-    RawTelemetry["mining_TelemetryRaw"]
-    RawState["mining_PlantStateEvents"]
-    Classifiers["Mining classifiers"]
-    Curated["Validated telemetry / state"]
+    Visitor["Public visitor<br/>no Fabric sign-in"]
+    Cockpit["Public Mining Cockpit"]
+    BFF["Cockpit BFF"]
+    Backend["Backend demo boundary"]
+    State["Private durable run state"]
+    Publisher["D01 publisher<br/>fixed five-minute run"]
+    Stream["Private Mining Eventstream"]
+    Raw["Raw telemetry and state"]
+    Classifiers["Mining validators"]
+    Curated["Validated telemetry and state"]
     Quarantine["Quarantine"]
-    G5["Fixed G5 read contracts"]
+    Reconcile["Exact event-ID reconciliation"]
+    Reads["Bounded public reads<br/>optional evidence assistant"]
 
-    Browser -->|"Same-origin controls and reads"| Cockpit
-    Cockpit -->|"Cockpit workload identity"| Backend
+    Visitor -->|"HTTPS"| Cockpit
+    Cockpit -->|"Same-origin actions and reads"| BFF
+    BFF -->|"Workload-identity token"| Backend
     Backend --> State
     Backend --> Publisher
     Publisher --> Stream
-    Stream --> RawTelemetry
-    Stream --> RawState
-    RawTelemetry --> Classifiers
-    RawState --> Classifiers
-    Classifiers -->|"Accepted, non-transactional policies"| Curated
+    Stream --> Raw
+    Raw --> Classifiers
+    Classifiers -->|"Accepted; policies are non-transactional"| Curated
     Classifiers -->|"Rejected"| Quarantine
-    Curated --> G5
-    G5 --> Backend
+    Raw --> Reconcile
+    Curated --> Reconcile
+    Curated --> Reads
+    Reconcile --> Reads
+    Reads --> BFF
 ```
 
+The public operator UI is [ontologydemo.liberatetheinnerchild.net/mining/](https://ontologydemo.liberatetheinnerchild.net/mining/).
+Visitors can use its bounded D01 demo without signing in to Fabric. This is not
+anonymous Fabric access: the Cockpit BFF authenticates to the backend with its
+workload identity, and Fabric remains private. The public start action creates
+only the server-selected D01 normal run; visitors cannot supply a run, query,
+endpoint, identity, or Fabric credential. The protected delegated start route
+is separate and remains protected.
+
 Mining has its own Eventstream, Eventhouse, KQL database, raw schema, and
-definitions in the existing workspace/capacity. It does not share or modify the
-triathlon Eventstream, Eventhouse, or tables shown above.
+definitions in the existing workspace/capacity. It does not share or modify
+triathlon Fabric tables. An accepted run or `publisher_complete` does not by
+itself prove curated ingestion or downstream analytics are complete; the public
+overview uses expected-versus-raw-and-validated event-ID hashes to establish
+ingestion.
+The update policies remain non-transactional, so raw ingestion can precede
+curation. Public status is coordination status, not a live health check.
 
-**Dated evidence, not a readiness guarantee:** on 14 November 2026, a public
-run reached both raw tables and produced a snapshot of 303 validated telemetry
-and 20 validated state events, with no quarantined events. The public overview
-returned all 56 catalog readings; trends and line comparison returned real
-run-scoped rows. A cancellation reached `stopped`. Raw ingestion timestamps
-were present. Non-transactional update policies can lag or fail independently
-of raw ingestion and require reconciliation.
+**Observed public run, 15 November 2026:** run
+`60ac23d3-e0fa-4da7-8ed9-cf79fc1fbcd5` produced 505 telemetry and 32 state
+events. Expected, raw, and validated event-ID sets and hashes matched; all 56
+catalog tags were represented, with zero conflicts and zero quarantined
+events. The observed sample interval was
+`2026-11-15T16:47:32.029Z`–`2026-11-15T16:52:02.029Z`. It is not a publisher
+`startedAt`, `stopAt`, duration, or profile manifest. This is evidence for that
+run, not continuing availability or current sample quality.
 
-The public demo path is separately opt-in and checks the Cockpit service
-identity; protected delegated routes remain separate. Its configured writer
-designation is not technical enforcement of exclusive access, and demo reads
-do not verify a private receipt or detect native-definition drift. Incident
-assessment and the mining assistant remain unavailable. The account-free local
-synthetic demo is triathlon-only.
+The public evidence assistant returned an actual browser-form and API answer
+with matching run/source times, but its source snapshot still had stale sample
+quality. It is a bounded, ad-hoc Foundry Responses call over the
+server-selected current overview, with no tools or conversation history; it is
+not the native Fabric Data Agent. See [Mining assistant](mining-assistant.md).
+
+The completed-run incident assessment contains zero incidents. Its event time
+is `2026-11-15T16:52:02.029Z`, source capture time is
+`2026-11-15T16:52:39.206Z`, and a later backend restart recheck is
+`2026-11-15T16:55:49.161Z`. These are respectively the historical evaluation,
+observation capture, and verification times—not evidence of a current healthy
+plant. The public UI labels the distinct times. See [Mining incidents](mining-incidents.md).
 
 Sources: [isolated Fabric provisioning](../scripts/provision/mining-streaming.ps1),
 [mining Eventstream](../infra/fabric/mining-streaming/eventstream.json),
 [raw schema](../infra/fabric/mining-streaming/MiningRawSchema.kql),
 [validators and read contracts](../infra/fabric/eventhouse/MiningValidation.kql),
-[deployment notes](../scripts/fabric/README.md), and the backend's
-[mining start](../apps/streaming-backend/src/api/mining-start.ts),
-[read](../apps/streaming-backend/src/api/mining-read.ts), and
-[cancel](../apps/streaming-backend/src/api/mining-cancel.ts) routes.
+[public demo routes](../apps/streaming-backend/src/api/mining-demo.ts) and
+[Cockpit boundary](../apps/cockpit/src/mining/router.ts). See the
+[Mining run coordination operator notes](mining-run-coordination.md) for
+request shapes, status semantics, and capacity observations.
+
+## Private static Mining topology: catalog projections only
+
+```mermaid
+flowchart LR
+    Catalog["Private Mining Lakehouse catalog"]
+    Generator["Offline graph generator"]
+    Graph["Private static topology graph"]
+    Model["DirectLake topology model"]
+    Report["Private topology report"]
+    DataAgent["Native Fabric Data Agent"]
+
+    Catalog --> Generator
+    Generator --> Graph
+    Catalog --> Model
+    Model --> Report
+    Model --> DataAgent
+```
+
+The graph has 199 nodes and 248 directed edges; its 50 Module -> Stream -> Module
+paths matched the catalog. It is a static catalog projection, not a live graph
+or time-series binding. Ontology ALM source resolution, the parent warning,
+full properties including `Tag.unit`, and supported hosted projection changes
+remain unresolved; those changes require the ontology's **Manage graph**
+workflow. Offline candidate generation did not update a hosted graph.
+
+The private DirectLake model and report's four charts were visually rendered
+in signed-in Fabric. They expose static counts of 1 plant, 4 lines, 24 modules,
+64 equipment items, 56 tags, and 50 streams, plus 248 relationship rows and
+73.4375% equipment-tag coverage. This is not realtime telemetry. The native
+Data Agent answered count and reworded line-to-plant questions consistently
+with independent DAX, but uses that same static model. Its anonymous
+service-principal bridge is **unverified**; no role was granted. See
+[Mining analytics](mining-analytics.md) and [Mining Data Agent](mining-data-agent.md).
+
+## Operator evidence and remaining boundaries
+
+| Area | Observed state on 15 November 2026 | What it does not prove |
+| --- | --- | --- |
+| Public source | Exact raw/validated IDs and hashes reconciled for the run above; durable state remained `accepted` and `publisher_complete`. | Ongoing source readiness, continuous availability, or that sample quality is current. |
+| Snapshot analytics | A separate historical telemetry facts/model/report is not accepted. The first CSV readback failed type/100-ns timestamp coercion; isolated work is moving to explicit Parquet strings in a versioned namespace. | Any future model/report result or acceptance. |
+| Operations rules | The native Operations agent has only its Mining KQL source; generated/committed rules are empty, state is `Unconfigured`, and there are zero monitored rules or operations. | Alerting, notification delivery, or control actions. No cause for the empty state is established. |
+| Capacity | Existing F4 `triatwindevfabriccap` binding was verified. Kusto returned HTTP 429 and the model returned `PFE_FABRIC_THROTTLED` while ARM showed Active. A controlled pause/resume was followed by public reads with the same complete event IDs and still-stale sample quality. | A workload outage, ingestion buffering/catch-up, or continuous availability. The public overview also succeeded while ARM showed Paused. |
+
+The direct caller's manifest Blob read was denied. No identity bypass or role
+change was attempted, and that read is not a blocker for the approved observed
+snapshot captured from the validated source. Keep capacity lifecycle evidence
+separate from proof that the source is ready: F-SKU carryforward can cause a
+request rejection, pause can still bill accumulated usage, and resume clears
+carryforward. No Azure Monitor namespace for `Microsoft.Fabric/capacities` was
+available. Avoid uncoordinated polling or repeated generation under HTTP 429;
+the public web apps can remain reachable while Fabric-backed reads are
+unavailable. A read-only audit confirmed suspension is performed by
+subscription governance automation via Azure Lighthouse. Its schedule/policy
+and any approved exception have not been established here. Continuous
+Fabric-backed availability requires coordination for an approved governance
+exception; do not disable the delegation or add a competing auto-resume loop.
+
+Remaining owner/admin decisions are separate from autonomous documentation or
+snapshot work: whether to authorize any native Data Agent bridge or workspace
+role, how to resolve the ontology Manage graph/ALM issues, and whether to
+coordinate an approved governance exception for continuous Fabric-backed
+availability. No credentials, permissions, capacity, or Fabric resources were
+changed for this documentation. The overall release is not declared complete.
 
 ## Account-free synthetic demo: isolated local processes
 
