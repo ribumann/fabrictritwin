@@ -85,6 +85,33 @@ export function validCurrentAssessmentAsOf(value, now = Date.now()) {
   return Number.isFinite(assessedAt) && assessedAt >= now - 90_000 && assessedAt <= now + 15_000;
 }
 
+export function validIncidentAssessment(data, now = Date.now()) {
+  if (data?.assessmentKind === undefined) return validCurrentAssessmentAsOf(data?.asOf, now);
+  if (
+    data.assessmentKind !== "reconciled-event-time" ||
+    !validCurrentAssessmentAsOf(data.refreshedAt, now) ||
+    typeof data.asOf !== "string" ||
+    typeof data.sourceObservedAt !== "string"
+  )
+    return false;
+  const assessed = Date.parse(data.asOf);
+  const captured = Date.parse(data.sourceObservedAt);
+  const refreshed = Date.parse(data.refreshedAt);
+  return (
+    Number.isFinite(assessed) &&
+    Number.isFinite(captured) &&
+    assessed <= captured &&
+    captured <= refreshed &&
+    captured <= now
+  );
+}
+
+export function incidentAssessmentLabel(data) {
+  return data?.assessmentKind === "reconciled-event-time"
+    ? `Reconciled event time ${formatTimestamp(data.asOf)} · source captured ${formatTimestamp(data.sourceObservedAt)} · rechecked ${formatTimestamp(data.refreshedAt)} · not a live assessment`
+    : `Assessed ${formatTimestamp(data?.asOf)} · advisory only`;
+}
+
 export function sameScope(data, runId, catalogVersion) {
   return data?.plantId === "D01" && data.runId === runId && data.catalogVersion === catalogVersion;
 }

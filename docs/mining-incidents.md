@@ -1,11 +1,49 @@
 # Mining incident evaluation
 
 `apps/streaming-backend/src/mining-incidents/evaluator.ts` is a bounded advisory
-state machine over curated D01 observations. `runtime.ts` adds an **unmounted,
-default-off** durable processing and in-app notification/outbox foundation.
-Neither is bound to an HTTP endpoint, startup hook or live Fabric source. Offline
-tests do not establish live ingestion or mining acceptance. The simulator's
+state machine over curated D01 observations. `runtime.ts` adds fenced durable
+processing and an in-app notification/outbox foundation. Its prospective
+activation remains explicitly host-owned. The public demo uses the separate
+completed-run reconciliation lifecycle below. Offline tests do not establish
+live ingestion or mining acceptance. The simulator's
 diagnostic alerts are separate and are not authoritative inputs.
+
+## Public demo: reconciled event time
+
+`demo-runtime.ts` activates only when all three flags are `true`:
+`MINING_PUBLIC_DEMO_ENABLED`, `MINING_PUBLIC_DEMO_READ_ENABLED`, and
+`MINING_INGESTION_RECONCILIATION_ENABLED`. It uses the existing managed-identity
+store and bounded Mining Eventhouse query configuration, without new credentials.
+Publisher completion triggers reconciliation; the real server's startup hook
+explicitly recovers the current completed demo. The current accepted, non-stopped
+run must have its durable public-demo marker, pinned contract, normal scenario,
+and five-minute duration. Authority and run binding are rechecked before writes.
+
+The processor waits up to eight minutes, checking pending ingestion every five
+seconds, for exact raw/validated telemetry and state ID-set reconciliation with
+no conflicts or quarantine. It then captures the actual validated observations,
+checks their expected IDs and hashes, and confirms ingestion again. It feeds
+that captured data through the six run-relative minute evaluations. Capture
+failure cannot create a journal. Restart checks already committed payloads
+against the new capture, recovers the leased head, and skips committed minutes;
+an unknown write is never retried on the failed runtime.
+
+Journals live under `public-demo-reconciliation/incidents/...` in the existing
+Mining container. This namespace cannot adopt or overwrite prospective journals.
+Shutdown cancels and joins processing; storage and cleanup failures remain
+explicit errors. Public acknowledgement is not enabled.
+
+The service-only demo incident GET reads the completed journal without leases,
+writes, evaluation or recovery. It freshly verifies readiness, exact ingestion,
+and current validated payloads against the journal. Pending, conflicting,
+incomplete, disabled or stopped runs are unavailable, not healthy.
+The Cockpit labels the response `assessmentKind: reconciled-event-time`,
+showing the historical assessment time, actual `sourceObservedAt` capture time,
+and fresh `refreshedAt` verification time. A fresh source recheck does **not**
+make the historical assessment live or establish what an operator knew then.
+It does not reconstruct unobserved arrival times, supply curated ingestion
+provenance, prove a prospective notification lifecycle, or provision native
+Reflex/Operations Agent rules.
 
 ## Input boundary
 
@@ -96,12 +134,12 @@ arrivals, rather than repeatedly returning its whole historical lookback.
 Observation commands, including repeats, have a total budget of 4,096 per run.
 `committed` contains observations already durably journaled, including after
 recovery; sources can use it to identify new arrivals and detect conflicting
-reused event IDs. `fabric-source.ts` is an unmounted, bounded adapter for the
+reused event IDs. `fabric-source.ts` is a bounded adapter for the
 validated tables. It checks source readiness and catalog/run bindings and uses
 actual query receipt time, but the result is only what was visible then: it is
 not a completeness watermark, and it does not establish a curated ingestion
-timestamp or authorize activation. The adapter is not yet a production incident
-connection.
+timestamp or authorize activation. Completed-run demo reconciliation adds an
+independent completeness check; ordinary source reads do not.
 
 `processMinute(asOf)` accepts consecutive run-relative minute boundaries,
 starting at minute zero, never future minutes. Repeating an already committed

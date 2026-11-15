@@ -17,6 +17,7 @@ import type {
   MiningCuratedRequest,
 } from "../mining/read/curated-provider.js";
 import { validateMiningReadQuery, type MiningReadRoute } from "./mining-read.js";
+import type { MiningDemoIncidentProcessor } from "../mining-incidents/demo-runtime.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -31,6 +32,7 @@ interface Options {
   store?: MiningStore;
   verifyClaims?: (req: Request, signal: AbortSignal) => Promise<JWTPayload | undefined>;
   curated?: MiningCuratedProvider;
+  incidents?: Pick<MiningDemoIncidentProcessor, "start">;
 }
 
 function error(res: Response, status: number, code: string, message: string): void {
@@ -122,13 +124,13 @@ export function createMiningDemoRouter(options: Options): Router {
       value.runId === id
     );
   };
-  const fail = (res: Response, cause: unknown) => {
+  const fail = (res: Response, cause: unknown, unavailableCode = "mining_demo_unavailable") => {
     console.error("[mining-demo] Request failed", cause);
     if (res.headersSent || res.destroyed) return;
     if (cause instanceof MiningCoordinationError && cause.code === "conflict") {
       error(res, 409, "mining_demo_busy", "A run is active or the demo cooldown has not elapsed.");
     } else {
-      error(res, 503, "mining_demo_unavailable", "The mining demo is unavailable; check status.");
+      error(res, 503, unavailableCode, "The mining demo is unavailable; check status.");
     }
   };
 
@@ -215,19 +217,19 @@ export function createMiningDemoRouter(options: Options): Router {
           error(res, 404, "mining_demo_run_not_found", "No admitted public demo run is available.");
           return;
         }
-        if (route === "incidents") {
+        let input: MiningCuratedRequest;
+        if (route === "incidents" && demo.stopRequested) {
           error(
             res,
             503,
             "mining_incidents_unavailable",
-            "Incident assessments are not connected.",
+            "Stopped runs do not have a complete incident reconciliation.",
           );
           return;
         }
-        let input: MiningCuratedRequest;
-        if (route === "overview") {
+        if (route === "overview" || route === "incidents") {
           input = {
-            kind: "overview",
+            kind: route,
             run: demo.run,
             asOf: new Date((req.query.asOf as string | undefined) ?? Date.now()).toISOString(),
           };
@@ -256,6 +258,20 @@ export function createMiningDemoRouter(options: Options): Router {
               : { ...window, kind: "compare" };
         }
         const data = await curated(input, signal);
+        if (route === "incidents") {
+          const latest = await coordinator.currentStatus(signal);
+          if (
+            latest?.admission !== "accepted" ||
+            latest.runId !== run.runId ||
+            latest.stopRequested ||
+            latest.phase !== "publisher_complete"
+          ) {
+            throw new MiningCoordinationError(
+              "prerequisite",
+              "The completed demo run changed during the incident read.",
+            );
+          }
+        }
         if (res.headersSent || res.destroyed) return;
         res.json(
           route === "overview"
@@ -270,7 +286,7 @@ export function createMiningDemoRouter(options: Options): Router {
             : data,
         );
       } catch (cause) {
-        fail(res, cause);
+        fail(res, cause, route === "incidents" ? "mining_incidents_unavailable" : undefined);
       }
     });
   }
@@ -296,6 +312,29 @@ export function createMiningDemoRouter(options: Options): Router {
       signal.throwIfAborted();
       const execution = host.start({ plantId: "D01", requestId: runId, durationSeconds }, signal);
       const admission = await execution.admission;
+      const incidents = options.incidents;
+      if (incidents) {
+        void execution.completion
+          .then(
+            (status) => {
+              if (status.phase === "publisher_complete" && !status.stopRequested) {
+                return incidents.start(runId);
+              }
+            },
+            (cause: unknown) => {
+              console.error(
+                "[mining-demo-incidents] Publisher did not complete; reconciliation was not activated",
+                cause,
+              );
+            },
+          )
+          .catch((cause: unknown) => {
+            console.error(
+              "[mining-demo-incidents] Completion-triggered reconciliation failed",
+              cause,
+            );
+          });
+      }
       if (res.headersSent || res.destroyed) return;
       if (
         admission.kind !== "started" ||

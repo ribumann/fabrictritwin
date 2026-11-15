@@ -23,7 +23,10 @@ const env = {
   MINING_CURATED_QUERY_VERSION: "d01-g5-query-v1",
 };
 
-function setup(configuration: NodeJS.ProcessEnv = env) {
+function setup(
+  configuration: NodeJS.ProcessEnv = env,
+  incidents?: { start(runId: string): Promise<void> },
+) {
   const documents = new Map<string, StoredDocument>();
   const leases = new Set<string>();
   const store: MiningStore = {
@@ -73,12 +76,45 @@ function setup(configuration: NodeJS.ProcessEnv = env) {
   app.use(express.json());
   app.use(
     "/demo",
-    createMiningDemoRouter({ synthetic: false, env: configuration, store, host, verifyClaims }),
+    createMiningDemoRouter({
+      synthetic: false,
+      env: configuration,
+      store,
+      host,
+      verifyClaims,
+      incidents,
+    }),
   );
   return { app, start, verifyClaims, documents, store };
 }
 
 describe("public mining demo service boundary", () => {
+  it.each(["publisher_complete", "running"] as const)(
+    "activates reconciliation only after %s completion, never from a GET",
+    async (phase) => {
+      const incidents = { start: vi.fn(async () => {}) };
+      const { app, start } = setup(env, incidents);
+      start.mockImplementationOnce((input) => {
+        const status = {
+          runId: input.requestId,
+          admission: "accepted" as const,
+          phase: "running" as const,
+          stopRequested: false,
+        };
+        return {
+          admission: Promise.resolve({ kind: "started", status }),
+          completion: Promise.resolve({ ...status, phase }),
+        };
+      });
+      const response = await request(app).post("/demo/runs/start").send({ plantId: "D01" });
+      expect(response.status).toBe(202);
+      const calls = phase === "publisher_complete" ? 1 : 0;
+      expect(incidents.start).toHaveBeenCalledTimes(calls);
+      if (calls) expect(incidents.start).toHaveBeenCalledWith(response.body.runId);
+      await request(app).get("/demo/incidents");
+      expect(incidents.start).toHaveBeenCalledTimes(calls);
+    },
+  );
   it("is disabled by default and rejects callers other than the configured service", async () => {
     const disabled = setup({});
     expect(
