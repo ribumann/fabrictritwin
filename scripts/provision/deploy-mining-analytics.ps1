@@ -31,8 +31,10 @@ if (-not [IO.Path]::IsPathFullyQualified($ReceiptPath) -or
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $definitionScript = Join-Path $root 'scripts\fabric\New-MiningAnalyticsDefinition.ps1'
 $semanticModelName = 'mining-d01-topology-semanticmodel'
+$script:SemanticModelName = $semanticModelName
 $reportName = 'mining-d01-topology-report'
 $script:RootCmdlet = $PSCmdlet
+Import-Module (Join-Path $root 'scripts\fabric\MiningAnalyticsSafety.psm1') -Force
 
 function Invoke-Az {
     param([Parameter(Mandatory)][string[]]$Arguments)
@@ -56,9 +58,7 @@ function Get-AccessToken {
 
 function Get-FabricItems {
     param([Parameter(Mandatory)][hashtable]$Headers)
-    $response = Invoke-RestMethod -Method Get `
-        -Uri "https://api.fabric.microsoft.com/v1/workspaces/$WorkspaceId/items" -Headers $Headers
-    return ,@($response.value)
+    return ,(Get-MiningAnalyticsFabricItems -WorkspaceId $WorkspaceId -Headers $Headers)
 }
 
 function Get-MatchingItem {
@@ -67,10 +67,7 @@ function Get-MatchingItem {
         [Parameter(Mandatory)][string]$DisplayName,
         [Parameter(Mandatory)][string]$Type
     )
-    $matches = @($Items | Where-Object { $_.type -ceq $Type -and $_.displayName -ceq $DisplayName })
-    if ($matches.Count -gt 1) { throw "Multiple $Type items are named '$DisplayName'; refusing to choose one." }
-    if ($matches.Count -eq 1) { return $matches[0] }
-    return $null
+    return Get-MiningAnalyticsMatchingItem -Items $Items -DisplayName $DisplayName -Type $Type
 }
 
 function Add-Receipt {
@@ -79,6 +76,27 @@ function Add-Receipt {
     $Record.workspaceId = $WorkspaceId.ToString()
     $Record | ConvertTo-Json -Depth 20 -Compress |
         Add-Content -LiteralPath $ReceiptPath -Encoding utf8
+}
+
+function Read-ReceiptHistory {
+    if (-not (Test-Path -LiteralPath $ReceiptPath -PathType Leaf)) { return }
+    $records = [System.Collections.Generic.List[object]]::new()
+    $lineNumber = 0
+    foreach ($line in Get-Content -LiteralPath $ReceiptPath) {
+        $lineNumber++
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        try {
+            $record = $line | ConvertFrom-Json -AsHashtable -Depth 100
+        } catch {
+            throw "Receipt '$ReceiptPath' contains invalid JSON on line $lineNumber."
+        }
+        if (-not $record.Contains('workspaceId') -or
+            $record.workspaceId -cne $WorkspaceId.ToString()) {
+            throw "Receipt '$ReceiptPath' contains a malformed or cross-workspace record; refusing to continue."
+        }
+        $records.Add([pscustomobject]$record)
+    }
+    return $records.ToArray()
 }
 
 function Get-Sha256 {
@@ -95,7 +113,7 @@ function Get-HeaderValue {
 }
 
 function Wait-FabricOperation {
-    param([Parameter(Mandatory)][string]$OperationId, [Parameter(Mandatory)][hashtable]$Headers)
+    param([Parameter(Mandatory)][guid]$OperationId, [Parameter(Mandatory)][hashtable]$Headers)
     $state = $null
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
         $state = Invoke-RestMethod -Method Get `
@@ -103,20 +121,153 @@ function Wait-FabricOperation {
         if ($state.status -in @('Succeeded', 'Failed')) { break }
         Start-Sleep -Seconds 5
     }
-    if (-not $state -or $state.status -ne 'Succeeded') {
-        $detail = if ($state.error) { $state.error | ConvertTo-Json -Depth 10 -Compress } else { $state.status }
-        throw "Fabric operation '$OperationId' did not succeed: $detail"
-    }
-
     $result = $null
-    try {
-        $result = Invoke-RestMethod -Method Get `
-            -Uri "https://api.fabric.microsoft.com/v1/operations/$OperationId/result" -Headers $Headers
-    } catch {
-        $statusCode = [int]$_.Exception.Response.StatusCode
-        if ($statusCode -ne 404) { throw }
+    if ($state -and $state.status -eq 'Succeeded') {
+        try {
+            $result = Invoke-RestMethod -Method Get `
+                -Uri "https://api.fabric.microsoft.com/v1/operations/$OperationId/result" -Headers $Headers
+        } catch {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+            if ($statusCode -ne 404) { throw }
+        }
     }
     return [pscustomobject]@{ State = $state; Result = $result }
+}
+
+function Get-FabricItemDefinition {
+    param([Parameter(Mandatory)][guid]$ItemId, [Parameter(Mandatory)][hashtable]$Headers)
+    $uri = "https://api.fabric.microsoft.com/v1/workspaces/$WorkspaceId/items/$ItemId/getDefinition"
+    $response = Invoke-WebRequest -Method Post -Uri $uri -Headers $Headers
+    if ($response.StatusCode -eq 202) {
+        $operationIdText = Get-HeaderValue -Headers $response.Headers -Name 'x-ms-operation-id'
+        $operationId = [guid]::Empty
+        if (-not [guid]::TryParse($operationIdText, [ref]$operationId) -or $operationId -eq [guid]::Empty) {
+            throw "Fabric returned an invalid getDefinition operation ID for '$ItemId'."
+        }
+        $operation = Wait-FabricOperation -OperationId $operationId -Headers $Headers
+        if ($operation.State.status -ne 'Succeeded' -or -not $operation.Result) {
+            throw "Could not retrieve the native definition for item '$ItemId' (operation '$operationId')."
+        }
+        $body = $operation.Result
+    } elseif ($response.StatusCode -in @(200, 201)) {
+        $body = $response.Content | ConvertFrom-Json -AsHashtable -Depth 100
+    } else {
+        throw "Unexpected HTTP status $($response.StatusCode) from getDefinition for '$ItemId'."
+    }
+    if (-not $body.definition -or -not $body.definition.parts) {
+        throw "Fabric returned no native definition parts for item '$ItemId'."
+    }
+    return $body.definition
+}
+
+function Assert-FabricItemDefinition {
+    param(
+        [Parameter(Mandatory)][guid]$ItemId,
+        [Parameter(Mandatory)][object]$ExpectedDefinition,
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+    $actualDefinition = Get-FabricItemDefinition -ItemId $ItemId -Headers $Headers
+    Assert-MiningAnalyticsDefinitionMatches -ExpectedDefinition $ExpectedDefinition `
+        -ActualDefinition $actualDefinition -Label $Label `
+        -ExpectedWorkspaceName $script:WorkspaceDisplayName `
+        -ExpectedSemanticModelName $script:SemanticModelName
+}
+
+function Resolve-PriorCreateReceipts {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Records,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Items,
+        [Parameter(Mandatory)][hashtable]$ExpectedDefinitions,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+    foreach ($pending in Get-PendingMiningAnalyticsCreates -Records $Records) {
+        $attempt = $pending
+        $attemptIdProperty = $attempt.PSObject.Properties['attemptId']
+        $operationIdProperty = $attempt.PSObject.Properties['operationId']
+        $itemIdProperty = $attempt.PSObject.Properties['itemId']
+        $desiredHashProperty = $attempt.PSObject.Properties['desiredRequestSha256']
+        $attemptId = if ($attemptIdProperty) { [string]$attemptIdProperty.Value } else { '' }
+        $operationId = if ($operationIdProperty) { [string]$operationIdProperty.Value } else { '' }
+        $desiredHash = if ($desiredHashProperty) { [string]$desiredHashProperty.Value } else { '' }
+        if ([string]::IsNullOrWhiteSpace($operationId)) {
+            $itemId = [guid]::Empty
+            if ($itemIdProperty -and [guid]::TryParse([string]$itemIdProperty.Value, [ref]$itemId) -and
+                $itemId -ne [guid]::Empty) {
+                $item = @($Items | Where-Object { $_.id -eq $itemId.ToString() })
+                if ($item.Count -eq 1 -and $ExpectedDefinitions.ContainsKey([string]$attempt.kind) -and
+                    $item[0].displayName -ceq $attempt.displayName -and $item[0].type -ceq $attempt.kind) {
+                    $matchedItem = Get-MatchingItem -Items $Items -DisplayName $attempt.displayName -Type $attempt.kind
+                    if ($matchedItem.id -cne $itemId.ToString()) {
+                        throw 'Receipt item ID does not match the unique item name in the workspace.'
+                    }
+                    Assert-FabricItemDefinition -ItemId $itemId `
+                        -ExpectedDefinition $ExpectedDefinitions[[string]$attempt.kind] `
+                        -Label "$($attempt.kind) '$($attempt.displayName)'" -Headers $Headers
+                    Add-Receipt @{
+                        status = 'Reconciled'
+                        kind = $attempt.kind
+                        displayName = $attempt.displayName
+                        itemId = $itemId.ToString()
+                        desiredRequestSha256 = $desiredHash
+                        attemptId = $attemptId
+                        detail = 'Verified receipt item ID and complete native definition.'
+                    }
+                    continue
+                }
+            }
+            throw "Receipt has an unresolved $($attempt.kind) create for '$($attempt.displayName)' without a reconcilable operation or item ID; inspect '$ReceiptPath' before any create."
+        }
+
+        $operation = Wait-FabricOperation -OperationId $operationId -Headers $Headers
+        if (-not $operation.State -or $operation.State.status -notin @('Succeeded', 'Failed')) {
+            throw "Receipt operation '$operationId' is not terminal; no create may be retried."
+        }
+        if ($operation.State.status -eq 'Failed') {
+            Add-Receipt @{
+                status = 'OperationFailed'
+                kind = $attempt.kind
+                displayName = $attempt.displayName
+                operationId = $operationId
+                desiredRequestSha256 = $desiredHash
+                attemptId = $attemptId
+                operationStatus = 'Failed'
+            }
+            continue
+        }
+
+        $resultIdProperty = if ($operation.Result) { $operation.Result.PSObject.Properties['id'] } else { $null }
+        if (-not $resultIdProperty -or -not $resultIdProperty.Value) {
+            throw "Successful receipt operation '$operationId' has no result item ID; no create may be retried."
+        }
+        $itemId = [guid]::Empty
+        if (-not [guid]::TryParse([string]$resultIdProperty.Value, [ref]$itemId) -or $itemId -eq [guid]::Empty) {
+            throw "Successful receipt operation '$operationId' returned an invalid item ID; no create may be retried."
+        }
+        $item = @($Items | Where-Object { $_.id -eq $itemId.ToString() })
+        if ($item.Count -ne 1 -or $item[0].displayName -cne $attempt.displayName -or
+            $item[0].type -cne $attempt.kind -or
+            -not $ExpectedDefinitions.ContainsKey([string]$attempt.kind)) {
+            throw "Successful receipt operation '$operationId' cannot be uniquely matched to the reviewed item; no create may be retried."
+        }
+        $matchedItem = Get-MatchingItem -Items $Items -DisplayName $attempt.displayName -Type $attempt.kind
+        if ($matchedItem.id -cne $itemId.ToString()) {
+            throw "Successful receipt operation '$operationId' result does not match the unique item name; no create may be retried."
+        }
+        Assert-FabricItemDefinition -ItemId $itemId `
+            -ExpectedDefinition $ExpectedDefinitions[[string]$attempt.kind] `
+            -Label "$($attempt.kind) '$($attempt.displayName)'" -Headers $Headers
+        Add-Receipt @{
+            status = 'Reconciled'
+            kind = $attempt.kind
+            displayName = $attempt.displayName
+            itemId = $itemId.ToString()
+            operationId = $operationId
+            desiredRequestSha256 = $desiredHash
+            attemptId = $attemptId
+            detail = 'Verified successful operation result and complete native definition.'
+        }
+    }
 }
 
 function Invoke-CreateItem {
@@ -125,11 +276,13 @@ function Invoke-CreateItem {
         [Parameter(Mandatory)][string]$DisplayName,
         [Parameter(Mandatory)][string]$Uri,
         [Parameter(Mandatory)][string]$Body,
+        [Parameter(Mandatory)][object]$ExpectedDefinition,
         [Parameter(Mandatory)][hashtable]$Headers,
         [Parameter(Mandatory)][object[]]$PreimageItems
     )
     $definitionHash = Get-Sha256 -Text $Body
     $preimage = @($PreimageItems | ForEach-Object { $_.id })
+    $attemptId = [guid]::NewGuid().ToString()
     if (-not $script:RootCmdlet.ShouldProcess(
             "$WorkspaceId/$DisplayName", "Create Mining $Kind (definition SHA-256 $definitionHash)")) {
         return $null
@@ -141,8 +294,11 @@ function Invoke-CreateItem {
         displayName = $DisplayName
         preimageItemIds = $preimage
         desiredRequestSha256 = $definitionHash
+        attemptId = $attemptId
     }
     $operationId = $null
+    $itemId = $null
+    $terminalFailureRecorded = $false
     try {
         $response = Invoke-WebRequest -Method Post -Uri $Uri `
             -Headers ($Headers + @{ 'Content-Type' = 'application/json' }) -Body $Body
@@ -150,18 +306,37 @@ function Invoke-CreateItem {
         if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
             $itemId = ($response.Content | ConvertFrom-Json -Depth 100).id
         } elseif ($response.StatusCode -eq 202) {
-            $operationId = Get-HeaderValue -Headers $response.Headers -Name 'x-ms-operation-id'
-            if ([string]::IsNullOrWhiteSpace($operationId)) {
-                throw "Fabric accepted $Kind creation without an operation ID; the outcome must be reconciled."
+            $operationIdText = Get-HeaderValue -Headers $response.Headers -Name 'x-ms-operation-id'
+            $operationId = [guid]::Empty
+            if (-not [guid]::TryParse($operationIdText, [ref]$operationId) -or $operationId -eq [guid]::Empty) {
+                throw "Fabric accepted $Kind creation without a valid operation ID; the outcome must be reconciled."
             }
             $operation = Wait-FabricOperation -OperationId $operationId -Headers $Headers
-            if ($operation.Result -and $operation.Result.id) { $itemId = $operation.Result.id }
+            if ($operation.State.status -eq 'Failed') {
+                Add-Receipt @{
+                    status = 'OperationFailed'
+                    kind = $Kind
+                    displayName = $DisplayName
+                    operationId = $operationId
+                    desiredRequestSha256 = $definitionHash
+                    attemptId = $attemptId
+                    operationStatus = 'Failed'
+                }
+                $terminalFailureRecorded = $true
+                throw "Fabric operation '$operationId' failed; the create will not be retried in this run."
+            }
+            if ($operation.State.status -ne 'Succeeded') {
+                throw "Fabric operation '$operationId' is not terminal; the create outcome is unresolved."
+            }
+            if ($operation.Result -and $operation.Result.id) { $itemId = [string]$operation.Result.id }
             Add-Receipt @{
                 status = 'OperationSucceeded'
                 kind = $Kind
                 displayName = $DisplayName
                 operationId = $operationId
                 operationStatus = $operation.State.status
+                desiredRequestSha256 = $definitionHash
+                attemptId = $attemptId
             }
         } else {
             throw "Unexpected HTTP status $($response.StatusCode) while creating $Kind."
@@ -169,10 +344,18 @@ function Invoke-CreateItem {
 
         $items = Get-FabricItems -Headers $Headers
         $created = Get-MatchingItem -Items $items -DisplayName $DisplayName -Type $Kind
-        if ($created) { $itemId = $created.id }
+        if ($created) {
+            $itemId = Assert-MiningAnalyticsCreatedItemIdentity -Item $created -ReturnedId $itemId `
+                -PreimageItemIds $preimage -DisplayName $DisplayName -Type $Kind
+        }
         if ([string]::IsNullOrWhiteSpace($itemId)) {
             throw "$Kind creation completed but the new item could not be resolved."
         }
+        if (-not $created) {
+            throw "$Kind result '$itemId' is not present as the unique exact-name, exact-type workspace item."
+        }
+        Assert-FabricItemDefinition -ItemId ([guid]$itemId) -ExpectedDefinition $ExpectedDefinition `
+            -Label "$Kind '$DisplayName'" -Headers $Headers
         Add-Receipt @{
             status = 'Applied'
             kind = $Kind
@@ -180,41 +363,21 @@ function Invoke-CreateItem {
             itemId = $itemId
             operationId = $operationId
             desiredRequestSha256 = $definitionHash
+            attemptId = $attemptId
+            definitionVerified = $true
         }
         return $itemId
     } catch {
         $errorMessage = $_.Exception.Message
-        try {
-            $items = Get-FabricItems -Headers $Headers
-            $reconciled = Get-MatchingItem -Items $items -DisplayName $DisplayName -Type $Kind
-        } catch {
-            Add-Receipt @{
-                status = 'Unresolved'
-                kind = $Kind
-                displayName = $DisplayName
-                operationId = $operationId
-                desiredRequestSha256 = $definitionHash
-                error = "$errorMessage; reconciliation failed: $($_.Exception.Message)"
-            }
-            throw "The $Kind create outcome is unresolved; reconcile receipt '$ReceiptPath' and Fabric operation '$operationId' before retrying. $errorMessage"
-        }
-        if ($reconciled) {
-            Add-Receipt @{
-                status = 'Reconciled'
-                kind = $Kind
-                displayName = $DisplayName
-                itemId = $reconciled.id
-                operationId = $operationId
-                desiredRequestSha256 = $definitionHash
-            }
-            return $reconciled.id
-        }
+        if ($terminalFailureRecorded) { throw $errorMessage }
         Add-Receipt @{
             status = 'Unresolved'
             kind = $Kind
             displayName = $DisplayName
             operationId = $operationId
+            itemId = $itemId
             desiredRequestSha256 = $definitionHash
+            attemptId = $attemptId
             error = $errorMessage
         }
         throw "The $Kind create outcome is unresolved; inspect receipt '$ReceiptPath' and operation '$operationId' before retrying. $errorMessage"
@@ -437,7 +600,11 @@ $fabricToken = Get-AccessToken -Resource 'https://api.fabric.microsoft.com'
 $fabricHeaders = @{ Authorization = "Bearer $fabricToken"; Accept = 'application/json' }
 $workspace = Invoke-RestMethod -Method Get `
     -Uri "https://api.fabric.microsoft.com/v1/workspaces/$WorkspaceId" -Headers $fabricHeaders
-if ($workspace.id -ne $WorkspaceId.ToString()) { throw 'Fabric returned a different workspace identity.' }
+if ($workspace.id -ne $WorkspaceId.ToString() -or
+    [string]::IsNullOrWhiteSpace([string]$workspace.displayName)) {
+    throw 'Fabric returned a different workspace identity or an empty workspace name.'
+}
+$script:WorkspaceDisplayName = [string]$workspace.displayName
 $lakehouse = Invoke-RestMethod -Method Get `
     -Uri "https://api.fabric.microsoft.com/v1/workspaces/$WorkspaceId/lakehouses/$LakehouseId" -Headers $fabricHeaders
 if ($lakehouse.id -ne $LakehouseId.ToString() -or
@@ -465,9 +632,36 @@ if ($reportItem -and -not $modelItem) {
 $modelRequest = (& $definitionScript -WorkspaceId $WorkspaceId -LakehouseId $LakehouseId `
         -DefinitionKind SemanticModel).SemanticModelRequest
 $modelId = $null
+if ($modelItem) { $modelId = [guid]$modelItem.id }
+$expectedDefinitions = @{ SemanticModel = $modelRequest.definition }
+$reportRequest = $null
+if ($modelId) {
+    $reportRequest = (& $definitionScript -WorkspaceId $WorkspaceId -LakehouseId $LakehouseId `
+            -SemanticModelId $modelId -DefinitionKind Report).ReportRequest
+    $expectedDefinitions.Report = $reportRequest.definition
+}
+$receiptRecords = @(Read-ReceiptHistory)
+if ($WhatIfPreference) {
+    $pendingCreates = @(Get-PendingMiningAnalyticsCreates -Records $receiptRecords)
+    if ($pendingCreates.Count -gt 0) {
+        throw "Receipt '$ReceiptPath' has unresolved create attempts; reconcile them before running deployment."
+    }
+}
+else {
+    Resolve-PriorCreateReceipts -Records $receiptRecords -Items $items `
+        -ExpectedDefinitions $expectedDefinitions -Headers $fabricHeaders
+}
+
 if ($modelItem) {
-    $modelId = [guid]$modelItem.id
-} elseif ($WhatIfPreference) {
+    Assert-FabricItemDefinition -ItemId $modelId -ExpectedDefinition $modelRequest.definition `
+        -Label "SemanticModel '$semanticModelName'" -Headers $fabricHeaders
+}
+if ($reportItem) {
+    Assert-FabricItemDefinition -ItemId ([guid]$reportItem.id) -ExpectedDefinition $reportRequest.definition `
+        -Label "Report '$reportName'" -Headers $fabricHeaders
+}
+
+if (-not $modelItem -and $WhatIfPreference) {
     $modelBody = $modelRequest | ConvertTo-Json -Depth 100
     [void]$PSCmdlet.ShouldProcess(
         "$WorkspaceId/$semanticModelName",
@@ -480,14 +674,17 @@ if ($modelItem) {
         ReportName = $reportName
     }
 } else {
-    $modelBody = $modelRequest | ConvertTo-Json -Depth 100
-    $createdId = Invoke-CreateItem -Kind 'SemanticModel' -DisplayName $semanticModelName `
-        -Uri "https://api.fabric.microsoft.com/v1/workspaces/$WorkspaceId/semanticModels" `
-        -Body $modelBody -Headers $fabricHeaders -PreimageItems $items
-    if (-not $createdId) {
-        return [pscustomobject]@{ Status = 'WhatIf'; SemanticModelName = $semanticModelName; ReportName = $reportName }
+    if (-not $modelItem) {
+        $modelBody = $modelRequest | ConvertTo-Json -Depth 100
+        $createdId = Invoke-CreateItem -Kind 'SemanticModel' -DisplayName $semanticModelName `
+            -Uri "https://api.fabric.microsoft.com/v1/workspaces/$WorkspaceId/semanticModels" `
+            -Body $modelBody -ExpectedDefinition $modelRequest.definition `
+            -Headers $fabricHeaders -PreimageItems $items
+        if (-not $createdId) {
+            return [pscustomobject]@{ Status = 'WhatIf'; SemanticModelName = $semanticModelName; ReportName = $reportName }
+        }
+        $modelId = [guid]$createdId
     }
-    $modelId = [guid]$createdId
 }
 
 $powerBiToken = Get-AccessToken -Resource 'https://analysis.windows.net/powerbi/api'
@@ -503,8 +700,10 @@ if ($refreshResult.Status -eq 'WhatIf') {
 }
 $modelResults = Test-MiningModel -DatasetId $modelId -Headers $powerBiHeaders
 
-$reportRequest = (& $definitionScript -WorkspaceId $WorkspaceId -LakehouseId $LakehouseId `
-        -SemanticModelId $modelId -DefinitionKind Report).ReportRequest
+if (-not $reportRequest) {
+    $reportRequest = (& $definitionScript -WorkspaceId $WorkspaceId -LakehouseId $LakehouseId `
+            -SemanticModelId $modelId -DefinitionKind Report).ReportRequest
+}
 $reportId = $null
 if ($reportItem) {
     $reportId = [guid]$reportItem.id
@@ -512,7 +711,8 @@ if ($reportItem) {
     $reportBody = $reportRequest | ConvertTo-Json -Depth 100
     $createdId = Invoke-CreateItem -Kind 'Report' -DisplayName $reportName `
         -Uri "https://api.fabric.microsoft.com/v1/workspaces/$WorkspaceId/reports" `
-        -Body $reportBody -Headers $fabricHeaders -PreimageItems $items
+        -Body $reportBody -ExpectedDefinition $reportRequest.definition `
+        -Headers $fabricHeaders -PreimageItems (Get-FabricItems -Headers $fabricHeaders)
     if (-not $createdId) {
         return [pscustomobject]@{
             Status = 'ModelVerifiedReportWhatIf'
