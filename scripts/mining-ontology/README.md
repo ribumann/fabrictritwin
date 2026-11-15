@@ -87,6 +87,17 @@ formatting can differ without structural drift, and Fabric can add default
 scaling settings. Unexpected changes still require investigation; preserved
 `.platform` bytes must match.
 
+For an offline review of all static catalog properties, add
+`-IncludeAllProperties` to the generator invocation. It verifies every
+property against the pinned catalog and live ontology snapshot, and accepts
+only the empty, original `id`/`label`, or identical full-property projection.
+It preserves aliases, keys, edge definitions, source paths and untouched part
+payloads, and rejects mixed projection states. This prepares a definition;
+it does not update or refresh the managed graph. Microsoft documents managing
+an ontology graph projection through **Manage graph** in the ontology, not
+through its independent graph view. Confirm the supported projection route
+and recheck the complete preimage before any change.
+
 An accepted definition can start a refresh automatically. Inspect
 `GET /v1/workspaces/<workspace>/items/<graph>/jobs/instances` before requesting
 another refresh. Require the actual job to finish with `Completed` and no

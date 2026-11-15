@@ -106,6 +106,71 @@ Describe 'Mining native catalog graph' {
         { & $script:graphGenerator @script:graphArguments } | Should -Throw '*Existing graph configuration differs*'
     }
 
+    It 'adds every catalog-backed property without changing graph identities or edges' {
+        $legacy = & $script:graphGenerator @script:graphArguments
+        $sourcesPart = $legacy.definition.parts | Where-Object path -CEQ 'dataSources.json'
+        $sources = Read-TestPart $legacy 'dataSources.json'
+        $sourcesPart.payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($sources | ConvertTo-Json -Depth 20)))
+        Save-GraphFixture $legacy
+        $expanded = & $script:graphGenerator @script:graphArguments -IncludeAllProperties
+        $oldType = Read-TestPart $legacy 'graphType.json'
+        $newType = Read-TestPart $expanded 'graphType.json'
+        $oldBinding = Read-TestPart $legacy 'graphDefinition.json'
+        $newBinding = Read-TestPart $expanded 'graphDefinition.json'
+        ($newType.edgeTypes | ConvertTo-Json -Depth 20 -Compress) |
+            Should -BeExactly ($oldType.edgeTypes | ConvertTo-Json -Depth 20 -Compress)
+        ($newBinding.edgeTables | ConvertTo-Json -Depth 20 -Compress) |
+            Should -BeExactly ($oldBinding.edgeTables | ConvertTo-Json -Depth 20 -Compress)
+        foreach ($node in $newType.nodeTypes) {
+            $oldNode = $oldType.nodeTypes | Where-Object alias -CEQ $node.alias
+            $table = $newBinding.nodeTables | Where-Object nodeTypeAlias -CEQ $node.alias
+            $oldTable = $oldBinding.nodeTables | Where-Object nodeTypeAlias -CEQ $node.alias
+            $oldNode | Should -Not -BeNullOrEmpty
+            $table.id | Should -BeExactly $oldTable.id
+            $node.properties.name | Should -Contain 'metadata_json'
+            foreach ($property in $node.properties) {
+                $property.type | Should -BeExactly 'STRING'
+                @($table.propertyMappings | Where-Object {
+                    $_.propertyName -ceq $property.name -and $_.sourceColumn -ceq $property.name
+                }).Count | Should -Be 1
+            }
+        }
+        foreach ($path in @('dataSources.json', '.platform', 'graphSettings.json', 'stylingConfiguration.json')) {
+            ($expanded.definition.parts | Where-Object path -CEQ $path).payload |
+                Should -BeExactly ($legacy.definition.parts | Where-Object path -CEQ $path).payload
+        }
+        Save-GraphFixture $expanded
+        $again = & $script:graphGenerator @script:graphArguments -IncludeAllProperties
+        (Read-TestPart $again 'graphType.json' | ConvertTo-Json -Depth 20 -Compress) |
+            Should -BeExactly (Read-TestPart $expanded 'graphType.json' | ConvertTo-Json -Depth 20 -Compress)
+    }
+
+    It 'refuses a changed existing graph or an unverified additional property mapping' {
+        $legacy = & $script:graphGenerator @script:graphArguments
+        $changed = Read-TestPart $legacy 'graphDefinition.json'
+        $changed.edgeTables[0].sourceNodeKeyColumns = @('target_id')
+        $legacy.definition.parts = @($legacy.definition.parts | Where-Object path -CNE 'graphDefinition.json') +
+            @(New-TestPart 'graphDefinition.json' $changed)
+        Save-GraphFixture $legacy
+        { & $script:graphGenerator @script:graphArguments -IncludeAllProperties } |
+            Should -Throw '*Existing graph configuration differs*'
+        Save-GraphFixture $script:graphFixture
+        Change-OntologyPart 'entities/mining_D01_Tag.tmdl' 'valueColumn: mining_D01_Tag.unit' 'valueColumn: mining_D01_Tag.id'
+        { & $script:graphGenerator @script:graphArguments -IncludeAllProperties } |
+            Should -Throw '*Unresolved graph property mining_D01_Tag.unit*'
+    }
+
+    It 'refuses a partially expanded graph definition' {
+        $legacy = & $script:graphGenerator @script:graphArguments
+        Save-GraphFixture $legacy
+        $expanded = & $script:graphGenerator @script:graphArguments -IncludeAllProperties
+        $legacy.definition.parts = @($legacy.definition.parts | Where-Object path -CNE 'graphType.json') +
+            @($expanded.definition.parts | Where-Object path -CEQ 'graphType.json')
+        Save-GraphFixture $legacy
+        { & $script:graphGenerator @script:graphArguments -IncludeAllProperties } |
+            Should -Throw '*inconsistent projection states*'
+    }
+
     It 'rejects snapshot drift and off-target metadata or source roots before producing a definition' {
         $bad = $script:graphArguments.Clone()
         $bad.GraphPreimageSha256 = '0' * 64
