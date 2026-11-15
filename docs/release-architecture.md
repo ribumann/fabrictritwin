@@ -285,6 +285,49 @@ service-principal bridge is **unverified**; no role was granted. See
 | Historical snapshot | Both versioned native Lakehouse facts are row/identity verified: 505 telemetry and 32 state rows, preserving 100-ns receipt strings. The separate model/report definitions and binding are verified; the original API refresh and Direct Lake framing both completed. Semantic queries reconcile all 505/32 event IDs and actual visual values, including 28 state observation groups representing 32 events. An existing authorized Fabric browser session rendered all four visuals and proved reading-to-evidence selection. See [snapshot evidence](mining-telemetry-snapshot.md#observed-native-acceptance-15-november-2026). | Live or automatic refresh, publisher-manifest reconstruction, anonymous access to private native artifacts, or future availability. |
 | Operations rules | The native Operations agent remains stopped/unstarted with only its Mining KQL source; generated/committed rules are empty, state is `Unconfigured`, with zero monitored rules or operations and no actions, recipients, or control. The standalone Mining Activator is also unaccepted. See [Mining Operations agent caveats](mining-operations-agent.md). | Alerting, notification delivery, or control actions. No cause for the empty rule state is established. |
 | Capacity | Existing F4 `triatwindevfabriccap` binding was verified. Kusto returned HTTP 429 and the model returned `PFE_FABRIC_THROTTLED` while ARM showed Active. A controlled pause/resume was followed by public reads with the same complete event IDs and still-stale sample quality. | A workload outage, ingestion buffering/catch-up, or continuous availability. The public overview also succeeded while ARM showed Paused. |
+| Manual routing recovery | The guarded Mining recovery helper defaults to read-only, verifies the exact target and an Active assigned capacity, and requires explicit write opt-in. A manual `WhenLastStopped` resume restored both Mining derived streams. The existing Triathlon profile separately restored both of its derived streams; its RaceSplit destination still reported Warning. | Unattended OIDC authorization, source replay, or fresh Triathlon ingestion. No scheduled recovery or capacity keep-alive was enabled. |
+
+An aggregate-only native RaceSplit query at 20:46:51.890 UTC succeeded on the
+existing configured Eventhouse. Its 677 rows were historical: the latest event
+was on 8 November, with no events or receipts since the 20:25 UTC recovery
+observation. Running routes therefore do not establish fresh ingestion. A
+separate ingestion-failures management diagnostic returned HTTP 400; neither
+an authorization denial nor the destination Warning's cause was established.
+
+### Controlled recovery observations
+
+The already-Running-source baseline `2465db77-26c5-40c2-8d45-ac1d00406710`
+completed with 505 telemetry and 32 state events. Independent native reconciliation
+at 19:09:28.476 UTC verified the complete raw/validated event-ID hashes, with
+copies equal to event counts, no conflicting IDs and no quarantine.
+
+The earlier run `3382ae83-3b45-42df-9441-1e386e0fe9c6` did not recover its
+missing prefix after the derived streams resumed: only 56 terminal telemetry
+events and 8 state events were observed. `WhenLastStopped` and Running topology
+are not a guarantee of replay from a CustomEndpoint.
+
+A separate active-ingestion experiment used run
+`e09c760a-3d3a-48b1-9429-367b5f5b1873`. The same existing F4 reached Paused
+at 19:52:41.710 UTC and was restored to Active at 19:53:49.946 UTC; both Mining
+derived streams were resumed afterward. The publisher failed, leaving 101/505
+telemetry and 12/32 state events, without conflicts or quarantine. Native
+reconciliation also succeeded while ARM reported Paused, so this is not proof
+of a complete workload outage. Actual backend logs at 19:52:08.046 UTC show an
+`AbortError` from the publisher's send-timeout callback. The existing contract
+uses a two-second send deadline, five-second model steps and a one-second
+lateness limit; catch-up is forbidden. Those safety limits were not weakened.
+The immediate timeout is identified, not an underlying credential or network
+fault.
+
+The fresh, separately admitted restoration run
+`95e111d7-36c9-4bfa-9bbe-12791490441d` reached `publisher_complete` and complete
+ingestion at 20:08:33.576 UTC, with good quality at that observation.
+Independent native reconciliation at 20:12:50.891 UTC verified all 505/32
+raw/validated IDs and hashes, copies equal to events, zero conflicts and zero
+quarantine. This restores a bounded demonstration on healthy routing; it does
+not repair either interrupted run or prove active-publisher pause resilience.
+Once the five-minute run ends, its samples age: complete ingestion must not be
+presented as fresh, continuously generated data.
 
 The direct caller's manifest Blob read was denied. No identity bypass or role
 change was attempted, and that read is not a blocker for the approved observed
@@ -309,6 +352,27 @@ or credential need was established for the successful static Tag query.
 No credentials, permissions, capacity, or Fabric resources
 were changed for this documentation. The overall release is not declared
 complete.
+
+### Public replay acceptance
+
+The deployed Cockpit fixes in [PR 92](https://github.com/ribumann/fabrictritwin/pull/92)
+and [PR 93](https://github.com/ribumann/fabrictritwin/pull/93) were checked in the
+actual public browser against restoration run
+`95e111d7-36c9-4bfa-9bbe-12791490441d`. With REPLAY fixed at
+`2026-11-15T20:09:00.000Z`, the 30-minute feed window contains 90 line/minute
+bins: 15 good values and 75 gaps. All 15 displayed values match the independent
+native capture after display rounding. Three distinct curves retain a common
+unit axis; their own usable ranges are A 12.49-42.2, B 13.24-43.79 and
+C 11.94-39.64 t/h. Gaps remain unconnected.
+
+The cutoff stayed fixed across refreshes. Switching to REPLAY cleared the prior
+generated answer; the question button is disabled and historical incident
+assessments are explicitly unavailable. Partial-coverage KPIs, module status,
+ingested timestamps, normal bands and publisher provenance remain Unknown or
+unverified rather than fabricated. A separate LIVE answer correctly
+distinguished completed ingestion from stale samples. Post-run LIVE trend
+windows returned HTTP 503 at 20:46 UTC while overview reads succeeded; acceptance
+of this historical window does not establish empty-window trend availability.
 
 ## Account-free synthetic demo: isolated local processes
 
