@@ -1,5 +1,12 @@
 # Fabric operational deployment and recovery
 
+## Historical D01 telemetry analytics
+
+The separate [Mining historical snapshot workflow](../../docs/mining-telemetry-snapshot.md)
+captures exact reconciled validated event identities, loads isolated native
+Lakehouse facts, and builds a bound Direct Lake model/report. It is explicitly
+historical, not live automatic telemetry, and never modifies topology analytics.
+
 ## Private D01 operational dashboard
 
 `New-MiningDashboardDefinition.ps1` generates an offline `JSON` definition request

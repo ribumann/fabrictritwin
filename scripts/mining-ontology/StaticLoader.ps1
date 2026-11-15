@@ -301,7 +301,10 @@ function Get-MiningTableState {
         $row
     })
     if ($normalized.Count -ne $Table.rowCount) { throw "Static row count mismatch: $name." }
-    $keys = if ($columns -ccontains 'id') { @('id') } else { @('source_id', 'target_id') }
+    $keys = @(if ($Table.Contains('keys')) { $Table.keys } elseif ($columns -ccontains 'id') { 'id' } else { 'source_id'; 'target_id' })
+    if ($keys.Count -eq 0 -or @($keys | Where-Object { $_ -cnotin $columns }).Count -gt 0) {
+        throw "Unproven row-order keys for $name."
+    }
     $hash = Get-MiningTextHash (ConvertTo-MiningCsv (Get-MiningSortedRows $normalized -Keys $keys))
     if ($hash -cne $Table.sha256) { throw "Static row content mismatch: $name. Existing tables are never overwritten." }
     @{ exists = $true; rowCount = $normalized.Count; sha256 = $hash; deltaVersionsRead = $files.Count }
@@ -367,7 +370,7 @@ function Send-MiningCsv {
         } else { Assert-MiningHttpStatus $head }
     }
     Invoke-MiningRecordedWrite $Client PUT "${uri}?resource=file" Storage ([byte[]]@()) $headers $Receipt $Stream $Target $MaxPolls $PollSeconds
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Table.csv)
+    [byte[]]$bytes = if ($Table.Contains('contentBytes')) { $Table.contentBytes } else { [Text.Encoding]::UTF8.GetBytes($Table.csv) }
     Invoke-MiningRecordedWrite $Client PATCH "${uri}?action=append&position=0" Storage $bytes @{ 'x-ms-version' = '2023-08-03' } $Receipt $Stream $Target $MaxPolls $PollSeconds
     Invoke-MiningRecordedWrite $Client PATCH "${uri}?action=flush&position=$($bytes.Length)&close=true" Storage ([byte[]]@()) @{ 'x-ms-version' = '2023-08-03' } $Receipt $Stream $Target $MaxPolls $PollSeconds
     $readback = Invoke-MiningHttp $Client GET $uri Storage -ResponseType Bytes

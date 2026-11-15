@@ -27,6 +27,14 @@ jobs:
           cache: npm
       - name: Verify public registry connectivity
         run: npm ping --registry=https://registry.npmjs.org
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/fabric/requirements-mining-snapshot.txt
+      - name: Install pinned snapshot writer dependency
+        run: |
+          python -m pip install --only-binary=:all: -r scripts/fabric/requirements-mining-snapshot.txt
       - name: Verify runner tooling
         shell: bash
         run: |
@@ -58,6 +66,9 @@ jobs:
         if: ${{ always() && !cancelled() }}
         shell: pwsh
         run: ./tests/pester/Run-Tests.ps1
+      - name: Verify exact-string snapshot Parquet writer
+        if: ${{ always() && !cancelled() }}
+        run: python tests/python/test_mining_snapshot_parquet.py
       - name: Lint TypeScript
         if: ${{ always() && !cancelled() }}
         run: npm run lint
