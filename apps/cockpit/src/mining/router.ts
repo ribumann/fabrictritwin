@@ -30,6 +30,7 @@ export function createMiningRouter(
   const router = Router();
   let startTimes: number[] = [];
   let cancelTimes: number[] = [];
+  let questionTimes: number[] = [];
   router.use((_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     next();
@@ -118,6 +119,66 @@ export function createMiningRouter(
       () => new URL(`/api/mining${req.path}`, options.streamingBackendBaseUrl),
       body,
       "mining_backend_unavailable",
+    );
+  });
+  router.post("/demo/assistant", async (req, res) => {
+    if (synthetic || !demoEnabled || !demoReadEnabled) {
+      res.status(503).json({
+        error: { code: "mining_assistant_unavailable", message: "Mining assistant is disabled." },
+      });
+      return;
+    }
+    let sameOrigin: boolean;
+    try {
+      const origin = new URL(req.get("origin") ?? "");
+      sameOrigin =
+        origin.host === req.get("host") &&
+        (origin.protocol === "https:" || origin.hostname === "localhost");
+    } catch {
+      sameOrigin = false;
+    }
+    if (!sameOrigin || !req.is("application/json")) {
+      res.status(403).json({
+        error: { code: "mining_demo_origin", message: "Use the same-origin demo page." },
+      });
+      return;
+    }
+    const body: unknown = req.body;
+    if (
+      Object.keys(req.query).length ||
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      Object.keys(body).length !== 2 ||
+      !("plantId" in body) ||
+      body.plantId !== "D01" ||
+      !("question" in body) ||
+      typeof body.question !== "string" ||
+      !body.question.trim() ||
+      body.question.length > 1000
+    ) {
+      res.status(400).json({
+        error: { code: "invalid_mining_question", message: "Provide D01 and a bounded question." },
+      });
+      return;
+    }
+    const now = Date.now();
+    questionTimes = questionTimes.filter((time) => now - time < 60_000);
+    if (questionTimes.length >= 6) {
+      res.setHeader("Retry-After", "60");
+      res.status(429).json({
+        error: { code: "mining_assistant_busy", message: "The shared demo is busy; try later." },
+      });
+      return;
+    }
+    questionTimes.push(now);
+    await proxyStreamingBackendPost(
+      req,
+      res,
+      { ...options, maxResponseBytes: 131_072 },
+      () => new URL("/api/mining/demo/assistant", options.streamingBackendBaseUrl),
+      { plantId: "D01", question: body.question.trim() },
+      "mining_assistant_unavailable",
     );
   });
   for (const route of routes) {

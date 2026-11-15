@@ -20,6 +20,48 @@ function harness(fetchImpl = vi.fn<typeof fetch>()) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("isolated mining BFF", () => {
+  it("forwards only bounded same-origin demo questions, never visitor auth or chosen scope", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    const app = express();
+    app.use(express.json());
+    app.use(
+      "/api/mining",
+      createMiningRouter(
+        {
+          streamingBackendBaseUrl: "https://internal.example",
+          fetchImpl,
+          buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+        },
+        false,
+        true,
+        true,
+      ),
+    );
+    const ask = () => request(app).post("/api/mining/demo/assistant").set("host", "demo.example");
+    const body = { plantId: "D01", question: "Is Line B slower?" };
+    expect((await ask().set("origin", "https://attacker.example").send(body)).status).toBe(403);
+    expect(
+      (
+        await ask()
+          .set("origin", "https://demo.example")
+          .send({ ...body, runId: "other" })
+      ).status,
+    ).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const response = await ask()
+      .set("origin", "https://demo.example")
+      .set("authorization", "Bearer attacker")
+      .send(body);
+    expect(response.status).toBe(200);
+    const [url, options] = fetchImpl.mock.calls[0];
+    expect(String(url)).toBe("https://internal.example/api/mining/demo/assistant");
+    expect(new Headers(options?.headers).get("authorization")).toBe("Bearer service");
+    expect(JSON.parse(String(options?.body))).toEqual(body);
+    for (let i = 0; i < 5; i++) {
+      expect((await ask().set("origin", "https://demo.example").send(body)).status).toBe(200);
+    }
+    expect((await ask().set("origin", "https://demo.example").send(body)).status).toBe(429);
+  });
   it("uses only server auth and constructed bounded query fields", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ plantId: "D01" }), {
