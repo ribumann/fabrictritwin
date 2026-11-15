@@ -42,6 +42,82 @@ References: [current TMDL definition](https://learn.microsoft.com/rest/api/fabri
 [current ontology overview](https://learn.microsoft.com/fabric/iq/ontology/overview),
 [optional graph materialization](https://learn.microsoft.com/fabric/iq/ontology/how-to-use-ontology-graph).
 
+## Read-only scoped Ontology MCP consumer
+
+`Invoke-MiningOntologyMcp.ps1` uses the documented
+[Ontology MCP endpoint](https://learn.microsoft.com/fabric/iq/ontology/how-to-use-ontology-mcp-server):
+`https://api.fabric.microsoft.com/v1/mcp/dataPlane/workspaces/<workspace>/items/<ontology>/ontologyEndpoint`.
+Supply explicitly selected scope and caller GUIDs; no estate identifiers or
+credentials belong in committed examples or receipts.
+
+```powershell
+$scope = @{
+  TenantId = $selectedTenantId
+  SubscriptionId = $selectedSubscriptionId
+  CallerObjectId = $selectedDelegatedCallerObjectId
+  WorkspaceId = $selectedWorkspaceId
+  OntologyId = $selectedMiningOntologyId
+}
+.\scripts\mining-ontology\Invoke-MiningOntologyMcp.ps1 @scope `
+  -Operation ListEntities -EntityName mining_D01_Tag
+.\scripts\mining-ontology\Invoke-MiningOntologyMcp.ps1 @scope `
+  -Operation ListRules -EntityName mining_D01_Module
+# This explicitly requests a source read, not just ontology metadata:
+.\scripts\mining-ontology\Invoke-MiningOntologyMcp.ps1 @scope -Operation VerifyTags
+```
+
+Requires PowerShell 7 and an already authenticated **delegated user** in the
+selected Azure CLI profile, with access to that ontology and its sources.
+Microsoft currently excludes service-principal Ontology MCP access. The script
+checks the selected tenant/subscription and token caller, audience, delegated
+scope and remaining lifetime; the service still authorizes each operation.
+It never signs in, switches accounts, falls back to another identity or
+registers a global MCP connection. If `az` is not on PATH, supply the existing
+Azure CLI Python executable with `-AzureCliPythonPath`; it runs
+`-IBm azure.cli` using the same selected profile.
+
+Only `list_ontology_entities`, `list_ontology_rules` and the fixed Tag
+`ask_ontology` check are exposed. Omit `EntityName` to list all entity/rule
+metadata, or use one of the six full `mining_D01_*` entity names. Short `Tag`
+is not equivalent to `mining_D01_Tag`. `VerifyTags` accepts no arbitrary prompt,
+tool name, connection or SQL: it asks the existing declared SQL binding for
+the total Tag count and first three ordered Tag IDs/engineering units using
+a fixed read-only SELECT. It forbids source replacement, marker overrides,
+graph/DAX substitution and change proposals. There is no direct SQL/Kusto,
+definition update, refresh, upload or apply operation.
+
+Each invocation initializes a fresh session, sends the initialized notification,
+discovers the actual tool schema and validates JSON-RPC IDs/errors and native
+`isError`. It proposes protocol `2025-06-18`, also accepts `2024-11-05` or `2025-03-26`,
+and supports JSON or finite SSE responses with a 2 MiB UTF-8 parsing budget
+and a 120-second HTTP timeout. `Invoke-WebRequest` buffers the body before
+this size check; it is not a streaming download or memory-allocation cap.
+It refuses pagination, server requests,
+notifications in response streams, batches, nontext tool content, redirects
+and retries rather than silently degrading. This is a deliberately bounded
+client, not a general MCP host or persistent streaming/resumption client.
+Credentials stay in memory, are omitted from results and their references are
+dropped in `finally`; nothing is automatically saved. Review native text
+privately before deliberately persisting or sharing it.
+
+An earlier native check through the declared Tag binding reported **56 Tags**
+and returned `bearing_temperature` / `Cel`, `motor_current` / `A`, and
+`ore_flow` / `t/h` for the first three IDs. That receipt contains native tool
+**text** reporting SQL, source and bounded results, not an independent
+structured execution trace. It supports that static Tag consumer only:
+it does not expose the internal `ONT_ALM_*` translation mechanism, prove
+every entity binding, clear the parent-ontology warning, add graph properties,
+or verify time-series bindings. Graph eligibility and live telemetry remain
+separate questions; historical telemetry must not be presented as live.
+The reusable client is offline-tested and its initialization, schema discovery
+and `ListEntities -EntityName mining_D01_Tag` were verified against the native
+service on 2026-11-15 with negotiated protocol `2025-06-18`. That metadata-only
+check does not repeat the historical SQL acceptance call; `ListRules` and
+`VerifyTags` have not been hosted-verified through this client. Its output always has
+`evidenceKind = NativeToolTextNotStructuredExecutionTrace` and
+`acceptanceVerified = false`: inspect actual text, including textual failures,
+before making any acceptance claim.
+
 ## Catalog-backed native graph
 
 `New-MiningGraphDefinition.ps1` prepares the graph associated with a selected
