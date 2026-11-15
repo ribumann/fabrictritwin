@@ -1,12 +1,13 @@
-# Mining run coordination (source only)
+# Mining run coordination and public demo operations
 
 The backend exposes gated read routes plus separately gated delegated start and
 cancellation endpoints. The
 [explicit default-off publisher runtime](mining-publisher-runtime.md) is a
-separately callable integration, including the opt-in bounded final-flush contract.
-It does not prove G3 authoritative hosted delivery or G8 live stop/ingestion. Existing
-triathlon locks, routes, simulator jobs and `DEMO_PROFILE` behavior are unchanged.
-No mining storage operation is performed merely by importing modules.
+separately callable integration, including the opt-in bounded final-flush
+contract. It does not prove G3 authoritative hosted delivery or G8 live
+stop/ingestion. Existing triathlon locks, routes, simulator jobs and
+`DEMO_PROFILE` behavior are unchanged. No mining storage operation is performed
+merely by importing modules.
 
 ## Public D01 demo controls
 
@@ -24,11 +25,12 @@ enforces a ten-minute minimum interval between start times across replicas;
 the cockpit also limits action requests per replica. These controls limit
 accidental load but are not a distributed denial-of-service defense. Demo
 cancellation is restricted to the current run marked as a public demo and does
-not imply the publisher has already stopped. The publisher additionally requires
-the dedicated Eventstream connection and durable store; configure
+not imply the publisher has already stopped. The publisher additionally
+requires the dedicated Eventstream connection and durable store; configure
 `MINING_FINAL_FLUSH_MILLISECONDS` to a nonzero budget for the final batch.
-Neither run status nor publisher completion proves Fabric ingestion. Hosted
-reads and incidents have separate prerequisites.
+Neither run status nor publisher completion proves Fabric ingestion. The
+public reads, completed-run incident assessment, and evidence assistant are
+separately gated.
 
 For the separately opt-in public read path, set
 `MINING_PUBLIC_DEMO_READ_ENABLED=true` on both apps and configure
@@ -43,9 +45,59 @@ validated mining query functions and bounded DTOs. This simpler demo path does
 not perform the private receipt or native-definition verification described
 below; access to change the source or its definitions therefore remains a
 trust boundary. Query failures are surfaced rather than replaced with synthetic
-data. Incident assessments remain unavailable unless a real evaluator and
-journal are connected; this path does not report an empty incident list as a
-healthy assessment.
+data. The completed-run incident route requires complete reconciliation and
+reads the committed assessment; an unavailable, pending, conflicting, or
+stopped run is not returned as a healthy empty assessment. See [Mining
+incidents](mining-incidents.md) for its event-time and capture-time contract.
+
+### Public operator entry and request semantics
+
+The public Mining page is
+[ontologydemo.liberatetheinnerchild.net/mining/](https://ontologydemo.liberatetheinnerchild.net/mining/).
+Visitors do not sign in to Fabric; the Cockpit BFF authenticates its backend
+calls with the Cockpit workload identity. Fabric, the run-state store, and the
+Mining Eventstream remain private.
+
+The demo controls accept only these shapes:
+
+| Request | Contract |
+| --- | --- |
+| `GET /api/mining/demo/runs/status` | No query parameters. Returns only the current marked public D01 run, if any; it reports admission, publisher status, stop intent, and `ingestionStatus: "unknown"`. |
+| `POST /api/mining/demo/runs/start` | Same-origin JSON body exactly `{"plantId":"D01"}`. The server chooses a run ID, normal scenario, and fixed 300-second duration. A 202 means durable admission only. |
+| `POST /api/mining/demo/runs/cancel` | Same-origin JSON body exactly `{"plantId":"D01","runId":"<current-demo-uuid>"}`. A 202 confirms stop intent, not that the publisher stopped or ingestion completed. |
+| `POST /api/mining/demo/assistant` | Same-origin JSON exactly `{"plantId":"D01","question":"..."}` with a 1 to 1000-character question. The backend selects the current run and bounded overview; no run, endpoint, or query can be selected by the visitor. |
+
+Starts also obey the shared 600-second minimum interval across replicas and a
+single-active-run coordinator. Do not retry an uncertain start with a new run
+ID until the existing status is reconciled. The overview, trends, incidents,
+and assistant are limited to the current server-selected public run. Delegated
+`POST /api/mining/runs/start` remains protected and is not exposed by the
+public Cockpit. For the dated run, assistant, static topology, and capacity
+evidence, see [Release architecture](release-architecture.md).
+
+### Capacity is not source readiness
+
+On 15 November 2026, the existing F4 `triatwindevfabriccap` binding was
+verified. Kusto returned HTTP 429 and the model returned
+`PFE_FABRIC_THROTTLED` while ARM reported Active. A controlled pause at
+17:26:28Z and resume at 17:29:14Z was followed by public reads at 17:29:44Z
+with the same complete 505/32 event-ID sets; sample quality was still stale.
+The public overview also succeeded while ARM reported Paused, so this is not
+evidence of an outage, catch-up buffering, or continuous availability. Keep
+capacity lifecycle observations separate from the source's actual
+reconciliation and quality evidence.
+
+Avoid repeated generation or uncoordinated polling under 429. F-SKU
+carryforward can cause a request to be rejected; pause can still bill
+accumulated usage, and resume clears carryforward. No Azure Monitor namespace
+for `Microsoft.Fabric/capacities` was available. A read-only ARM audit
+confirmed that capacity suspension comes from subscription governance
+automation via Azure Lighthouse; the schedule/policy and any approved
+exception were not inspected here. Public web apps can remain reachable while
+Fabric-backed reads are unavailable. Continuous Fabric-backed availability requires
+coordination for an approved governance exception. Do not disable the
+delegation or add a competing auto-resume loop; do not change capacity, access,
+identity, or billing settings as part of routine status checks.
 
 ## Read-only HTTP boundary
 
