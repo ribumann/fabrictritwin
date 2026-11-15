@@ -137,7 +137,7 @@ export function moduleStatus(overview, moduleId) {
   return ["normal", "warning", "high", "stopped"].includes(status) ? status : "unknown";
 }
 
-export function validOverview(data, runId, catalogVersion, asOf, replay) {
+export function validOverview(data, runId, catalogVersion, asOf, replay, now = Date.now()) {
   if (
     !sameScope(data, runId, catalogVersion) ||
     !sameScope(data.run, runId, catalogVersion) ||
@@ -147,7 +147,8 @@ export function validOverview(data, runId, catalogVersion, asOf, replay) {
     data.latest.readings.length !== 56
   )
     return false;
-  return validAsOf(data.asOf, asOf, replay);
+  // Live reads use the service cutoff, not the rounded chart-window timestamp.
+  return validAsOf(data.asOf, replay ? asOf : new Date(now).toISOString(), replay);
 }
 
 export function seriesQuery({ plantId, runId, start, end, binMinutes, maxRows }, metric, moduleId) {

@@ -52,6 +52,24 @@ const loadAppearanceBundle = () =>
 
 afterEach(() => vi.useRealTimers());
 describe("mining request lifecycle", () => {
+  it("validates live service cutoffs at response time while keeping replay cutoffs exact", () => {
+    const requested = "2026-01-01T12:00:00.000Z";
+    const received = Date.parse("2026-01-01T12:00:25.000Z");
+    const data = {
+      plantId: "D01", runId: "approved", catalogVersion: "pinned",
+      run: { plantId: "D01", runId: "approved", catalogVersion: "pinned" },
+      asOf: "2026-01-01T12:00:20.000Z",
+      latest: { modules: Array(24).fill({}), readings: Array(56).fill({}) },
+    };
+    expect(validOverview(data, "approved", "pinned", requested, false, received)).toBe(true);
+    expect(validOverview(data, "approved", "pinned", requested, true, received)).toBe(false);
+    expect(validOverview({
+      ...data, asOf: "2026-01-01T11:58:54.000Z",
+    }, "approved", "pinned", requested, false, received)).toBe(false);
+    expect(validOverview({
+      ...data, asOf: "2026-01-01T12:00:41.000Z",
+    }, "approved", "pinned", requested, false, received)).toBe(false);
+  });
   it("shows timestamped ingestion evidence only for the same run and verified provenance", () => {
     const run = { runId: "approved" };
     const overview = {
