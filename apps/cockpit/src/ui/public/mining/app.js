@@ -532,7 +532,7 @@ function chart(container, data) {
     flush();
     const label = node(
       "p",
-      `${group}: ${number(low)} – ${number(high)} · ${index === 0 ? "solid" : index === 1 ? "dashed" : "dotted"} line${groups.some((other) => !other.endsWith(`(${items[0].unit})`)) ? " · independent unit scale" : ""}`,
+      `${group}: ${number(Math.min(...values))} – ${number(Math.max(...values))} · ${index === 0 ? "solid" : index === 1 ? "dashed" : "dotted"} line${groups.some((other) => !other.endsWith(`(${items[0].unit})`)) ? " · independent unit scale" : ""}`,
     );
     container.append(label);
   });
