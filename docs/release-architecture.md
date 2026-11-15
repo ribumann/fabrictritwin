@@ -7,7 +7,7 @@ lane**. Arrows describe data or request paths, not proof of availability. No
 operator-specific identities, credentials, athlete identifiers, or raw
 measurements belong here.
 
-Source baseline: main through merged PR #83. Status snapshot: **15 November
+Source baseline: main through merged PR #87. Status snapshot: **15 November
 2026**. These diagrams describe checked-in source and dated observations, not a
 guarantee about current resources or the serving revision in any tenant.
 
@@ -254,7 +254,9 @@ The graph has 199 nodes and 248 directed edges; its 50 Module -> Stream -> Modul
 paths matched the catalog. It is a static catalog projection, not a live graph
 or time-series binding. Ontology ALM source resolution, the parent warning,
 full properties including `Tag.unit`, and supported hosted projection changes
-remain unresolved; those changes require the ontology's **Manage graph**
+remain unresolved. A narrow read-only ALM mapping investigation is in progress;
+no new permission or credential need has been established for that step.
+Supported hosted projection changes require the ontology's **Manage graph**
 workflow. Offline candidate generation did not update a hosted graph.
 
 The private DirectLake model and report's four charts were visually rendered
@@ -271,8 +273,8 @@ service-principal bridge is **unverified**; no role was granted. See
 | Area | Observed state on 15 November 2026 | What it does not prove |
 | --- | --- | --- |
 | Public source | Exact raw/validated IDs and hashes reconciled for the run above; durable state remained `accepted` and `publisher_complete`. | Ongoing source readiness, continuous availability, or that sample quality is current. |
-| Snapshot analytics | A separate historical telemetry facts/model/report is not accepted. The first CSV readback failed type/100-ns timestamp coercion; isolated work is moving to explicit Parquet strings in a versioned namespace. | Any future model/report result or acceptance. |
-| Operations rules | The native Operations agent has only its Mining KQL source; generated/committed rules are empty, state is `Unconfigured`, and there are zero monitored rules or operations. | Alerting, notification delivery, or control actions. No cause for the empty state is established. |
+| Historical snapshot | The two versioned native Lakehouse facts loads from the approved observed run are complete: SQL and Delta row hashes match exactly for 505 telemetry and 32 state rows, and 100-ns receipt times remain strings. Model/report are not accepted: initial model creation terminally failed on duplicate global measure names; absence of residual model/report was reconciled and correction is underway. | Model/report acceptance or any future result. |
+| Operations rules | The native Operations agent remains stopped/unstarted with only its Mining KQL source; generated/committed rules are empty, state is `Unconfigured`, with zero monitored rules or operations and no actions, recipients, or control. The standalone Mining Activator is also unaccepted. See [Mining Operations agent caveats](https://github.com/ribumann/fabrictritwin/blob/main/docs/mining-operations-agent.md). | Alerting, notification delivery, or control actions. No cause for the empty rule state is established. |
 | Capacity | Existing F4 `triatwindevfabriccap` binding was verified. Kusto returned HTTP 429 and the model returned `PFE_FABRIC_THROTTLED` while ARM showed Active. A controlled pause/resume was followed by public reads with the same complete event IDs and still-stale sample quality. | A workload outage, ingestion buffering/catch-up, or continuous availability. The public overview also succeeded while ARM showed Paused. |
 
 The direct caller's manifest Blob read was denied. No identity bypass or role
@@ -289,12 +291,16 @@ and any approved exception have not been established here. Continuous
 Fabric-backed availability requires coordination for an approved governance
 exception; do not disable the delegation or add a competing auto-resume loop.
 
-Remaining owner/admin decisions are separate from autonomous documentation or
-snapshot work: whether to authorize any native Data Agent bridge or workspace
-role, how to resolve the ontology Manage graph/ALM issues, and whether to
-coordinate an approved governance exception for continuous Fabric-backed
-availability. No credentials, permissions, capacity, or Fabric resources were
-changed for this documentation. The overall release is not declared complete.
+Remaining owner/admin decisions are narrow: whether continuous Fabric-backed
+availability is required (then coordinate an approved governance exception),
+and whether to pursue an optional native Data Agent bridge after supported
+feasibility is established. No workspace role was granted. Ontology
+ALM/projection validation (including the narrow read-only mapping
+investigation) and snapshot model/report correction remain ongoing technical
+work; no permission or credential need has been established for the current
+ALM investigation. No credentials, permissions, capacity, or Fabric resources
+were changed for this documentation. The overall release is not declared
+complete.
 
 ## Account-free synthetic demo: isolated local processes
 
