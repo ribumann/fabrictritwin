@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createHash, webcrypto } from "node:crypto";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -54,6 +56,96 @@ const loadAppearanceBundle = () =>
 
 afterEach(() => vi.useRealTimers());
 describe("mining request lifecycle", () => {
+  it.each([
+    { mode: "replay", scope: "all" },
+    { mode: "replay", scope: "detail" },
+    { mode: "live", scope: "detail" },
+  ])("loads the feed comparison in $mode $scope refreshes", async ({ mode, scope }) => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const refresh = tree.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "refresh",
+    );
+    if (!refresh) throw new Error("Missing mining refresh function");
+    const catalog = readCatalog();
+    const tag = catalog.telemetry_tags.find(
+      (item: { metric: string }) => item.metric === "ore_flow",
+    );
+    const params = {
+      plantId: "D01",
+      runId: "approved",
+      asOf: "2026-11-15T19:07:00.000Z",
+      start: "2026-11-15T18:37:00.000Z",
+      end: "2026-11-15T19:07:00.000Z",
+      binMinutes: "1",
+      maxRows: "1000",
+    };
+    const comparison = {
+      plantId: "D01",
+      runId: "approved",
+      catalogVersion: "pinned",
+      moduleId: null,
+      metric: "feed",
+      binMinutes: 1,
+      windowStart: params.start,
+      windowEnd: params.end,
+      rows: [
+        {
+          seriesId: tag.id,
+          unit: tag.unit,
+          timestamp: "2026-11-15T19:06:00.000Z",
+          value: 10,
+          quality: "good",
+        },
+      ],
+    };
+    const read = vi.fn(async (path: string) =>
+      path === "compare-lines" ? comparison : { incidents: [], asOf: params.asOf },
+    );
+    const chart = vi.fn();
+    const context = {
+      mode,
+      incidents: [],
+      incidentAsOf: null,
+      incidentAssessment: null,
+      selectedIncident: null,
+      selected: null,
+      requestEpoch: 0,
+      document: { hidden: false },
+      context: { readAvailable: true, approvedRun: { runId: "approved" } },
+      query: () => params,
+      reads: { read },
+      catalog,
+      catalogVersion: "pinned",
+      currentIncidentQuery,
+      seriesQuery,
+      validSeries,
+      validOverview: () => false,
+      sameScope: () => true,
+      validIncidentAssessment: () => true,
+      refreshedIncidentSelection,
+      drawIncidents: vi.fn(),
+      drawDrawer: vi.fn(),
+      drawOverview: vi.fn(),
+      text: vi.fn(),
+      chart,
+      $: (id: string) => id,
+      node: vi.fn(),
+      refresh: undefined as undefined | ((scope: string) => Promise<void>),
+    };
+    runInNewContext(`${refresh.getText(tree)}; this.refresh = refresh;`, context);
+    if (!context.refresh) throw new Error("Mining refresh not loaded");
+    await context.refresh(scope);
+    expect(read).toHaveBeenCalledWith("compare-lines", seriesQuery(params, "feed"));
+    expect(read.mock.calls.some(([path]) => path === "incidents")).toBe(mode === "live");
+    expect(chart).toHaveBeenCalledWith("feed-chart", comparison);
+  });
   it("distinguishes freshly rechecked reconciled event time from live assessment freshness", () => {
     const now = Date.parse("2026-01-01T12:10:00.000Z");
     const data = {

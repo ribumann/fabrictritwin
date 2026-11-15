@@ -714,6 +714,9 @@ async function refresh(scope = "all") {
           }
         }
       })(),
+    );
+  if (scope === "all" || scope === "detail")
+    tasks.push(
       (async () => {
         try {
           const data = await reads.read("compare-lines", seriesQuery(params, "feed"));
