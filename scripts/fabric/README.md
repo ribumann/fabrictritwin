@@ -1,4 +1,59 @@
-# Recover paused Eventstream routing
+# Fabric operational deployment and recovery
+
+## Private D01 operational dashboard
+
+`New-MiningDashboardDefinition.ps1` generates an offline `JSON` definition request
+for a Mining-owned native Real-Time Dashboard. It does not authenticate, create
+items, update definitions, or change permissions.
+
+```powershell
+.\scripts\fabric\New-MiningDashboardDefinition.ps1 `
+  -DashboardId '<existing-mining-dashboard-guid>' `
+  -WorkspaceId '<workspace-guid>' `
+  -QueryEndpoint 'https://<cluster>.z2.kusto.fabric.microsoft.com' `
+  -DatabaseName 'mining-d01-realtime' `
+  -OutputPath '.\mining-dashboard-request.json'
+```
+
+The four tiles show the most recently received **validated** D01 run within the
+seven-day source retention: source readiness/reception, five raw/validated/
+quarantine ID families, rolling five-minute throughput/coverage, and covered
+A/B/C feed history over thirty minutes. They refresh every thirty seconds.
+`RECENT_DATA` means recent reception, not good metric quality. The arrival table
+does **not** know the publisher's expected ID sets or completion status; only the
+backend's pinned-contract reconciliation can establish ingestion completion.
+The throughput tile retains `NO_DATA` and partial-coverage control rows with null
+values; the chart includes only `OK` bins with at least 90% coverage. An observed
+run can lag a newly started publisher until its first validated events arrive.
+
+Before applying, execute all four embedded queries against the exact protected
+database, validate the complete decoded JSON against the linked Microsoft
+schema, and retrieve the existing dashboard definition and `.platform` preimage.
+The generator uses the consistently documented version-20 inline tile/query
+shape, not newer `queries`/`queryRef` shapes. IDs are stable across regeneration;
+do not apply this generated layout over a separately edited dashboard without
+reconciling those edits. Preserve service-owned `.platform` metadata, submit the
+`RealTimeDashboard.json` part through the supported item-definition API, journal
+the write, and reconcile any asynchronous/unknown outcome before retrying.
+Read back the definition and check the actual native rendering and datasource
+binding; JSON conformance or an accepted update alone does not prove it works.
+Fabric sign-in and existing database permissions remain required. No anonymous
+native dashboard access or public arbitrary-query endpoint is introduced.
+
+```mermaid
+flowchart LR
+  Raw[Mining raw telemetry / state] --> Validated[Validated tables or quarantine]
+  Validated --> Functions[Bounded Mining KQL functions]
+  Functions --> Dashboard[Private native operational dashboard]
+  Functions --> Backend[Protected backend]
+  Contract[Pinned publisher contract and expected IDs] --> Backend
+  Backend --> Cockpit[Public Cockpit with reconciliation evidence]
+```
+
+References: [dashboard definition](https://learn.microsoft.com/rest/api/fabric/articles/item-management/definitions/kql-dashboard-definition)
+and [export / import dashboards](https://learn.microsoft.com/fabric/real-time-intelligence/dashboard-real-time-create).
+
+## Recover paused Eventstream routing
 
 Accepted publisher sends and successful live WebSocket delivery do **not** prove
 Eventhouse ingestion. Check the existing Eventstream's documented `/topology`:
