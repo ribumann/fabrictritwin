@@ -11,9 +11,13 @@ items, update definitions, or change permissions.
   -DashboardId '<existing-mining-dashboard-guid>' `
   -WorkspaceId '<workspace-guid>' `
   -QueryEndpoint 'https://<cluster>.z2.kusto.fabric.microsoft.com' `
-  -DatabaseName 'mining-d01-realtime' `
+  -KqlDatabaseId '<mining-kql-database-item-guid>' `
   -OutputPath '.\mining-dashboard-request.json'
 ```
+
+The `kusto-trident` datasource requires the **database item GUID**, not the Kusto
+database name used by query REST requests. An incorrect name can pass the public
+JSON schema but is rejected by the native dashboard at load time.
 
 The four tiles show the most recently received **validated** D01 run within the
 seven-day source retention: source readiness/reception, five raw/validated/

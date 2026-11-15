@@ -4,7 +4,7 @@ BeforeAll {
         DashboardId = '11111111-1111-4111-8111-111111111111'
         WorkspaceId = '22222222-2222-4222-8222-222222222222'
         QueryEndpoint = 'https://example.z6.kusto.fabric.microsoft.com'
-        DatabaseName = 'mining-test'
+        KqlDatabaseId = '33333333-3333-4333-8333-333333333333'
     }
 }
 
@@ -28,8 +28,9 @@ Describe 'Offline Mining dashboard authoring' {
         }
         $dashboard.tiles[1].query | Should -Match 'mining_RunIngestion'
         $dashboard.tiles[3].query | Should -Match 'status == "OK" and coverage >= 0.9'
+        $dashboard.dataSources[0].database | Should -BeExactly $parameters.KqlDatabaseId
     }
-    It 'rejects untrusted query targets and database injection before writing output' {
+    It 'rejects untrusted query targets and empty native database IDs before writing output' {
         foreach ($endpoint in @(
             'http://example.z6.kusto.fabric.microsoft.com',
             'https://example.z6.kusto.fabric.microsoft.com.evil.test',
@@ -42,7 +43,8 @@ Describe 'Offline Mining dashboard authoring' {
             Test-Path $output | Should -BeFalse
         }
         $values = $parameters.Clone()
-        $values.DatabaseName = "mining`n.show tables"
-        { & $generator @values -OutputPath (Join-Path $TestDrive 'injected.json') } | Should -Throw
+        $values.KqlDatabaseId = [Guid]::Empty
+        { & $generator @values -OutputPath (Join-Path $TestDrive 'empty-database.json') } | Should -Throw
+        Test-Path (Join-Path $TestDrive 'empty-database.json') | Should -BeFalse
     }
 }

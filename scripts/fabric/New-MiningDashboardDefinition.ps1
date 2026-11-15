@@ -4,15 +4,15 @@ param(
     [Parameter(Mandatory)][Guid]$DashboardId,
     [Parameter(Mandatory)][Guid]$WorkspaceId,
     [Parameter(Mandatory)][string]$QueryEndpoint,
-    [Parameter(Mandatory)][string]$DatabaseName,
+    [Parameter(Mandatory)][Guid]$KqlDatabaseId,
     [Parameter(Mandatory)][string]$OutputPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ($DashboardId -eq [Guid]::Empty -or $WorkspaceId -eq [Guid]::Empty -or
-    $QueryEndpoint -cnotmatch '^https://[a-z0-9-]+\.z[0-9]+\.kusto\.fabric\.microsoft\.com$' -or
-    $DatabaseName -cnotmatch '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$') {
+    $KqlDatabaseId -eq [Guid]::Empty -or
+    $QueryEndpoint -cnotmatch '^https://[a-z0-9-]+\.z[0-9]+\.kusto\.fabric\.microsoft\.com$') {
     throw 'A nonempty dashboard/workspace ID and exact Fabric Kusto query target are required.'
 }
 
@@ -70,7 +70,7 @@ for ($index = 0; $index -lt $specifications.Count; $index++) {
         id = ('70000000-0000-4000-8000-{0:d12}' -f ($index + 10))
         title = $specification.Title
         query = "$scope`n$($specification.Query)"
-        layout = @{ x = ($index % 2) * 6; y = [Math]::Floor($index / 2) * 6; width = 6; height = 6 }
+        layout = @{ x = ($index % 2) * 12; y = [Math]::Floor($index / 2) * 6; width = 12; height = 6 }
         pageId = $pageId
         visualType = $specification.Visual
         dataSourceId = $sourceId
@@ -94,7 +94,7 @@ $dashboard = @{
     dataSources = @(@{
         id = $sourceId; name = 'D01 validated realtime'
         scopeId = 'kusto-trident'; kind = 'kusto-trident'
-        workspace = $WorkspaceId.ToString(); clusterUri = $QueryEndpoint; database = $DatabaseName
+        workspace = $WorkspaceId.ToString(); clusterUri = $QueryEndpoint; database = $KqlDatabaseId.ToString()
     })
     autoRefresh = @{ enabled = $true; defaultInterval = '30s'; minInterval = '30s' }
 }
