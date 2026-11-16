@@ -1,0 +1,160 @@
+name: Mining Fabric identity read-only proof
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  verify-mining-identity:
+    if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: azure-mining-bootstrap
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    env:
+      AZURE_CORE_OUTPUT: none
+      AZURE_CORE_ONLY_SHOW_ERRORS: "true"
+      # Keep the CLI's authentication cache in runner memory, never on disk/artifacts.
+      AZURE_CONFIG_DIR: /dev/shm/mining-fabric-identity
+    steps:
+      # This existing environment has a main-only branch policy, NOT a reviewer gate.
+      # Prerequisite (not provisioned here): a FIC on the dedicated application with
+      # issuer https://token.actions.githubusercontent.com, audience api://AzureADTokenExchange,
+      # subject repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap.
+      # This workflow_ref is ribumann/fabrictritwin/.github/workflows/mining-fabric-identity-proof.yml@refs/heads/main,
+      # not the earlier OIDC-only proof's workflow_ref; the environment subject stays the same.
+      - name: Require memory-only authentication cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(findmnt -n -o FSTYPE --target /dev/shm)" = tmpfs
+          mkdir -m 700 "$AZURE_CONFIG_DIR"
+      - name: Exchange GitHub OIDC token for dedicated Mining identity
+        id: login
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+        timeout-minutes: 2
+        with:
+          client-id: 40eca1a3-d05c-4cdf-9770-b59969b4fff2
+          tenant-id: ecd6dfda-d2ce-47a8-9901-e35f31fe18dd
+          allow-no-subscriptions: true
+          audience: api://AzureADTokenExchange
+          auth-type: SERVICE_PRINCIPAL
+      - name: Explain failed authentication prerequisite
+        if: failure() && steps.login.outcome == 'failure'
+        shell: bash
+        run: |
+          printf '%s\n' '::error::Mining OIDC login failed. Authentication is NOT proven. A matching federated credential must already exist on the dedicated app; this workflow never creates it. Check the Entra error and the exact issuer/audience/subject documented above.'
+          exit 1
+      - name: Verify dedicated identity and read isolated Fabric inventory
+        timeout-minutes: 7
+        shell: bash
+        # Contracts:
+        # https://learn.microsoft.com/en-us/fabric/data-warehouse/service-principals
+        # https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference
+        # https://learn.microsoft.com/en-us/rest/api/fabric/core/workspaces/get-workspace
+        # https://learn.microsoft.com/en-us/rest/api/fabric/core/items/list-items
+        # https://learn.microsoft.com/en-us/rest/api/fabric/articles/pagination
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import json
+          import subprocess
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          WORKSPACE = "4a809e56-42a8-4c30-a84f-83a47dd8793f"
+          CLIENT = "40eca1a3-d05c-4cdf-9770-b59969b4fff2"
+          TENANT = "ecd6dfda-d2ce-47a8-9901-e35f31fe18dd"
+          PRINCIPAL = "da635b23-84db-4fe1-a9d2-0204c830a87b"
+          RESOURCE = "https://api.fabric.microsoft.com"
+          BASE = f"{RESOURCE}/v1/workspaces/{WORKSPACE}"
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          def main():
+              try:
+                  result = subprocess.run(
+                      ["az", "account", "get-access-token", "--resource", RESOURCE,
+                       "--tenant", TENANT, "--query", "accessToken", "--output", "tsv",
+                       "--only-show-errors"],
+                      capture_output=True, text=True, timeout=30, check=True,
+                  )
+                  token = result.stdout.strip()
+                  parts = token.split(".")
+                  if len(parts) != 3:
+                      raise ValueError()
+                  claims = json.loads(base64.urlsafe_b64decode(
+                      parts[1] + "=" * (-len(parts[1]) % 4)))
+                  # Fail-closed caller sanity check; Fabric validates the token signature.
+                  if (claims.get("tid") != TENANT or claims.get("oid") != PRINCIPAL
+                          or claims.get("appid", claims.get("azp")) != CLIENT
+                          or "scp" in claims):
+                      raise ValueError()
+              except Exception:
+                  raise SystemExit("Fabric token acquisition/identity check failed; "
+                                   "raw authentication response suppressed.") from None
+
+              opener = urllib.request.build_opener(NoRedirect())
+
+              def read(url):
+                  request = urllib.request.Request(
+                      url, headers={"Authorization": f"Bearer {token}"}, method="GET")
+                  try:
+                      with opener.open(request, timeout=30) as response:
+                          if response.status != 200:
+                              raise ValueError()
+                          body = response.read(2_000_001)
+                          if len(body) > 2_000_000:
+                              raise ValueError()
+                          data = json.loads(body)
+                          if not isinstance(data, dict):
+                              raise ValueError()
+                          return data
+                  except urllib.error.HTTPError as error:
+                      raise SystemExit(f"Isolated Fabric GET failed (HTTP {error.code}); "
+                                       "response suppressed. Check workspace access and "
+                                       "Fabric service-principal tenant settings.") from None
+                  except Exception:
+                      raise SystemExit("Isolated Fabric GET failed or returned invalid data; "
+                                       "response suppressed.") from None
+
+              if read(BASE).get("id") != WORKSPACE:
+                  raise SystemExit("Fabric returned a different workspace; proof failed.")
+              url = BASE + "/items"
+              seen = set()
+              count = 0
+              for page in range(10):
+                  data = read(url)
+                  items = data.get("value")
+                  if not isinstance(items, list) or any(
+                      not isinstance(item, dict) or item.get("workspaceId") != WORKSPACE
+                      or not isinstance(item.get("id"), str) or not item["id"]
+                      for item in items
+                  ):
+                      raise SystemExit("Invalid or out-of-scope Fabric inventory; proof failed.")
+                  count += len(items)
+                  continuation = data.get("continuationToken")
+                  if continuation is None or continuation == "":
+                      if data.get("continuationUri"):
+                          raise SystemExit("Inventory continuation URI without token; proof failed.")
+                      print(f"Dedicated Mining identity authenticated; isolated workspace GET "
+                            f"and complete item inventory succeeded ({count} items, {page + 1} pages). "
+                            "Read-only calls only; this does not prove absence of write permissions.")
+                      return
+                  if not isinstance(continuation, str) or continuation in seen:
+                      raise SystemExit("Invalid or repeated inventory continuation; proof failed.")
+                  seen.add(continuation)
+                  # Never follow continuationUri or any other response-supplied endpoint.
+                  url = BASE + "/items?" + urllib.parse.urlencode(
+                      {"continuationToken": continuation})
+              raise SystemExit("Inventory exceeded 10 pages; proof incomplete.")
+
+          if __name__ == "__main__":
+              main()
+          PY
