@@ -1,0 +1,27 @@
+name: Isolated Mining legacy Data Agent read-only proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: azure-mining-bootstrap
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
+        with:
+          persist-credentials: false
+      # Direct environment-scoped OIDC exchange happens inside the command.
+      # No azure/login/CLI cache, input target, output artifacts, or write mode.
+      - name: Prove exact legacy draft with sanitized output only
+        run: python3 -B scripts/fabric/mining_legacy_agent_proof.py

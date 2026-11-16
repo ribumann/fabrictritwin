@@ -22,6 +22,7 @@ BeforeAll {
             Definitions = @{}
             LostCreateResponse = $false
             LostPublishResponse = $false
+            AgentDefinitionMismatch = $false
             Lakehouse = $false
             LakehouseCreateFailure = $false
             AsyncModel = $false
@@ -101,6 +102,12 @@ BeforeAll {
                 }
                 $state.Items.Add($item)
                 $state.Definitions[$agentId] = $requestBody.definition
+                if ($state.AgentDefinitionMismatch) {
+                    $state.Definitions[$agentId].parts += @{
+                        path = '.platform'; payloadType = 'InlineBase64'
+                        payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{}'))
+                    }
+                }
                 return @{ statusCode = 201; headers = @{}; body = @{ id = $agentId } }
             }
             if ($Method -ieq 'Post' -and $Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$workspaceId/dataAgents/$agentId/staging/publish") {
@@ -164,6 +171,54 @@ BeforeAll {
 }
 
 Describe 'Isolated Mining native items' {
+    It 'does not treat no missing paths as payload verification or permission to repair' {
+        $fixture = New-MiningExistingDraftTestClient
+        $definition = $fixture.State.Definitions[$script:agentId]
+        $sourcePart = $definition.parts | Where-Object path -Like '*/datasource.json'
+        $source = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($sourcePart.payload)) |
+            ConvertFrom-Json -AsHashtable -Depth 100
+        $source.artifactId = 'dddddddd-eeee-4fff-8000-000000000003'
+        $sourcePart.payload = [Convert]::ToBase64String(
+            [Text.Encoding]::UTF8.GetBytes(($source | ConvertTo-Json -Depth 100 -Compress)))
+        # Match the reported path set only; these are synthetic extra payloads,
+        # not a recognized legacy preimage.
+        $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{}'))
+        $fewshotsPath = 'Files/Config/draft/semantic-model-Mining D01 topology semantic model/fewshots.json'
+        $definition.parts += @(
+            @{ path = $fewshotsPath; payload = $payload; payloadType = 'InlineBase64' }
+            @{ path = '.platform'; payload = $payload; payloadType = 'InlineBase64' }
+        )
+        $receipt = Join-Path $TestDrive 'path-evidence-only.jsonl'
+        $failure = $null
+        try { Invoke-TestBootstrap $fixture.Client $receipt -Apply } catch { $failure = $_.Exception.Message }
+        $failure | Should -BeExactly "Data Agent definition parts differ (missing: ; unexpected: .platform, $fewshotsPath)."
+
+        # Removing the extras would expose a previously unchecked wrong model
+        # binding, not make the saved datasource match the reviewed definition.
+        $definition.parts = @($definition.parts | Where-Object { $_.path -notin @('.platform', $fewshotsPath) })
+        { Invoke-TestBootstrap $fixture.Client $receipt -Apply } |
+            Should -Throw '*Data Agent part*datasource.json*differ*reviewed definition*'
+        @($fixture.State.Calls | Where-Object {
+                $_.Method -ine 'Get' -and $_.Uri -notmatch '/getDefinition$'
+            }) | Should -HaveCount 0
+        Test-Path -LiteralPath $receipt | Should -BeFalse
+    }
+
+    It 'never reaches publication when Data Agent create readback fails definition verification' {
+        $fixture = New-MiningBootstrapTestClient
+        $fixture.State.AgentDefinitionMismatch = $true
+        $receipt = Join-Path $TestDrive 'create-readback-mismatch.jsonl'
+        { Invoke-TestBootstrap $fixture.Client $receipt -Apply } |
+            Should -Throw '*Data Agent definition parts differ*'
+        @($fixture.State.Calls | Where-Object Uri -Match '/dataAgents$') | Should -HaveCount 1
+        @($fixture.State.Calls | Where-Object Uri -Match '/staging/publish$') | Should -HaveCount 0
+        $records = @(Get-Content -LiteralPath $receipt | ForEach-Object { $_ | ConvertFrom-Json })
+        $createRecords = @($records | Where-Object operation -EQ 'DataAgentCreate')
+        $createRecords[-1].status | Should -BeExactly 'Unresolved'
+        @($createRecords | Where-Object status -In @('Verified', 'Reconciled')) | Should -HaveCount 0
+        @($records | Where-Object operation -EQ 'DataAgentPublish') | Should -HaveCount 0
+    }
+
     It 'blocks a stale <SourceFolder> draft without receipts, including repeat attempts (Apply=<Apply>)' -ForEach @(
         @{ SourceFolder = 'semantic_model-mining-d01-topology'; Apply = $false }
         @{ SourceFolder = 'semantic_model-mining-d01-topology'; Apply = $true }
