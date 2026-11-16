@@ -1,4 +1,5 @@
 import { ClientRequestProperties } from "azure-kusto-data";
+import { continuousThroughputQuery } from "./continuous-query.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
@@ -16,6 +17,7 @@ interface Scope {
 }
 type Query =
   | (Scope & { kind: "latest"; asOf: string })
+  | (Scope & { kind: "continuous-throughput"; asOf: string })
   | (Scope & { kind: "incidents"; asOf: string })
   | (Scope & { kind: "incident-observations"; asOf: string })
   | (Scope & { kind: "source-readiness" })
@@ -353,6 +355,10 @@ async function prepare(
   properties.setParameter("plant", "'D01'");
   properties.setParameter("run", `'${input.runId}'`);
   const head = "declare query_parameters(plant:string, run:string";
+  if (input.kind === "continuous-throughput") {
+    properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
+    return continuousThroughputQuery;
+  }
   if (input.kind === "source-readiness") {
     return `${head}); mining_SourceReadiness()`;
   }

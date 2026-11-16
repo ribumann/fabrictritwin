@@ -23,6 +23,7 @@ import {
   miningAssistantConfigured,
   type MiningAnswer,
 } from "../mining/assistant.js";
+import { createMiningContinuousProvider } from "../mining/read/continuous-provider.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -39,6 +40,7 @@ interface Options {
   curated?: MiningCuratedProvider;
   incidents?: Pick<MiningDemoIncidentProcessor, "start">;
   answer?: MiningAnswer;
+  continuous?: ReturnType<typeof createMiningContinuousProvider>;
 }
 
 function error(res: Response, status: number, code: string, message: string): void {
@@ -62,6 +64,28 @@ export function createMiningDemoRouter(options: Options): Router {
   const host = options.host ?? createMiningDemoHost(env);
   const curated = options.curated ?? createMiningDemoProvider(env);
   const answer = options.answer ?? createMiningAnswer(env);
+  const continuous = options.continuous ?? createMiningContinuousProvider(env);
+  const continuousMode =
+    env.MINING_CONTINUOUS_ENABLED === "true" || env.MINING_CONTINUOUS_READ_ENABLED === "true";
+  const visibleRun = async (
+    store: MiningStore,
+    status: Awaited<ReturnType<MiningRunCoordinator["currentStatus"]>>,
+    signal: AbortSignal,
+  ) => {
+    if (!status) return undefined;
+    if (continuousMode) {
+      return status.run &&
+        isContinuousMiningRun(status.run) &&
+        status.run.lifetime.generation === env.MINING_CONTINUOUS_GENERATION
+        ? status
+        : undefined;
+    }
+    return status.run && isContinuousMiningRun(status.run)
+      ? undefined
+      : (await isDemoRun(store, status.runId, signal))
+        ? status
+        : undefined;
+  };
   let answering = false;
   let questionTimes: number[] = [];
 
@@ -153,10 +177,11 @@ export function createMiningDemoRouter(options: Options): Router {
       const signal: AbortSignal = res.locals.miningDemoSignal;
       const status = await coordinator.currentStatus(signal);
       if (res.headersSent || res.destroyed) return;
-      const visible = status && (await isDemoRun(store, status.runId, signal)) ? status : null;
+      const visible = await visibleRun(store, status, signal);
       if (res.headersSent || res.destroyed) return;
       res.json({
         plantId: "D01",
+        mode: continuousMode ? "continuous" : "bounded",
         run: visible
           ? {
               runId: visible.runId,
@@ -164,6 +189,12 @@ export function createMiningDemoRouter(options: Options): Router {
               publisherStatus: visible.phase,
               stopRequested: visible.stopRequested,
               ingestionStatus: "unknown",
+              ...(continuousMode
+                ? {
+                    generation: env.MINING_CONTINUOUS_GENERATION,
+                    authorityUntil: visible.run?.authorityUntil,
+                  }
+                : {}),
             }
           : null,
       });
@@ -192,8 +223,96 @@ export function createMiningDemoRouter(options: Options): Router {
         const { store, coordinator } = dependencies();
         const signal: AbortSignal = res.locals.miningDemoSignal;
         const status = await coordinator.currentStatus(signal);
-        const demo = status && (await isDemoRun(store, status.runId, signal)) ? status : undefined;
+        const demo = await visibleRun(store, status, signal);
         if (res.headersSent || res.destroyed) return;
+        if (continuousMode) {
+          const current =
+            demo?.admission === "accepted" && demo.run && isContinuousMiningRun(demo.run)
+              ? demo.run
+              : undefined;
+          const publicRun = current
+            ? {
+                plantId: "D01",
+                runId: current.runId,
+                catalogVersion: D01_CATALOG_VERSION,
+                publisherStatus: demo!.phase,
+                ingestionStatus: "unknown",
+                generation: current.lifetime.generation,
+                authorityUntil: current.authorityUntil,
+                stopRequested: demo!.stopRequested,
+              }
+            : null;
+          if (req.query.runId && req.query.runId !== current?.runId) {
+            error(
+              res,
+              403,
+              "mining_run_forbidden",
+              "Only the current continuous run is available.",
+            );
+            return;
+          }
+          const source = {
+            workspace: "triatwin-dev-fabric",
+            database: env.MINING_EVENTHOUSE_DATABASE_NAME,
+          };
+          if (route === "context") {
+            res.json({
+              plantId: "D01",
+              mode: "continuous",
+              approvedRun: publicRun,
+              source,
+              catalogVersion: D01_CATALOG_VERSION,
+              readAvailable: env.MINING_CONTINUOUS_READ_ENABLED === "true",
+              assistant: { available: false, kind: "bounded-fabric-evidence" },
+              capabilities: { incidents: false, trends: false, replay: false, assistant: false },
+              unavailableReason:
+                "Managed continuous source; waiting for a healthy owner and rolling-window coverage.",
+            });
+            return;
+          }
+          if (route !== "overview" || req.query.asOf) {
+            error(
+              res,
+              503,
+              "mining_continuous_capability_unavailable",
+              "Continuous mode supports only current throughput/freshness; other views are unavailable.",
+            );
+            return;
+          }
+          if (!current || demo!.phase !== "running" || demo!.stopRequested) {
+            error(
+              res,
+              503,
+              "mining_continuous_unavailable",
+              "The continuous publisher is not running; values are unavailable.",
+            );
+            return;
+          }
+          const asOf = new Date().toISOString();
+          const data = await continuous(current, asOf, signal);
+          const latest = await coordinator.currentStatus(signal);
+          if (
+            latest?.admission !== "accepted" ||
+            latest.runId !== current.runId ||
+            latest.phase !== "running" ||
+            latest.stopRequested ||
+            !latest.run ||
+            !isContinuousMiningRun(latest.run) ||
+            latest.run.lifetime.generation !== current.lifetime.generation
+          ) {
+            throw new MiningCoordinationError(
+              "prerequisite",
+              "Continuous authority changed during the read.",
+            );
+          }
+          if (res.headersSent || res.destroyed) return;
+          res.json({
+            ...data,
+            source,
+            run: { ...publicRun, authorityUntil: latest.run.authorityUntil },
+          });
+          return;
+        }
         const run =
           demo?.admission === "accepted" && demo.run?.contract
             ? {
@@ -303,6 +422,15 @@ export function createMiningDemoRouter(options: Options): Router {
     });
   }
   router.post("/assistant", async (req, res) => {
+    if (continuousMode) {
+      error(
+        res,
+        503,
+        "mining_assistant_unavailable",
+        "Continuous assistant evidence is not implemented.",
+      );
+      return;
+    }
     if (env.MINING_PUBLIC_DEMO_READ_ENABLED !== "true" || !miningAssistantConfigured(env)) {
       error(res, 503, "mining_assistant_unavailable", "The mining evidence assistant is disabled.");
       return;
@@ -392,6 +520,15 @@ export function createMiningDemoRouter(options: Options): Router {
     }
   });
   router.post("/runs/start", async (req, res) => {
+    if (continuousMode) {
+      error(
+        res,
+        403,
+        "mining_continuous_managed",
+        "Continuous publishing is operator-managed; public starts are disabled.",
+      );
+      return;
+    }
     if (
       Object.keys(req.query).length ||
       !req.body ||
@@ -456,6 +593,15 @@ export function createMiningDemoRouter(options: Options): Router {
   });
 
   router.post("/runs/cancel", async (req, res) => {
+    if (continuousMode) {
+      error(
+        res,
+        403,
+        "mining_continuous_managed",
+        "Continuous publishing is operator-managed; public cancellation is disabled.",
+      );
+      return;
+    }
     const body: unknown = req.body;
     if (
       Object.keys(req.query).length ||

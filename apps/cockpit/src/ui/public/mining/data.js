@@ -178,6 +178,70 @@ export function validOverview(data, runId, catalogVersion, asOf, replay, now = D
   return validAsOf(data.asOf, replay ? asOf : new Date(now).toISOString(), replay);
 }
 
+export function validContinuousOverview(data, runId, catalogVersion, generation, now = Date.now()) {
+  const expected = ["A", "B", "C"].map((line) => `D01.${line}.crusher.ore_flow`);
+  return (
+    data?.mode === "continuous" &&
+    sameScope(data, runId, catalogVersion) &&
+    sameScope(data.run, runId, catalogVersion) &&
+    data.generation === generation &&
+    data.run.generation === generation &&
+    validAsOf(data.asOf, new Date(now).toISOString(), false) &&
+    ["good", "unavailable"].includes(data.quality) &&
+    data.throughput?.unit === "t/h" &&
+    Array.isArray(data.readings) &&
+    data.readings.length === 3 &&
+    new Set(data.readings.map((row) => row.tagId)).size === 3 &&
+    data.readings.every(
+      (row) =>
+        expected.includes(row.tagId) &&
+        row.unit === "t/h" &&
+        ["good", "bad", "stale", "missing", "warming_up", "unavailable"].includes(row.quality),
+    ) &&
+    data.source?.workspace === "triatwin-dev-fabric" &&
+    typeof data.source.database === "string" &&
+    data.capabilities?.incidents === false &&
+    data.capabilities?.trends === false
+  );
+}
+
+export function continuousThroughputUsable(data, now = Date.now()) {
+  const requested = Date.parse(data?.asOf);
+  const cutoff = Date.parse(data?.watermark);
+  return (
+    data?.quality === "good" &&
+    data.throughput?.quality === "good" &&
+    Number.isFinite(data.throughput.value) &&
+    data.run?.publisherStatus === "running" &&
+    data.run.stopRequested === false &&
+    Date.parse(data.run.authorityUntil) > now &&
+    Number.isFinite(requested) &&
+    requested <= now &&
+    now - requested <= 90_000 &&
+    Number.isFinite(cutoff) &&
+    cutoff <= requested &&
+    now - cutoff <= 105_000 &&
+    Date.parse(data.windowStart) === cutoff - 300_000 &&
+    Date.parse(data.windowEnd) === cutoff &&
+    data.readings?.length === 3 &&
+    data.readings.every(
+      (row) =>
+        row.quality === "good" &&
+        Number.isFinite(row.average) &&
+        Number.isFinite(row.value) &&
+        row.coverage >= 0.9 &&
+        row.coverage <= 1 &&
+        Date.parse(row.sampleTime) === cutoff &&
+        Date.parse(row.latestSampleTime) >= cutoff &&
+        Date.parse(row.latestSampleTime) <= requested &&
+        Date.parse(row.receivedAt) >= cutoff &&
+        Date.parse(row.receivedAt) <= requested,
+    ) &&
+    Math.abs(data.throughput.value - data.readings.reduce((sum, row) => sum + row.average, 0)) <
+      0.00001
+  );
+}
+
 export function seriesQuery({ plantId, runId, start, end, binMinutes, maxRows }, metric, moduleId) {
   return { plantId, runId, start, end, binMinutes, maxRows, metric, moduleId };
 }

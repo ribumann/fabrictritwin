@@ -20,6 +20,7 @@ import { createMiningDemoHost, createMiningDemoRouter } from "./api/mining-demo.
 import { MiningPublisherHost } from "./mining/publisher-host.js";
 import { createBackendShutdown } from "./services/backend-shutdown.js";
 import { configuredMiningDemoIncidentProcessor } from "./mining-incidents/demo-runtime.js";
+import { configuredMiningContinuousWorker } from "./mining/continuous-worker.js";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
@@ -29,6 +30,7 @@ const runtime = synthetic ? new SyntheticRuntime() : undefined;
 const miningPublisherHost = synthetic ? undefined : new MiningPublisherHost();
 const miningDemoHost = synthetic ? undefined : createMiningDemoHost();
 const miningDemoIncidents = synthetic ? undefined : configuredMiningDemoIncidentProcessor();
+const miningContinuous = synthetic ? undefined : configuredMiningContinuousWorker();
 const alertListener = synthetic
   ? createDefaultAlertListener({
       athleteIds: [runtime!.dataset.athlete.athleteId],
@@ -74,6 +76,7 @@ const shutdown = createBackendShutdown({
       miningPublisherHost?.close(),
       miningDemoHost?.close(),
       miningDemoIncidents?.close(),
+      miningContinuous?.close(),
     ]);
   },
   stopBackgroundServices: () => {
@@ -122,6 +125,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   process.once("SIGINT", () => handleShutdownSignal("SIGINT"));
   server.listen(port, () => {
     console.log(`[streaming-backend] listening on port ${port}`);
+    miningContinuous?.start();
     void miningDemoIncidents?.recoverCurrent().catch((cause: unknown) => {
       console.error(
         "[mining-demo-incidents] Startup recovery failed; reconciliation remains unavailable",

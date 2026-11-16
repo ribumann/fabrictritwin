@@ -7,6 +7,7 @@ import { MiningRunCoordinator } from "../src/mining/run-coordinator.js";
 import type { MiningStore, StoredDocument } from "../src/mining/store.js";
 import type { MiningAnswer } from "../src/mining/assistant.js";
 import type { MiningCuratedProvider } from "../src/mining/read/curated-provider.js";
+import type { createMiningContinuousProvider } from "../src/mining/read/continuous-provider.js";
 
 const principal = "11111111-1111-4111-8111-111111111111";
 const tenant = "22222222-2222-4222-8222-222222222222";
@@ -29,6 +30,7 @@ function setup(
   configuration: NodeJS.ProcessEnv = env,
   incidents?: { start(runId: string): Promise<void> },
   assistant?: { answer: MiningAnswer; curated: MiningCuratedProvider },
+  continuous?: ReturnType<typeof createMiningContinuousProvider>,
 ) {
   const documents = new Map<string, StoredDocument>();
   const leases = new Set<string>();
@@ -87,12 +89,79 @@ function setup(
       verifyClaims,
       incidents,
       ...assistant,
+      continuous,
     }),
   );
   return { app, start, verifyClaims, documents, store };
 }
 
 describe("public mining demo service boundary", () => {
+  const continuousEnv = {
+    ...env,
+    MINING_CONTINUOUS_READ_ENABLED: "true",
+    MINING_CONTINUOUS_GENERATION: "release-1",
+  };
+  it("serves only the configured continuous owner without a public marker and refuses public controls/unsupported views", async () => {
+    const continuous = vi
+      .fn()
+      .mockResolvedValue({ mode: "continuous", throughput: { value: 126 } });
+    const { app, store, start } = setup(continuousEnv, undefined, undefined, continuous);
+    const coordinator = new MiningRunCoordinator(store);
+    const admission = await coordinator.startContinuous({
+      plantId: "D01",
+      requestId: "44444444-4444-4444-8444-444444444444",
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner");
+    const context = await request(app).get("/demo/context");
+    expect(context.body).toMatchObject({
+      mode: "continuous",
+      approvedRun: { runId: admission.run.runId, generation: "release-1" },
+      assistant: { available: false },
+      source: { workspace: "triatwin-dev-fabric", database: "mining" },
+    });
+    expect((await request(app).get("/demo/runs/status")).body).toMatchObject({
+      mode: "continuous",
+      run: { runId: admission.run.runId },
+    });
+    const before = Date.now();
+    const response = await request(app).get("/demo/overview");
+    expect(response.status).toBe(200);
+    expect(response.body.throughput.value).toBe(126);
+    expect(Date.parse(continuous.mock.calls[0][1])).toBeGreaterThanOrEqual(before);
+    expect((await request(app).get("/demo/overview?asOf=2024-01-01T00:00:00Z")).status).toBe(503);
+    expect((await request(app).get("/demo/incidents")).status).toBe(503);
+    expect((await request(app).post("/demo/runs/start").send({ plantId: "D01" })).status).toBe(403);
+    expect(
+      (
+        await request(app)
+          .post("/demo/runs/cancel")
+          .send({ plantId: "D01", runId: admission.run.runId })
+      ).status,
+    ).toBe(403);
+    expect(start).not.toHaveBeenCalled();
+    expect(continuous).toHaveBeenCalledTimes(1);
+    await admission.owner.finish("failed");
+  });
+  it("withdraws continuous evidence if a generation hold appears while the query is in flight", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const continuous = vi.fn().mockImplementation(async () => {
+      await coordinator.requestContinuousStop("release-1");
+      return { throughput: { value: 126 } };
+    });
+    const { app, store } = setup(continuousEnv, undefined, undefined, continuous);
+    const coordinator = new MiningRunCoordinator(store);
+    const admission = await coordinator.startContinuous({
+      plantId: "D01",
+      requestId: "44444444-4444-4444-8444-444444444444",
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner");
+    expect((await request(app).get("/demo/overview")).status).toBe(503);
+    await admission.owner.heartbeat();
+    expect((await request(app).get("/demo/overview")).status).toBe(503);
+    expect(continuous).toHaveBeenCalledTimes(1);
+  });
   it("does not grant public callers generation-wide stop authority over a continuous record", async () => {
     const { app, store, documents } = setup();
     const runId = "44444444-4444-4444-8444-444444444444";

@@ -24,6 +24,8 @@ export interface CreateD01SimulationOptions {
   seed?: number;
   scenario?: D01Scenario;
   durationSeconds?: number;
+  /** Trusted realtime execution only; cannot be combined with a finite duration. */
+  continuous?: boolean;
 }
 
 export interface D01SimulationBatch {
@@ -90,6 +92,12 @@ function assertValidRunOptions(options: CreateD01SimulationOptions, now: number)
   }
   const duration = options.durationSeconds ?? defaultDurationSeconds;
   if (
+    (options.continuous !== undefined && typeof options.continuous !== "boolean") ||
+    (options.continuous && options.durationSeconds !== undefined)
+  ) {
+    throw new TypeError("Continuous D01 execution cannot specify a finite duration.");
+  }
+  if (
     !Number.isSafeInteger(duration) ||
     duration < stepSeconds ||
     duration > maximumDurationSeconds ||
@@ -140,7 +148,7 @@ export class D01PlantSimulator {
   readonly seed: number;
   readonly scenario: D01Scenario;
   readonly startedAt: Date;
-  readonly durationSeconds: number;
+  readonly durationSeconds: number | null;
 
   private elapsedSeconds = 0;
   private sequence = 0;
@@ -181,7 +189,9 @@ export class D01PlantSimulator {
     this.seed = options.seed ?? 1;
     this.scenario = options.scenario ?? "normal";
     this.startedAt = new Date(options.startedAt.valueOf());
-    this.durationSeconds = options.durationSeconds ?? defaultDurationSeconds;
+    this.durationSeconds = options.continuous
+      ? null
+      : (options.durationSeconds ?? defaultDurationSeconds);
     this.lines = {
       A: {
         nominal_feed_tph: nominalFeeds.A,
@@ -243,7 +253,7 @@ export class D01PlantSimulator {
   }
 
   step(at: Date): D01SimulationStep {
-    if (this.elapsedSeconds >= this.durationSeconds) {
+    if (this.durationSeconds !== null && this.elapsedSeconds >= this.durationSeconds) {
       throw new Error("The D01 simulation has completed.");
     }
     if (this.lastBatch) {
@@ -252,6 +262,9 @@ export class D01PlantSimulator {
       );
     }
     const nextElapsedSeconds = this.elapsedSeconds + stepSeconds;
+    if (!Number.isSafeInteger(nextElapsedSeconds) || !Number.isSafeInteger(this.sequence + 1000)) {
+      throw new RangeError("D01 simulation identity range exhausted.");
+    }
     const expectedTime = this.startedAt.valueOf() + nextElapsedSeconds * 1000;
     if (!(at instanceof Date) || Number.isNaN(at.valueOf()) || at.valueOf() !== expectedTime) {
       throw new RangeError("D01 steps must be supplied at exact 5-second UTC intervals.");
@@ -510,6 +523,15 @@ export class D01PlantSimulator {
       8000,
       Math.max(0, this.tailingsTonnes + ((feedTotal * 0.82 - 99) * stepSeconds) / 3600),
     );
+    // Continuous operation collects/replaces the lab sample every 30 minutes.
+    // Finite deterministic captures keep their original cumulative sample.
+    if (
+      this.durationSeconds === null &&
+      this.elapsedSeconds > 1800 &&
+      this.elapsedSeconds % 1800 === 5
+    ) {
+      this.productSampleGrams = 0;
+    }
     this.productSampleGrams += (2.5 * Math.min(1, feedTotal / 126) * stepSeconds) / 5;
 
     const throughputRatio = feedTotal / 126;

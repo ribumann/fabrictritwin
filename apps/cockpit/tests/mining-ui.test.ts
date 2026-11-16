@@ -26,6 +26,8 @@ import {
   validSeries,
   seriesQuery,
   verifiedRunIngestion,
+  validContinuousOverview,
+  continuousThroughputUsable,
 } from "../src/ui/public/mining/data.js";
 import { connections, createPlant3D, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
 import {
@@ -55,6 +57,68 @@ const loadAppearanceBundle = () =>
   );
 
 afterEach(() => vi.useRealTimers());
+describe("continuous throughput presentation", () => {
+  function fixture() {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    return {
+      mode: "continuous",
+      plantId: "D01",
+      runId,
+      catalogVersion: "catalog",
+      generation: "release-1",
+      quality: "good",
+      asOf: "2026-01-01T12:00:00Z",
+      watermark: "2026-01-01T11:59:00Z",
+      windowStart: "2026-01-01T11:54:00Z",
+      windowEnd: "2026-01-01T11:59:00Z",
+      run: {
+        plantId: "D01",
+        runId,
+        catalogVersion: "catalog",
+        generation: "release-1",
+        publisherStatus: "running",
+        stopRequested: false,
+        authorityUntil: "2026-01-01T12:00:45Z",
+      },
+      source: { workspace: "triatwin-dev-fabric", database: "test-database" },
+      capabilities: { incidents: false, trends: false },
+      throughput: { value: 126, unit: "t/h", quality: "good" },
+      readings: ["A", "B", "C"].map((line) => ({
+        tagId: `D01.${line}.crusher.ore_flow`,
+        quality: "good",
+        value: 42,
+        average: 42,
+        unit: "t/h",
+        coverage: 1,
+        sampleTime: "2026-01-01T11:59:00Z",
+        latestSampleTime: "2026-01-01T11:59:00Z",
+        receivedAt: "2026-01-01T11:59:35Z",
+      })),
+    };
+  }
+  const now = Date.parse("2026-01-01T12:00:00Z");
+  it("accepts only pinned scope/generation and never fabricates finite overview evidence", () => {
+    const data = fixture();
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now)).toBe(true);
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-2", now)).toBe(false);
+    expect(continuousThroughputUsable(data, now)).toBe(true);
+    expect(validOverview(data, data.runId, "catalog", data.asOf, false, now)).toBe(false);
+  });
+  it("withdraws stale, stopped, incomplete, duplicate, or numerically inconsistent KPI evidence", () => {
+    const data = fixture();
+    expect(continuousThroughputUsable(data, now + 46_000)).toBe(false);
+    data.run.stopRequested = true;
+    expect(continuousThroughputUsable(data, now)).toBe(false);
+    data.run.stopRequested = false;
+    data.readings[0].coverage = 0.8;
+    expect(continuousThroughputUsable(data, now)).toBe(false);
+    data.readings[0].coverage = 1;
+    data.throughput.value = 140;
+    expect(continuousThroughputUsable(data, now)).toBe(false);
+    data.readings[1].tagId = data.readings[0].tagId;
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now)).toBe(false);
+  });
+});
 describe("mining chart legends", () => {
   it("shows each series range while preserving the shared axis and quality gaps", () => {
     const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");

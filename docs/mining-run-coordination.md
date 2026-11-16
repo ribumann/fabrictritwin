@@ -9,12 +9,14 @@ stop/ingestion. Existing triathlon locks, routes, simulator jobs and
 `DEMO_PROFILE` behavior are unchanged. No mining storage operation is performed
 merely by importing modules.
 
-## Continuous lifetime compatibility (activation not included)
+## Continuous lifetime compatibility baseline (Increment 1)
 
 This compatibility increment does **not** start a continuous publisher, install a
 worker, change simulator stepping, deploy resources, or enable continuous reads.
 Existing bounded/public defaults and their 5..1800-second admission limits are
-unchanged. The next runtime/read increment must be reviewed separately.
+unchanged. The separately reviewed default-off runtime/read slice is documented
+in [publisher runtime](mining-publisher-runtime.md#continuous-throughput-slice);
+that code does not itself constitute activation or live acceptance.
 
 The coordinator reads existing schema-1/schema-2 bounded records unchanged.
 Their `durationSeconds`, `stopAt` and optional `finalFlushUntil` retain their

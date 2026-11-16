@@ -6,6 +6,9 @@
   margin: auto;
   padding: 1.5rem 2rem 3rem;
 }
+#throughput-readings {
+  overflow-wrap: anywhere;
+}
 #mining-ask {
   display: grid;
   justify-items: start;
