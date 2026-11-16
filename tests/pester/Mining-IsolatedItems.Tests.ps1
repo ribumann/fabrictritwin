@@ -44,7 +44,7 @@ BeforeAll {
             if ($Method -ieq 'Get' -and $Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$workspaceId/lakehouses/$lakehouseId") {
                 return @{ statusCode = 200; headers = @{}; body = @{
                         id = $lakehouseId; workspaceId = $workspaceId
-                        type = 'Lakehouse'; displayName = 'mining-d01-static-lakehouse'
+                        type = 'Lakehouse'; displayName = 'mining_d01_static_lakehouse'
                         properties = @{
                             defaultSchema = 'dbo'
                             sqlEndpointProperties = @{
@@ -208,7 +208,7 @@ Describe 'Isolated Mining native items' {
         $lakehouse.Target.SqlEndpointId | Should -BeExactly 'dddddddd-eeee-4fff-8000-000000000002'
         $create = $fixture.State.Calls | Where-Object Uri -Match '/lakehouses$' | Select-Object -First 1
         $body = $create.Body | ConvertFrom-Json -AsHashtable
-        $body.displayName | Should -BeExactly 'mining-d01-static-lakehouse'
+        $body.displayName | Should -BeExactly 'mining_d01_static_lakehouse'
         $body.creationPayload.enableSchemas | Should -BeTrue
 
         $existing = Ensure-MiningIsolatedLakehouse -WorkspaceId $script:workspace `
