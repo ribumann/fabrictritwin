@@ -280,19 +280,31 @@ operations fail without an automatic resubmission.
 Output is one fixed JSON object containing **only booleans and counts**, with
 no payloads, tokens, item IDs, definition hashes, error text or user content.
 Exit status is nonzero unless authentication and every legacy proof check pass.
-`Pages`, `Items` and `Parts` are bounded counts; the named booleans locate the
-last completed checks without revealing values. There is no file, step-summary
-or artifact containing private evidence.
+`Pages`, `Items` and `Parts` are bounded counts. `DefinitionPartsMatched`,
+the individual `Platform*` checks, `LegacyPayloadsChecked`, and the four
+per-part match flags distinguish which checks passed and which were evaluated.
+`LegacyPayloadsMatched: false` is not evidence of a mismatch unless
+`LegacyPayloadsChecked` is true. There is no file, step-summary or artifact
+containing private evidence.
 
 `ProofPassed` means only that this in-memory read matched the recognized legacy
 preimage and supported metadata shape. It is not a reusable receipt, an atomic
 snapshot, authoritative publish-status history, or proof that unrelated writes
 are absent. `OutstandingOperationsProvenClear` and `RecoverySafe` are always
 false. It does not repair or publish anything and cannot authorize a later
-write from a prior boolean result. Current status: **implemented and tested
-offline, not dispatched; actual legacy equality and metadata shape remain
-unproven**. Recovery remains blocked pending fresh evidence and a separately
-reviewed recovery-only contract.
+write from a prior boolean result.
+
+The first live read-only dispatch, run `43846960311`, authenticated successfully
+and verified the workspace, complete four-item inventory, unique named targets,
+datasource binding, and absence of published definition paths. It retrieved five
+definition parts, but rejected `.platform` under the conservative validator.
+That run's `LegacyPayloadsMatched: false` was **not evaluated** because this
+version stopped at platform validation; it does not establish a payload mismatch.
+No update, publish, or other Fabric write was attempted. The diagnostic follow-up
+now evaluates platform shape and each legacy payload independently; its live
+rerun is pending. Recovery remains blocked until the complete proof and separate
+operation-state evidence pass, followed by a separately reviewed recovery-only
+contract.
 
 Offline checks (standard-library Python; no network or credential setup):
 

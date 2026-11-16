@@ -118,7 +118,12 @@ def result_template():
     return dict.fromkeys((
         "Authenticated", "WorkspaceMatched", "InventoryComplete", "TargetsUnique",
         "LegacyProvenanceMatched", "BindingMatched", "UnpublishedPartsOnly",
-        "PlatformValid", "LegacyPayloadsMatched",
+        "DefinitionPartsMatched", "PlatformValid", "PlatformStructureMatched",
+        "PlatformSchemaMatched", "PlatformMetadataShapeMatched", "PlatformTypeMatched",
+        "PlatformDisplayNameMatched", "PlatformDescriptionMatched",
+        "PlatformConfigShapeMatched", "PlatformVersionMatched", "PlatformLogicalIdValid",
+        "LegacyPayloadsChecked", "AgentConfigMatched", "StageConfigMatched",
+        "DatasourceMatched", "FewshotsMatched", "LegacyPayloadsMatched",
         "ProofPassed", "OutstandingOperationsProvenClear", "RecoverySafe",
     ), False) | {"Pages": 0, "Items": 0, "Parts": 0}
 
@@ -156,21 +161,74 @@ def inventory(read, result):
     raise ProofFailure()
 
 
-def platform_valid(value, agent):
-    require(isinstance(value, dict))
-    require(set(value) == {"$schema", "metadata", "config"})
-    require(value["$schema"] == PLATFORM_SCHEMA)
-    metadata, config = value["metadata"], value["config"]
-    require(isinstance(metadata, dict) and isinstance(config, dict))
-    require({"type", "displayName"} <= set(metadata) <= {"type", "displayName", "description"})
-    require(metadata["type"] == agent["type"] == "DataAgent")
-    require(metadata["displayName"] == agent["displayName"] == AGENT_NAME)
-    if "description" in metadata:
-        require(metadata["description"] == "Static Mining D01 topology catalog, not live telemetry.")
-    require(set(config) == {"version", "logicalId"} and config["version"] == "2.0")
-    guid(config["logicalId"])
+def platform_checks(value, agent):
+    checks = dict.fromkeys((
+        "PlatformStructureMatched", "PlatformSchemaMatched",
+        "PlatformMetadataShapeMatched", "PlatformTypeMatched",
+        "PlatformDisplayNameMatched", "PlatformDescriptionMatched",
+        "PlatformConfigShapeMatched", "PlatformVersionMatched",
+        "PlatformLogicalIdValid",
+    ), False)
+    if not isinstance(value, dict):
+        return checks | {"PlatformValid": False}
+
+    checks["PlatformStructureMatched"] = set(value) == {"$schema", "metadata", "config"}
+    checks["PlatformSchemaMatched"] = value.get("$schema") == PLATFORM_SCHEMA
+    metadata, config = value.get("metadata"), value.get("config")
+    if isinstance(metadata, dict):
+        checks["PlatformMetadataShapeMatched"] = (
+            {"type", "displayName"} <= set(metadata) <= {"type", "displayName", "description"}
+        )
+        checks["PlatformTypeMatched"] = metadata.get("type") == agent["type"] == "DataAgent"
+        checks["PlatformDisplayNameMatched"] = (
+            metadata.get("displayName") == agent["displayName"] == AGENT_NAME
+        )
+        checks["PlatformDescriptionMatched"] = (
+            "description" not in metadata or
+            metadata["description"] == "Static Mining D01 topology catalog, not live telemetry."
+        )
+    if isinstance(config, dict):
+        checks["PlatformConfigShapeMatched"] = set(config) == {"version", "logicalId"}
+        checks["PlatformVersionMatched"] = config.get("version") == "2.0"
+        try:
+            guid(config.get("logicalId"))
+            checks["PlatformLogicalIdValid"] = True
+        except ProofFailure:
+            pass
+
     # logicalId is a Git cross-workspace ID, NOT the Fabric item ID. Association
     # comes from retrieving this definition using the uniquely resolved item ID.
+    return checks | {"PlatformValid": all(checks.values())}
+
+
+def parse_part(raw):
+    try:
+        return strict_json(raw)
+    except (ProofFailure, UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+        return None
+
+
+PAYLOAD_MATCHES = {
+    "AgentConfigMatched": "Files/Config/data_agent.json",
+    "StageConfigMatched": "Files/Config/draft/stage_config.json",
+    "DatasourceMatched": SOURCE_FOLDER + "datasource.json",
+    "FewshotsMatched": SOURCE_FOLDER + "fewshots.json",
+}
+
+
+def payload_matches(raw, expected):
+    actual = parse_part(raw)
+    return actual is not None and canonical(actual) == canonical(expected)
+
+
+def proof_passed(result):
+    checks = (
+        "Authenticated", "WorkspaceMatched", "InventoryComplete", "TargetsUnique",
+        "LegacyProvenanceMatched", "BindingMatched", "UnpublishedPartsOnly",
+        "DefinitionPartsMatched", "PlatformValid", "LegacyPayloadsChecked",
+        "LegacyPayloadsMatched",
+    )
+    return all(result[name] for name in checks)
 
 
 def definition_parts(definition):
@@ -208,19 +266,26 @@ def prove(read, authenticated=False):
         definition = read("POST", BASE + f"/dataAgents/{agent['id']}/getDefinition")
         parts = definition_parts(definition["definition"])
         result["Parts"] = len(parts)
-        require(not any(p.startswith("Files/Config/published/") or
-                        p == "Files/Config/publish_info.json" for p in parts))
-        result["UnpublishedPartsOnly"] = True
-        require(set(parts) == set(expected) | {".platform"})
-        source = strict_json(parts[SOURCE_FOLDER + "datasource.json"])
-        require(source.get("workspaceId") == WORKSPACE and source.get("artifactId") == model["id"])
-        result["BindingMatched"] = True
-        platform_valid(strict_json(parts[".platform"]), agent)
-        result["PlatformValid"] = True
-        for path, value in expected.items():
-            require(canonical(strict_json(parts[path])) == canonical(value))
-        result["LegacyPayloadsMatched"] = True
-        result["ProofPassed"] = True
+        result["UnpublishedPartsOnly"] = not any(
+            p.startswith("Files/Config/published/") or p == "Files/Config/publish_info.json"
+            for p in parts
+        )
+        result["DefinitionPartsMatched"] = set(parts) == set(expected) | {".platform"}
+
+        source = parse_part(parts.get(SOURCE_FOLDER + "datasource.json"))
+        result["BindingMatched"] = (
+            isinstance(source, dict) and source.get("workspaceId") == WORKSPACE and
+            source.get("artifactId") == model["id"]
+        )
+        platform = parse_part(parts.get(".platform"))
+        result.update(platform_checks(platform, agent))
+
+        for check, path in PAYLOAD_MATCHES.items():
+            raw = parts.get(path)
+            result[check] = raw is not None and payload_matches(raw, expected[path])
+        result["LegacyPayloadsChecked"] = True
+        result["LegacyPayloadsMatched"] = all(result[name] for name in PAYLOAD_MATCHES)
+        result["ProofPassed"] = proof_passed(result)
     except Exception:
         pass
     # Neither a snapshot nor a definition-retrieval LRO proves absence of other
