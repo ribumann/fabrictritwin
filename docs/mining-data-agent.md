@@ -3,44 +3,67 @@
 ## Isolated Mining workspace preparation
 
 The approved isolated workspace is `4a809e56-42a8-4c30-a84f-83a47dd8793f`.
-`scripts/fabric/Prepare-IsolatedMiningDataAgent.ps1` prepares only the pinned
-public repository catalog and the static model definition for a supplied
-Lakehouse ID. When a real model ID is supplied, it also generates the agent
-definition bound to that workspace and model. It does not create a Lakehouse,
-model or agent, publish anything, or validate an agent response.
+`scripts/fabric/Prepare-IsolatedMiningDataAgent.ps1` remains the local definition
+generator. The separate `scripts/fabric/Invoke-IsolatedMiningDataAgentBootstrap.ps1`
+entry point verifies or creates only the schema-enabled Mining Lakehouse, the
+pinned public catalog, the static semantic model, and the native Data Agent in
+that workspace. It does not read or copy shared/TriTwin workspace content.
 
 ```powershell
 $prepared = .\scripts\fabric\Prepare-IsolatedMiningDataAgent.ps1 `
   -LakehouseId '<isolated-lakehouse-guid>' -SemanticModelId '<isolated-model-guid>'
 ```
 
-After an authorized operator creates a schema-enabled Lakehouse in the isolated
-workspace, the existing catalog loader can verify or materialize its twelve
-tables through this wrapper. Set `$targetFile` to an exact target JSON containing
-`TenantId`, `SubscriptionId`, `WorkspaceId`, `StaticLakehouseId`, `SourceSchema`
-(`dbo`), `CallerObjectId`, `SqlEndpointId`, `SqlServer` and `SqlDatabase`.
-Resolve these from the isolated Lakehouse, not the shared workspace. The
-receipt must be an absolute path in an existing private directory.
+The bootstrap target JSON contains the explicitly selected tenant, subscription,
+isolated workspace, and dedicated service-principal object IDs; no Lakehouse or
+SQL endpoint details need to be copied into it. The script confirms that Azure
+CLI is already using that exact service principal in the target tenant and
+subscription, obtains a Fabric token in memory, and resolves the Lakehouse SQL
+endpoint from Fabric. It never signs in, changes accounts, assigns roles, or
+changes capacity.
+
+The existing dedicated service principal is already a Contributor only in this
+isolated workspace. Its GitHub Actions federated credential
+`mining-native-agent-proof` is configured for issuer
+`https://token.actions.githubusercontent.com`, audience
+`api://AzureADTokenExchange`, and subject
+`repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap`.
+The app has no password or certificate credentials. These identity settings are
+not managed by the bootstrap. An independent main-branch acceptance workflow
+(PR #96, run `43821551686`, merged commit
+`71946c3ac4c390162fec19797d2d8738d50f0293`) successfully exchanged the GitHub
+OIDC token, matched the expected `oid`, `appid`, and tenant claims, then read the
+isolated workspace and its complete paginated item inventory, which contained
+zero items at that time. This verifies federation and read-only inventory only;
+it did not create or publish items or validate Lakehouse SQL/source access or
+agent answers. No raw token or API response was exposed. `azure/login` emitted
+a nonfatal Azure CLI version parsing warning but exited successfully.
 
 ```powershell
-.\scripts\fabric\Prepare-IsolatedMiningDataAgent.ps1 -LakehouseId '<isolated-lakehouse-guid>' `
-  -Mode CatalogApply -TargetPath $targetFile -ReceiptPath $newPrivateReceipt
-.\scripts\fabric\Prepare-IsolatedMiningDataAgent.ps1 -LakehouseId '<isolated-lakehouse-guid>' `
-  -Mode CatalogVerify -TargetPath $targetFile -ReceiptPath $newPrivateReceipt
+$targetFile = 'C:\private\mining-target.json' # TenantId, SubscriptionId, WorkspaceId, CallerObjectId
+.\scripts\fabric\Invoke-IsolatedMiningDataAgentBootstrap.ps1 `
+  -TargetPath $targetFile `
+  -CatalogReceiptPath 'C:\private\mining-catalog.jsonl' `
+  -NativeReceiptPath 'C:\private\mining-native.jsonl' -Apply -WhatIf
 ```
 
-Apply performs cloud writes; it is not run by generation. It refuses an existing
-receipt and verifies existing table contents instead of overwriting them.
-Reconcile uncertain operations before using a new receipt. See
-[catalog-only loading](../scripts/mining-ontology/README.md#catalog-only-loading)
-for permissions, verification, and failure handling.
+Without `-Apply`, the bootstrap is read-only and fails if a required resource is
+absent. The explicit `-Apply` path can create the Lakehouse, materialize its
+twelve public catalog tables, create the static model and Data Agent, then
+publish the Data Agent. It validates exact names/types/IDs and reads back
+definitions; it never updates an existing item or replaces mismatched table
+contents. The JSONL receipts must be absolute paths in an existing private
+directory. They are append-only write-ahead journals: an uncertain create or
+publish outcome is reconciled from inventory, operation status, and definition
+readback rather than blindly resubmitted. Resolve a malformed or unreconciled
+receipt manually; do not delete it to force another attempt.
 
-Model and agent creation, agent publish, and their repeatable reconciliation are
-not implemented by this wrapper. The existing analytics deployment script also
-creates a report and requires a signed-in user, so it is not an unattended
-service-principal bootstrap. The documented Data Agent create and publish APIs
-below do not by themselves establish that this definition is accepted or that
-the resulting agent answers correctly.
+The static model and agent definitions are generated locally from the pinned
+Mining catalog and existing repository generators. Creating/publishing an item
+is not proof that its answers are correct; validate agent behavior separately.
+See [catalog-only loading](../scripts/mining-ontology/README.md#catalog-only-loading)
+for catalog permissions, verification, and failure handling. The isolated
+bootstrap has not been run against Fabric as part of this repository change.
 
 ## Existing private agent
 
@@ -112,8 +135,9 @@ documents direct service-principal calls for semantic-model-backed agents, but
 requires workspace access and prescribes Member or Contributor, plus source read
 access and the tenant setting for Fabric APIs. Managed identities are not supported
 for this authentication and KQL-connected agent service-principal calls are not
-supported. We did not grant the public app a workspace role or test a service
-principal here. A safe anonymous bridge is therefore **not verified**.
+supported. The existing Contributor assignment is scoped to the isolated
+workspace; native source access and agent queries have not been tested. A safe
+anonymous bridge is therefore **not verified**.
 
 The legacy Foundry Fabric data-agent tool is documented as deprecated in favor of
 [Fabric IQ](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/fabric-iq).

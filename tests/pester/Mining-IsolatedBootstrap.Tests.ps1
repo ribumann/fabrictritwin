@@ -1,6 +1,7 @@
 #Requires -Version 7.0
 BeforeAll {
     $script:bootstrap = Join-Path $PSScriptRoot '..\..' 'scripts\fabric\Prepare-IsolatedMiningDataAgent.ps1'
+    $script:invokeBootstrap = Join-Path $PSScriptRoot '..\..' 'scripts\fabric\Invoke-IsolatedMiningDataAgentBootstrap.ps1'
     $script:lakehouse = '11111111-2222-4333-8444-555555555555'
     $script:model = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
     $script:workspace = '4a809e56-42a8-4c30-a84f-83a47dd8793f'
@@ -49,5 +50,20 @@ Describe 'Isolated Mining preparation' {
                 -TargetPath $target -ReceiptPath (Join-Path $TestDrive 'receipt.jsonl') } |
             Should -Throw '*selected Lakehouse*'
         { & $script:bootstrap -LakehouseId ([guid]::Empty) } | Should -Throw '*nonempty*'
+    }
+
+    It 'keeps the explicit apply path inert under WhatIf' {
+        $target = Join-Path $TestDrive 'target.json'
+        @{
+            TenantId = '11111111-2222-4333-8444-555555555555'
+            SubscriptionId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+            WorkspaceId = $script:workspace
+            CallerObjectId = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff'
+        } | ConvertTo-Json | Set-Content -LiteralPath $target
+        $result = & $script:invokeBootstrap -TargetPath $target `
+            -CatalogReceiptPath (Join-Path $TestDrive 'catalog.jsonl') `
+            -NativeReceiptPath (Join-Path $TestDrive 'native.jsonl') -Apply -WhatIf
+        $result.Status | Should -BeExactly 'WhatIf'
+        Test-Path (Join-Path $TestDrive 'native.jsonl') | Should -BeFalse
     }
 }
