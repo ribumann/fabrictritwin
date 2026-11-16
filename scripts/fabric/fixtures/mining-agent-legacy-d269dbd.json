@@ -1,0 +1,107 @@
+{
+  "provenance": {
+    "commit": "d269dbd419cecac649bfa9cd06747098048a6544",
+    "generatorBlob": "dc6e254d35b5cc1671c62ac4ce4f16190bce5a92",
+    "generatorSha256": "414a1fb67f6ced4edbec26d263a5be4c8676d32950e4cbf429a863ef77b2e5c1"
+  },
+  "files": {
+    "Files/Config/data_agent.json": {"$schema": "2.1.0"},
+    "Files/Config/draft/stage_config.json": {
+      "$schema": "1.0.0",
+      "aiInstructions": "Answer only from the Mining D01 topology semantic model. It is a static catalog, not live telemetry. Line[parent_id] identifies its Plant[id]. For line-to-plant questions match those IDs and return their labels; the shared line is also a catalog line. Do not invent data; state uncertainty."
+    },
+    "Files/Config/draft/semantic_model-mining-d01-topology/datasource.json": {
+      "$schema": "1.0.0",
+      "artifactId": "00000000-0000-0000-0000-000000000000",
+      "workspaceId": "00000000-0000-0000-0000-000000000000",
+      "displayName": "Mining D01 topology semantic model",
+      "type": "semantic_model",
+      "userDescription": "Static Mining D01 topology catalog, not live telemetry.",
+      "dataSourceInstructions": "Use the semantic model for static topology. Line[parent_id] matches Plant[id]; PlantHasLine[source_id] is the plant ID and [target_id] the line ID.",
+      "elements": [
+        {"display_name":"Plant","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"label","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"parent_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"unit","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"Plant count","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Line count","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Module count","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Equipment count","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Tag count","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Stream count","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Catalog relationship count","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Modules per line","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Equipment per module","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Tags per equipment","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Outgoing streams per module","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Incoming streams per module","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Tagged equipment","type":"semantic_model.measure","is_selected":true},
+          {"display_name":"Equipment tag coverage","type":"semantic_model.measure","is_selected":true}
+        ]},
+        {"display_name":"Line","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"label","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"parent_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"unit","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"Module","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"label","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"parent_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"unit","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"Equipment","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"label","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"parent_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"unit","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"Tag","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"label","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"parent_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"unit","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"Stream","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"label","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"parent_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"unit","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"PlantHasLine","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"source_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"target_id","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"LineHasModule","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"source_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"target_id","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"ModuleHasEquipment","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"source_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"target_id","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"EquipmentHasTag","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"source_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"target_id","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"ModuleSendsStream","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"source_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"target_id","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]},
+        {"display_name":"StreamTargetsModule","type":"semantic_model.table","is_selected":true,"children":[
+          {"display_name":"source_id","type":"semantic_model.column","is_selected":true,"data_type":"string"},
+          {"display_name":"target_id","type":"semantic_model.column","is_selected":true,"data_type":"string"}
+        ]}
+      ]
+    },
+    "Files/Config/draft/semantic_model-mining-d01-topology/fewshots.json": {
+      "$schema": "1.0.0",
+      "fewShots": [{
+        "id": "a7ad0f20-c25d-49d5-9f4f-91db04354439",
+        "question": "What are the names of the production lines and which plant do they belong to?",
+        "query": "EVALUATE SELECTCOLUMNS(FILTER(CROSSJOIN('Line', 'Plant'), 'Line'[parent_id] = 'Plant'[id]), \"Line\", 'Line'[label], \"Plant\", 'Plant'[label], \"Plant ID\", 'Plant'[id])"
+      }]
+    }
+  }
+}
