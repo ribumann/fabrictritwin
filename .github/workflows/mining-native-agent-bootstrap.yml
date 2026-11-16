@@ -20,6 +20,8 @@ jobs:
   bootstrap:
     if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # This environment restricts branches to main but has no reviewer gate.
+    # Apply is guarded by manual dispatch inputs, not by an implied approval policy.
     environment: azure-mining-bootstrap
     timeout-minutes: 90
     permissions:

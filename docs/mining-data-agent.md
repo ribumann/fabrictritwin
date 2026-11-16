@@ -45,10 +45,12 @@ The main-only `Isolated Mining native agent bootstrap` GitHub Actions workflow
 uses the existing environment-scoped OIDC credential. A normal dispatch is
 read-only verification. Creating items requires both the `apply` input and the
 exact `apply_confirmation` value `CREATE-ISOLATED-MINING-ONLY-ITEMS`; a code push
-does not run it. The job uses a memory-only Azure CLI cache and keeps its
-append-only receipts on runner tmpfs. Receipts are never printed or uploaded,
-because this repository is public. If a run fails after a write, treat its
-outcome as potentially partial; do not blindly repeat Apply. The ephemeral
+does not run it. The environment restricts deployments to `main` but has no
+required reviewer or wait gate; repository write access and an explicit manual
+dispatch are the current controls. The job uses a memory-only Azure CLI cache
+and keeps its append-only receipts on runner tmpfs. Receipts are never printed
+or uploaded, because this repository is public. Treat any failed post-write run
+as potentially partial; do not blindly repeat Apply. The ephemeral
 receipt is not recoverable after the runner ends, so inspect the isolated
 workspace and reconcile before another write attempt.
 
