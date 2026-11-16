@@ -1,5 +1,49 @@
 # Mining D01 native data agent
 
+## Isolated Mining workspace preparation
+
+The approved isolated workspace is `4a809e56-42a8-4c30-a84f-83a47dd8793f`.
+`scripts/fabric/Prepare-IsolatedMiningDataAgent.ps1` prepares only the pinned
+public repository catalog and the static model definition for a supplied
+Lakehouse ID. When a real model ID is supplied, it also generates the agent
+definition bound to that workspace and model. It does not create a Lakehouse,
+model or agent, publish anything, or validate an agent response.
+
+```powershell
+$prepared = .\scripts\fabric\Prepare-IsolatedMiningDataAgent.ps1 `
+  -LakehouseId '<isolated-lakehouse-guid>' -SemanticModelId '<isolated-model-guid>'
+```
+
+After an authorized operator creates a schema-enabled Lakehouse in the isolated
+workspace, the existing catalog loader can verify or materialize its twelve
+tables through this wrapper. Set `$targetFile` to an exact target JSON containing
+`TenantId`, `SubscriptionId`, `WorkspaceId`, `StaticLakehouseId`, `SourceSchema`
+(`dbo`), `CallerObjectId`, `SqlEndpointId`, `SqlServer` and `SqlDatabase`.
+Resolve these from the isolated Lakehouse, not the shared workspace. The
+receipt must be an absolute path in an existing private directory.
+
+```powershell
+.\scripts\fabric\Prepare-IsolatedMiningDataAgent.ps1 -LakehouseId '<isolated-lakehouse-guid>' `
+  -Mode CatalogApply -TargetPath $targetFile -ReceiptPath $newPrivateReceipt
+.\scripts\fabric\Prepare-IsolatedMiningDataAgent.ps1 -LakehouseId '<isolated-lakehouse-guid>' `
+  -Mode CatalogVerify -TargetPath $targetFile -ReceiptPath $newPrivateReceipt
+```
+
+Apply performs cloud writes; it is not run by generation. It refuses an existing
+receipt and verifies existing table contents instead of overwriting them.
+Reconcile uncertain operations before using a new receipt. See
+[catalog-only loading](../scripts/mining-ontology/README.md#catalog-only-loading)
+for permissions, verification, and failure handling.
+
+Model and agent creation, agent publish, and their repeatable reconciliation are
+not implemented by this wrapper. The existing analytics deployment script also
+creates a report and requires a signed-in user, so it is not an unattended
+service-principal bootstrap. The documented Data Agent create and publish APIs
+below do not by themselves establish that this definition is accepted or that
+the resulting agent answers correctly.
+
+## Existing private agent
+
 The private, published `mining-d01-topology-dataagent` uses the existing DirectLake
 semantic model, not the public cockpit assistant. It describes **static catalog
 topology**, not live telemetry. It does not provide an anonymous bridge.
