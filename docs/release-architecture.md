@@ -288,6 +288,16 @@ workspace or Azure subscription role was granted. See
 
 ## Operator evidence and remaining boundaries
 
+The separate isolated native-agent preflight succeeded in main-branch workflow
+run `43821551686` (merged commit `71946c3ac4c390162fec19797d2d8738d50f0293`):
+GitHub OIDC exchange succeeded, the expected service-principal `oid`, `appid`,
+and tenant claims matched, and the pinned isolated workspace plus its complete
+paginated `/items` inventory were readable. The inventory contained **0 items**.
+`azure/login` emitted a nonfatal Azure CLI version-parse warning; the run
+succeeded. This is read-only identity/inventory proof only; item creation or
+publication, native source access, agent-query correctness, and any anonymous
+bridge remain unverified. Query acceptance is pending.
+
 | Area | Observed state on 15 November 2026 | What it does not prove |
 | --- | --- | --- |
 | Public source | Exact raw/validated IDs and hashes reconciled for the run above; durable state remained `accepted` and `publisher_complete`. | Ongoing source readiness, continuous availability, or that sample quality is current. |
@@ -353,14 +363,13 @@ Fabric-backed availability requires coordination for an approved governance
 exception; do not disable the delegation or add a competing auto-resume loop.
 
 The always-on Fabric-backed target requires coordination for an approved
-governance exception. An optional native Data Agent bridge would need a scoped
-identity/permission decision after supported feasibility is established.
-No workspace role was granted. Broader ontology/projection validation remains
-ongoing technical work; no permission
+governance exception. An optional native Data Agent bridge for that target would
+need a separate scoped identity/permission decision after supported feasibility
+is established. The Contributor grant for the isolated native-agent workspace
+does not authorize this broader target. Broader ontology/projection validation remains
 or credential need was established for the successful static Tag query.
-No credentials, permissions, capacity, or Fabric resources
-were changed for this documentation. The overall release is not declared
-complete.
+No credentials, permissions, capacity, or Fabric resources were changed for this
+documentation. The overall release is not declared complete.
 
 ### Public replay acceptance
 

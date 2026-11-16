@@ -28,6 +28,40 @@ function Get-MiningSqlConnectionString {
     $builder.ConnectionString
 }
 
+function Get-MiningValidatedAccessToken {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$TenantId,
+        [Parameter(Mandatory)][string]$CallerObjectId,
+        [Parameter(Mandatory)][string]$Resource,
+        [string]$CallerApplicationId
+    )
+    $raw = & az account get-access-token --tenant $TenantId --resource $Resource --output json --only-show-errors
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot obtain an access token from the selected Azure CLI profile; no sign-in or account switch attempted.' }
+    try {
+        $token = ($raw -join "`n") | ConvertFrom-Json -AsHashtable
+        $segments = ([string]$token.accessToken).Split('.')
+        if ($segments.Count -ne 3) { throw 'Unsupported access-token encoding.' }
+        $payload = $segments[1].Replace('-', '+').Replace('_', '/')
+        $payload = $payload.PadRight($payload.Length + ((4 - $payload.Length % 4) % 4), '=')
+        $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json -AsHashtable
+    } catch {
+        throw 'Azure CLI returned an unreadable access token; no token content was logged.'
+    }
+    if ($claims -isnot [Collections.IDictionary]) { throw 'Access token is missing required identity claims.' }
+    foreach ($claimName in @('tid', 'oid', 'aud', 'exp')) {
+        if (-not $claims.Contains($claimName)) { throw 'Access token is missing required identity claims.' }
+    }
+    $applicationId = if ($claims.Contains('appid')) { $claims.appid } elseif ($claims.Contains('azp')) { $claims.azp } else { $null }
+    if ($claims.tid -ine $TenantId -or $claims.oid -ine $CallerObjectId -or
+        $claims.aud.TrimEnd('/') -cne $Resource.TrimEnd('/') -or
+        ($CallerApplicationId -and $applicationId -ine $CallerApplicationId) -or
+        [long]$claims.exp -lt [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 600) {
+        throw 'Token tenant, caller, application, audience or lifetime does not match the reviewed target.'
+    }
+    return [string]$token.accessToken
+}
+
 function ConvertTo-MiningRequestBytes {
     param($Body)
     if ($Body -is [byte[]]) { return ,$Body }
@@ -42,20 +76,8 @@ function New-MiningLiveClient {
     $connectionString = Get-MiningSqlConnectionString $Target
     $tokens = @{}
     foreach ($entry in @(@('Fabric', 'https://api.fabric.microsoft.com'), @('Storage', 'https://storage.azure.com/'), @('Sql', 'https://database.windows.net/'))) {
-        $raw = & az account get-access-token --subscription $Target.SubscriptionId --resource $entry[1] --output json --only-show-errors
-        if ($LASTEXITCODE -ne 0) { throw "Cannot obtain $($entry[0]) token from the selected Azure CLI profile; no sign-in or account switch attempted." }
-        $token = ($raw -join "`n") | ConvertFrom-Json -AsHashtable
-        $segments = $token.accessToken.Split('.')
-        if ($segments.Count -ne 3) { throw 'Unsupported access-token encoding.' }
-        $payload = $segments[1].Replace('-', '+').Replace('_', '/')
-        $payload = $payload.PadRight($payload.Length + ((4 - $payload.Length % 4) % 4), '=')
-        $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json -AsHashtable
-        if ($token.tenant -ine $Target.TenantId -or $claims.tid -ine $Target.TenantId -or
-            $claims.oid -ine $Target.CallerObjectId -or $claims.aud.TrimEnd('/') -cne $entry[1].TrimEnd('/') -or
-            [long]$claims.exp -lt [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 600) {
-            throw 'Token tenant, caller, audience or lifetime does not match the reviewed target.'
-        }
-        $tokens[$entry[0]] = $token.accessToken
+        $tokens[$entry[0]] = Get-MiningValidatedAccessToken `
+            -TenantId $Target.TenantId -CallerObjectId $Target.CallerObjectId -Resource $entry[1]
     }
     $convertRequestBytes = ${function:ConvertTo-MiningRequestBytes}
     $request = {
