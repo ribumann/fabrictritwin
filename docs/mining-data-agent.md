@@ -301,10 +301,21 @@ definition parts, but rejected `.platform` under the conservative validator.
 That run's `LegacyPayloadsMatched: false` was **not evaluated** because this
 version stopped at platform validation; it does not establish a payload mismatch.
 No update, publish, or other Fabric write was attempted. The diagnostic follow-up
-now evaluates platform shape and each legacy payload independently; its live
-rerun is pending. Recovery remains blocked until the complete proof and separate
-operation-state evidence pass, followed by a separately reviewed recovery-only
-contract.
+was dispatched as run `43848760724`. It again verified authentication, complete
+four-item inventory, unique targets, datasource workspace/model binding, exact
+part paths, and no published definition paths. The `.platform` schema, structure,
+metadata, and config checks passed except `PlatformLogicalIdValid`. All four
+legacy payload comparisons were evaluated and failed (`AgentConfigMatched`,
+`StageConfigMatched`, `DatasourceMatched`, and `FewshotsMatched` were false),
+while the datasource binding itself matched. Thus the current draft is not the
+known legacy preimage; no payload content was logged or retained. `ProofPassed`,
+`RecoverySafe`, and `OutstandingOperationsProvenClear` remain false. No update,
+publish, or other Fabric write was attempted.
+
+Do not overwrite or publish this draft based on the legacy snapshot. The
+differences may be service normalization or intervening content; their actual
+values have not been captured for review. A human decision is required before
+any recovery design chooses whether and how to replace this existing draft.
 
 Offline checks (standard-library Python; no network or credential setup):
 
