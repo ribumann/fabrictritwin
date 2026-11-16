@@ -80,8 +80,12 @@ The static model and agent definitions are generated locally from the pinned
 Mining catalog and existing repository generators. Creating/publishing an item
 is not proof that its answers are correct; validate agent behavior separately.
 See [catalog-only loading](../scripts/mining-ontology/README.md#catalog-only-loading)
-for catalog permissions, verification, and failure handling. The isolated
-bootstrap has not yet been run against Fabric.
+for catalog permissions, verification, and failure handling. An initial Apply
+attempt reached the Lakehouse create call and received HTTP 400; a subsequent
+read-only inventory confirmed that the isolated workspace is still empty. No
+retry has been made. Rejected creates report only the HTTP status and Fabric
+`errorCode`, never the raw response body; diagnose the rejection and reconcile
+the workspace before another Apply attempt.
 
 ## Existing private agent
 

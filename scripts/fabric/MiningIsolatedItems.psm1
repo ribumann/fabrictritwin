@@ -390,12 +390,13 @@ function Ensure-MiningIsolatedLakehouse {
             $result = $operationResult.Result
         } else {
             $status = [int]$response.statusCode
+            $errorCode = if ($response.body -is [Collections.IDictionary]) { [string]$response.body.errorCode } else { '' }
             $terminal = $status -ge 400 -and $status -lt 500 -and $status -ne 409
             Add-MiningBootstrapReceipt $ReceiptPath $WorkspaceId ([guid]::Empty) @{
                 operation = 'LakehouseCreate'; status = if ($terminal) { 'Failed' } else { 'Unresolved' }
-                httpStatus = $status
+                httpStatus = $status; errorCode = $errorCode
             }
-            throw "Lakehouse create returned HTTP $status."
+            throw "Lakehouse create returned HTTP $status ($errorCode)."
         }
         $returnedId = [guid]::Empty
         if (-not $result.id -or -not [guid]::TryParse([string]$result.id, [ref]$returnedId) -or
