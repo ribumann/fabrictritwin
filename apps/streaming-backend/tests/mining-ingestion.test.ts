@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { createD01RunContract } from "../src/mining-incidents/catalog.js";
+import {
+  createD01RunContract,
+  createD01VersionedIncidentRun,
+} from "../src/mining-incidents/catalog.js";
 import { expectedMiningEventIds, mapMiningIngestion } from "../src/mining/read/ingestion-dto.js";
 import type { MiningRunRecord } from "../src/mining/run-coordinator.js";
 
@@ -41,6 +44,24 @@ function results(): Record<string, unknown>[] {
 }
 
 describe("exact Fabric ingestion reconciliation", () => {
+  it("rejects continuous records before finite replay, ingestion completion or incident construction", () => {
+    const continuous: MiningRunRecord = {
+      plantId: "D01",
+      runId: run.runId,
+      startedAt: run.startedAt,
+      authorityUntil: run.authorityUntil,
+      phase: "running",
+      scenario: "normal",
+      seed: 1,
+      contract: createD01RunContract(),
+      lifetime: { kind: "continuous", generation: "release-1" },
+    };
+    expect(() => expectedMiningEventIds(continuous)).toThrow("bounded-run");
+    expect(() => mapMiningIngestion(continuous, asOf, [])).toThrow("bounded-run");
+    expect(() => Reflect.apply(createD01VersionedIncidentRun, undefined, [continuous])).toThrow(
+      "finite incidents",
+    );
+  });
   it("calculates the full expected sets while the real publisher is still running", () => {
     vi.spyOn(Date, "now").mockReturnValue(Date.parse(run.startedAt));
     try {

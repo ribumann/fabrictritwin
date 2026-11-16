@@ -93,6 +93,22 @@ function setup(
 }
 
 describe("public mining demo service boundary", () => {
+  it("does not grant public callers generation-wide stop authority over a continuous record", async () => {
+    const { app, store, documents } = setup();
+    const runId = "44444444-4444-4444-8444-444444444444";
+    const admission = await new MiningRunCoordinator(store).startContinuous({
+      plantId: "D01",
+      requestId: runId,
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner.");
+    await store.create(`public-demo/${runId}.json`, { version: 1, runId });
+    const response = await request(app).post("/demo/runs/cancel").send({ plantId: "D01", runId });
+    expect(response.status).toBe(403);
+    expect(documents.has("continuous/holds/release-1.json")).toBe(false);
+    expect(documents.has(`stops/${runId}.json`)).toBe(false);
+    await admission.owner.finish("failed");
+  });
   it("scopes assistant evidence to the admitted marked run and rejects caller-selected scope", async () => {
     const answer = vi.fn<MiningAnswer>().mockResolvedValue("The latest sample quality is stale.");
     const metric = {

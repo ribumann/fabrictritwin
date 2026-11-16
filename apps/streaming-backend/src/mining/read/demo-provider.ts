@@ -20,6 +20,7 @@ import {
 } from "../../mining-incidents/runtime.js";
 import { mapCurrentIncidentJournal } from "./incident-dto.js";
 import { mapMiningIngestion } from "./ingestion-dto.js";
+import { assertBoundedMiningRun } from "../run-coordinator.js";
 
 function demoEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
@@ -43,6 +44,7 @@ export function createMiningDemoProvider(
   store: Pick<MiningIncidentStore, "read"> | undefined = configuredMiningStore(env),
 ): MiningCuratedProvider {
   return async (input: MiningCuratedRequest, signal: AbortSignal) => {
+    assertBoundedMiningRun(input.run);
     if (input.kind === "context") return null;
     if (input.kind === "incidents") {
       if (

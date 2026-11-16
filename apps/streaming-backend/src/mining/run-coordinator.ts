@@ -31,23 +31,62 @@ export interface StartMiningRun {
   seed?: number;
 }
 
-interface RunSpec {
+interface CommonRunSpec {
   plantId: "D01";
   runId: string;
-  durationSeconds: number;
   scenario: MiningScenario;
   seed: number;
 }
 
-export interface MiningRunRecord extends RunSpec {
+interface BoundedRunSpec extends CommonRunSpec {
+  durationSeconds: number;
+  lifetime?: never;
+}
+
+interface ContinuousRunSpec extends CommonRunSpec {
+  lifetime: { kind: "continuous"; generation: string };
+}
+
+type RunSpec = BoundedRunSpec | ContinuousRunSpec;
+
+interface RunLifecycle {
   startedAt: string;
-  stopAt: string;
-  /** Explicit optional final-batch budget; never beyond 1800s from startedAt. */
-  finalFlushUntil?: string;
   authorityUntil: string;
   phase: RunPhase;
   /** Absent on legacy schema-1 records; never inferred from the current catalog. */
   contract?: D01RunContract;
+}
+
+export interface BoundedMiningRunRecord extends BoundedRunSpec, RunLifecycle {
+  stopAt: string;
+  /** Explicit optional final-batch budget; never beyond 1800s from startedAt. */
+  finalFlushUntil?: string;
+}
+
+export interface ContinuousMiningRunRecord extends ContinuousRunSpec, RunLifecycle {
+  contract: D01RunContract;
+}
+
+export type MiningRunRecord = BoundedMiningRunRecord | ContinuousMiningRunRecord;
+
+export function isContinuousMiningRun(run: RunSpec): run is ContinuousRunSpec {
+  return run.lifetime?.kind === "continuous";
+}
+
+export function assertBoundedMiningRun(
+  run: MiningRunRecord,
+): asserts run is BoundedMiningRunRecord {
+  if (run.lifetime !== undefined) {
+    invalid("Continuous Mining cannot use a bounded-run operation.");
+  }
+}
+
+export interface StartContinuousMiningRun {
+  plantId: "D01";
+  requestId: string;
+  generation: string;
+  scenario?: MiningScenario;
+  seed?: number;
 }
 
 interface Admission {
@@ -73,6 +112,46 @@ const systemClock: MiningClock = { now: Date.now, monotonic: () => performance.n
 const requestPath = (id: string) => `requests/${id}.json`;
 const stopPath = (id: string) => `stops/${id}.json`;
 const historyPath = (id: string) => `history/${id}.json`;
+const holdPath = (generation: string) => `continuous/holds/${generation}.json`;
+
+function assertGeneration(value: unknown): asserts value is string {
+  if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)) {
+    invalid("Mining continuous generation must be an explicit operator configuration identifier.");
+  }
+}
+
+async function generationHeld(
+  store: MiningStore,
+  generation: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  assertGeneration(generation);
+  const document = await store.read(holdPath(generation), signal);
+  signal?.throwIfAborted();
+  if (!document) return false;
+  const value = object(document.value);
+  if (
+    Object.keys(value).sort().join() !== "generation,plantId,requestedAt,version" ||
+    value.version !== 1 ||
+    value.plantId !== PLANT ||
+    value.generation !== generation ||
+    typeof value.requestedAt !== "string" ||
+    !Number.isFinite(Date.parse(value.requestedAt))
+  )
+    invalid("Invalid persisted Mining generation stop.");
+  return true;
+}
+
+async function stopRequested(
+  store: MiningStore,
+  run: RunSpec,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  return (
+    Boolean(await store.read(stopPath(run.runId), signal)) ||
+    (isContinuousMiningRun(run) && (await generationHeld(store, run.lifetime.generation, signal)))
+  );
+}
 
 function invalid(message: string): never {
   throw new MiningCoordinationError("invalid", message);
@@ -85,7 +164,10 @@ function uuid(value: string): string {
   return value;
 }
 
-function spec(input: StartMiningRun): RunSpec {
+function spec(input: StartMiningRun): BoundedRunSpec {
+  if ("lifetime" in input || "generation" in input) {
+    invalid("Continuous Mining requires its separate trusted admission boundary.");
+  }
   if (input.plantId !== PLANT) invalid("Only allowlisted mining plant D01 is supported.");
   const durationSeconds = input.durationSeconds ?? 1_200;
   const scenario = input.scenario ?? "normal";
@@ -114,6 +196,32 @@ function object(value: unknown): Record<string, unknown> {
 
 function parseSpec(value: unknown): RunSpec {
   const record = object(value);
+  if ("lifetime" in record) {
+    const lifetime = object(record.lifetime);
+    if (
+      Object.keys(lifetime).sort().join() !== "generation,kind" ||
+      lifetime.kind !== "continuous" ||
+      "durationSeconds" in record ||
+      "stopAt" in record ||
+      "finalFlushUntil" in record
+    )
+      invalid("Invalid continuous Mining lifetime.");
+    assertGeneration(lifetime.generation);
+    const bounded = parseSpec({
+      plantId: record.plantId,
+      runId: record.runId,
+      scenario: record.scenario,
+      seed: record.seed,
+      durationSeconds: 1200,
+    });
+    return {
+      plantId: bounded.plantId,
+      runId: bounded.runId,
+      scenario: bounded.scenario,
+      seed: bounded.seed,
+      lifetime: { kind: "continuous", generation: lifetime.generation },
+    };
+  }
   if (
     record.plantId !== PLANT ||
     typeof record.runId !== "string" ||
@@ -140,11 +248,14 @@ function parseAdmission(value: unknown): Admission {
   return { spec: parseSpec(record.spec), admission: record.admission as Admission["admission"] };
 }
 
-function parseRun(value: unknown, version: 1 | 2): MiningRunRecord {
+function parseRun(value: unknown, version: 1 | 2 | 3): MiningRunRecord {
   const record = object(value);
+  if (version !== 3 && "lifetime" in record) {
+    invalid("Continuous Mining requires coordination schema 3.");
+  }
   if (version === 1 && "contract" in record)
     invalid("Legacy mining records cannot claim a run contract.");
-  if (version === 2) {
+  if (version === 2 || version === 3) {
     const keys = new Set([
       "plantId",
       "runId",
@@ -157,6 +268,7 @@ function parseRun(value: unknown, version: 1 | 2): MiningRunRecord {
       "authorityUntil",
       "phase",
       "contract",
+      ...(version === 3 ? ["lifetime"] : []),
     ]);
     if (Object.keys(record).some((key) => !keys.has(key)))
       invalid("Unexpected persisted mining run field.");
@@ -169,6 +281,26 @@ function parseRun(value: unknown, version: 1 | 2): MiningRunRecord {
     }
   }
   const identity = parseSpec(value);
+  if (version === 3 && !isContinuousMiningRun(identity)) {
+    invalid("Mining schema 3 requires a continuous lifetime.");
+  }
+  if (isContinuousMiningRun(identity)) {
+    if (
+      record.phase === "publisher_complete" ||
+      !["running", "stopping", "stopped", "failed", "interrupted"].includes(String(record.phase)) ||
+      ![record.startedAt, record.authorityUntil].every(
+        (date) => typeof date === "string" && Number.isFinite(Date.parse(date)),
+      )
+    )
+      invalid("Invalid continuous Mining lifecycle.");
+    return {
+      ...identity,
+      startedAt: record.startedAt as string,
+      authorityUntil: record.authorityUntil as string,
+      phase: record.phase as RunPhase,
+      contract: createD01RunContract(),
+    };
+  }
   const dates = [record.startedAt, record.stopAt, record.authorityUntil];
   if (
     !dates.every((date) => typeof date === "string" && Number.isFinite(Date.parse(date))) ||
@@ -205,7 +337,7 @@ function parseRun(value: unknown, version: 1 | 2): MiningRunRecord {
 
 function parsePlant(value: unknown): MiningRunRecord | null {
   const record = object(value);
-  if (record.version !== 1 && record.version !== 2)
+  if (record.version !== 1 && record.version !== 2 && record.version !== 3)
     invalid("Unsupported mining coordination document version.");
   if (Object.keys(record).sort().join() !== "run,version")
     invalid("Invalid mining coordination document.");
@@ -215,16 +347,28 @@ function parsePlant(value: unknown): MiningRunRecord | null {
 function parseHistory(value: unknown): MiningRunRecord {
   const record = object(value);
   if ("version" in record) {
-    if (record.version !== 2 || Object.keys(record).sort().join() !== "run,version")
+    if (
+      (record.version !== 2 && record.version !== 3) ||
+      Object.keys(record).sort().join() !== "run,version"
+    )
       invalid("Unsupported mining history document version.");
-    return parseRun(record.run, 2);
+    return parseRun(record.run, record.version);
   }
   return parseRun(record, 1);
 }
 
 function history(run: MiningRunRecord): unknown {
-  return run.contract ? { version: 2, run } : run;
+  return isContinuousMiningRun(run)
+    ? { version: 3, run }
+    : run.contract
+      ? { version: 2, run }
+      : run;
 }
+
+const plantDocument = (run: MiningRunRecord) => ({
+  version: isContinuousMiningRun(run) ? 3 : 2,
+  run,
+});
 
 async function saveHistory(store: MiningStore, run: MiningRunRecord): Promise<void> {
   const path = historyPath(run.runId);
@@ -291,13 +435,7 @@ export class MiningRunCoordinator {
       if (archived) invalid("Mining history identity mismatch.");
       run = null;
     }
-    if (
-      run &&
-      (run.plantId !== admission.spec.plantId ||
-        run.durationSeconds !== admission.spec.durationSeconds ||
-        run.scenario !== admission.spec.scenario ||
-        run.seed !== admission.spec.seed)
-    ) {
+    if (run && JSON.stringify(parseSpec(run)) !== JSON.stringify(admission.spec)) {
       invalid("Mining run does not match its admission.");
     }
     if (
@@ -305,7 +443,8 @@ export class MiningRunCoordinator {
       !terminal(run.phase) &&
       ((!archived && !plant?.leased) ||
         this.clock.now() >= Date.parse(run.authorityUntil) ||
-        this.clock.now() >= Date.parse(run.finalFlushUntil ?? run.stopAt))
+        (!isContinuousMiningRun(run) &&
+          this.clock.now() >= Date.parse(run.finalFlushUntil ?? run.stopAt)))
     ) {
       run = { ...run, phase: "interrupted" };
     }
@@ -313,19 +452,49 @@ export class MiningRunCoordinator {
       runId,
       admission: admission.admission,
       phase: run?.phase ?? (admission.admission === "rejected" ? "rejected" : "admission_unknown"),
-      stopRequested: Boolean(await read(stopPath(runId))),
+      stopRequested: await stopRequested(this.store, admission.spec, signal),
       ...(run ? { run } : {}),
     };
   }
 
-  async start(
-    input: StartMiningRun,
+  async start(input: StartMiningRun) {
+    return this.admit(spec(input));
+  }
+
+  /** Source-only capability. No startup or HTTP boundary activates continuous publication. */
+  async startContinuous(input: StartContinuousMiningRun) {
+    assertGeneration(input.generation);
+    const bounded = spec({
+      plantId: input.plantId,
+      requestId: input.requestId,
+      scenario: input.scenario,
+      seed: input.seed,
+    });
+    return this.admit({
+      plantId: bounded.plantId,
+      runId: bounded.runId,
+      scenario: bounded.scenario,
+      seed: bounded.seed,
+      lifetime: { kind: "continuous", generation: input.generation },
+    });
+  }
+
+  private async admit(
+    identity: RunSpec,
   ): Promise<
     | { kind: "started"; run: MiningRunRecord; owner: MiningRunOwner }
     | { kind: "observed"; status: MiningRunStatus }
   > {
-    const identity = spec(input);
     const contract = createD01RunContract();
+    if (
+      isContinuousMiningRun(identity) &&
+      (await generationHeld(this.store, identity.lifetime.generation))
+    ) {
+      throw new MiningCoordinationError(
+        "conflict",
+        "This continuous Mining generation is stopped.",
+      );
+    }
     const path = requestPath(identity.runId);
     const created = await this.store.create(path, { spec: identity, admission: "pending" });
     const receipt = await this.store.read(path);
@@ -363,6 +532,16 @@ export class MiningRunCoordinator {
         throw new MiningCoordinationError("uncertain", "Leased mining plant document disappeared.");
       const previous = parsePlant(current.value);
       if (
+        isContinuousMiningRun(identity) &&
+        (await generationHeld(this.store, identity.lifetime.generation))
+      ) {
+        await this.store.write(path, { spec: identity, admission: "rejected" }, receipt.etag);
+        throw new MiningCoordinationError(
+          "conflict",
+          "This continuous Mining generation is stopped.",
+        );
+      }
+      if (
         previous &&
         this.minimumStartIntervalMs > 0 &&
         acquiredAt - Date.parse(previous.startedAt) < this.minimumStartIntervalMs
@@ -382,22 +561,29 @@ export class MiningRunCoordinator {
           "Mining acquisition exceeded its safe lease window.",
         );
       }
-      const run: MiningRunRecord = {
-        ...identity,
+      const lifecycle = {
         startedAt: new Date(acquiredAt).toISOString(),
-        stopAt: new Date(acquiredAt + identity.durationSeconds * 1_000).toISOString(),
         authorityUntil: new Date(acquiredAt + AUTHORITY_MS).toISOString(),
-        phase: "running",
+        phase: "running" as const,
         contract,
       };
-      const flushBudget = Math.min(
-        this.finalFlushMilliseconds,
-        (MAX_DURATION_SECONDS - identity.durationSeconds) * 1_000,
-      );
-      if (flushBudget > 0) {
-        run.finalFlushUntil = new Date(Date.parse(run.stopAt) + flushBudget).toISOString();
+      const run: MiningRunRecord = isContinuousMiningRun(identity)
+        ? { ...identity, ...lifecycle }
+        : {
+            ...identity,
+            ...lifecycle,
+            stopAt: new Date(acquiredAt + identity.durationSeconds * 1_000).toISOString(),
+          };
+      if (!isContinuousMiningRun(run)) {
+        const flushBudget = Math.min(
+          this.finalFlushMilliseconds,
+          (MAX_DURATION_SECONDS - run.durationSeconds) * 1_000,
+        );
+        if (flushBudget > 0) {
+          run.finalFlushUntil = new Date(Date.parse(run.stopAt) + flushBudget).toISOString();
+        }
       }
-      const etag = await this.store.write(PLANT_PATH, { version: 2, run }, current.etag, leaseId);
+      const etag = await this.store.write(PLANT_PATH, plantDocument(run), current.etag, leaseId);
       await this.store.write(path, { spec: identity, admission: "accepted" }, receipt.etag);
       if (this.clock.monotonic() - acquiredTick >= AUTHORITY_MS) {
         throw new MiningCoordinationError(
@@ -424,6 +610,33 @@ export class MiningRunCoordinator {
     }
   }
 
+  /** Persist generation-wide intent first: a racing/new run cannot bypass this hold. */
+  async requestContinuousStop(generation: string, signal?: AbortSignal) {
+    assertGeneration(generation);
+    signal?.throwIfAborted();
+    await this.store.create(holdPath(generation), {
+      version: 1,
+      plantId: PLANT,
+      generation,
+      requestedAt: new Date(this.clock.now()).toISOString(),
+    });
+    if (!(await generationHeld(this.store, generation, signal))) {
+      throw new MiningCoordinationError("uncertain", "Continuous Mining stop cannot be confirmed.");
+    }
+    const current = await this.currentStatus(signal);
+    return {
+      accepted: true as const,
+      generation,
+      stopRequested: true as const,
+      status:
+        current?.run &&
+        isContinuousMiningRun(current.run) &&
+        current.run.lifetime.generation === generation
+          ? current
+          : null,
+    };
+  }
+
   /** Authorization belongs to the caller. No lease acquisition, break, or takeover occurs here. */
   async requestStop(
     runId: string,
@@ -437,10 +650,14 @@ export class MiningRunCoordinator {
     }
     signal?.throwIfAborted();
     try {
-      await this.store.create(stopPath(runId), {
-        runId,
-        requestedAt: new Date(this.clock.now()).toISOString(),
-      });
+      if (current.run && isContinuousMiningRun(current.run)) {
+        await this.requestContinuousStop(current.run.lifetime.generation, signal);
+      } else {
+        await this.store.create(stopPath(runId), {
+          runId,
+          requestedAt: new Date(this.clock.now()).toISOString(),
+        });
+      }
     } catch (error) {
       onUncertain?.(error);
       throw error;
@@ -508,6 +725,7 @@ export class MiningRunOwner {
   }
 
   private durationElapsed(): boolean {
+    if (isContinuousMiningRun(this.run)) return false;
     return (
       this.clock.monotonic() >= this.startTick + this.run.durationSeconds * 1_000 ||
       this.clock.now() >= Date.parse(this.run.stopAt)
@@ -515,6 +733,7 @@ export class MiningRunOwner {
   }
 
   private lifetimeElapsed(): boolean {
+    if (isContinuousMiningRun(this.run)) return false;
     const deadline = Date.parse(this.run.finalFlushUntil ?? this.run.stopAt);
     return (
       this.clock.now() >= deadline ||
@@ -542,7 +761,7 @@ export class MiningRunOwner {
     const remaining = Math.min(
       this.leaseTick + AUTHORITY_MS - this.clock.monotonic(),
       Date.parse(this.run.authorityUntil) - this.clock.now(),
-      ...(this.cancellationReason
+      ...(this.cancellationReason || isContinuousMiningRun(this.run)
         ? []
         : [
             this.startTick +
@@ -562,7 +781,11 @@ export class MiningRunOwner {
           return;
         }
         if (this.lifetimeElapsed()) {
-          this.cancel(this.run.finalFlushUntil ? "failed" : "publisher_complete");
+          this.cancel(
+            !isContinuousMiningRun(this.run) && this.run.finalFlushUntil
+              ? "failed"
+              : "publisher_complete",
+          );
         }
         this.armDeadline();
       },
@@ -597,7 +820,7 @@ export class MiningRunOwner {
     this.assertAuthority();
     this.etag = await this.store.write(
       PLANT_PATH,
-      { version: 2, run: this.run },
+      plantDocument(this.run),
       this.etag,
       this.leaseId,
     );
@@ -614,13 +837,17 @@ export class MiningRunOwner {
       this.assertAuthority();
       this.leaseTick = tick;
       this.run = { ...this.run, authorityUntil: new Date(at + AUTHORITY_MS).toISOString() };
-      if (await this.store.read(stopPath(this.run.runId))) {
+      if (await stopRequested(this.store, this.run)) {
         this.stopObserved = true;
         this.cancel("stopped");
         this.run = { ...this.run, phase: "stopping" };
       }
       if (this.lifetimeElapsed()) {
-        this.cancel(this.run.finalFlushUntil ? "failed" : "publisher_complete");
+        this.cancel(
+          !isContinuousMiningRun(this.run) && this.run.finalFlushUntil
+            ? "failed"
+            : "publisher_complete",
+        );
       }
       await this.persist();
       this.armDeadline();
@@ -647,6 +874,7 @@ export class MiningRunOwner {
     publish: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
     if (
+      isContinuousMiningRun(this.run) ||
       !this.run.finalFlushUntil ||
       this.finalBatchAdmitted ||
       batch.runId !== this.run.runId ||
@@ -687,7 +915,7 @@ export class MiningRunOwner {
       // This is the batch-admission linearization point; no later batch can bypass stop intent.
       let stop: boolean;
       try {
-        stop = Boolean(await this.store.read(stopPath(this.run.runId)));
+        stop = await stopRequested(this.store, this.run);
       } catch (error) {
         this.lose(error);
       }
@@ -735,6 +963,14 @@ export class MiningRunOwner {
   }
 
   private async complete(outcome: "publisher_complete" | "failed"): Promise<void> {
+    if (
+      isContinuousMiningRun(this.run) &&
+      outcome === "publisher_complete" &&
+      !this.stopObserved &&
+      this.cancellationReason !== "failed"
+    ) {
+      invalid("Continuous Mining cannot claim finite publisher completion.");
+    }
     this.cancel(outcome);
     let participantError: unknown;
     let participantFailed = false;

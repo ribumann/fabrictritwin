@@ -1,6 +1,11 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { configuredMiningStore } from "../mining/blob-store.js";
-import { MiningRunCoordinator, type MiningRunRecord } from "../mining/run-coordinator.js";
+import {
+  MiningRunCoordinator,
+  assertBoundedMiningRun,
+  type MiningRunRecord,
+  type BoundedMiningRunRecord,
+} from "../mining/run-coordinator.js";
 import { MiningCoordinationError } from "../mining/store.js";
 import { createBoundedMiningQuery, MiningQueryError } from "../mining/read/bounded-query.js";
 import { mapMiningIngestion } from "../mining/read/ingestion-dto.js";
@@ -28,7 +33,8 @@ export const demoIncidentPath = (path: string) => `public-demo-reconciliation/${
 
 function assertRun(
   run: MiningRunRecord,
-): asserts run is MiningRunRecord & { contract: D01RunContract } {
+): asserts run is BoundedMiningRunRecord & { contract: D01RunContract } {
+  assertBoundedMiningRun(run);
   if (
     !run.contract ||
     run.durationSeconds !== 300 ||

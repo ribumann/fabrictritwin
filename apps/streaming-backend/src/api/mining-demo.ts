@@ -6,7 +6,7 @@ import { verifyMcpCallerClaimsWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningPublisherHost } from "../mining/publisher-host.js";
 import { configuredMiningPublisherRuntime } from "../mining/publisher-runtime.js";
-import { MiningRunCoordinator } from "../mining/run-coordinator.js";
+import { MiningRunCoordinator, isContinuousMiningRun } from "../mining/run-coordinator.js";
 import { MiningCoordinationError, type MiningStore } from "../mining/store.js";
 import {
   assertMiningDemoQueryConfiguration,
@@ -482,6 +482,15 @@ export function createMiningDemoRouter(options: Options): Router {
         !(await isDemoRun(store, body.runId, signal))
       ) {
         error(res, 404, "mining_demo_run_not_found", "The current demo run was not found.");
+        return;
+      }
+      if (current.run && isContinuousMiningRun(current.run)) {
+        error(
+          res,
+          403,
+          "mining_continuous_managed",
+          "Continuous runs require the authenticated generation-scoped operator control.",
+        );
         return;
       }
       const result = await coordinator.requestStop(body.runId, undefined, undefined, signal);

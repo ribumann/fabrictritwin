@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createD01Simulation, D01_EVENT_ENTITY_TYPES } from "@triathlon-twin/simulator/mining";
 import { assertD01RunContract } from "../../mining-incidents/catalog.js";
-import type { MiningRunRecord } from "../run-coordinator.js";
+import { assertBoundedMiningRun, type MiningRunRecord } from "../run-coordinator.js";
 import { MiningQueryError } from "./bounded-query.js";
 
 const families = [
@@ -14,6 +14,7 @@ const families = [
 type Family = (typeof families)[number];
 
 export function expectedMiningEventIds(run: MiningRunRecord) {
+  assertBoundedMiningRun(run);
   assertD01RunContract(run.contract);
   const start = Date.parse(run.startedAt);
   if (
@@ -55,6 +56,7 @@ export function mapMiningIngestion(
   asOf: string,
   rows: Record<string, unknown>[],
 ) {
+  assertBoundedMiningRun(run);
   if (!Number.isFinite(Date.parse(asOf))) {
     throw new MiningQueryError("invalid", "Invalid ingestion reconciliation timestamp.");
   }

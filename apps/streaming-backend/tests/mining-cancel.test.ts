@@ -42,13 +42,19 @@ function setup(configuration: NodeJS.ProcessEnv = env, synthetic = false) {
     accepted: true as const,
     status,
   }));
+  const stopContinuous = vi.fn(async (_generation: string, _signal: AbortSignal) => ({
+    accepted: true as const,
+    generation: "release-1",
+    stopRequested: true as const,
+    status: null as MiningRunStatus | null,
+  }));
   const app = express();
   app.use(express.json());
   app.use(
     "/api/mining",
-    createMiningCancelRouter({ synthetic, env: configuration, verifyClaims, stop }),
+    createMiningCancelRouter({ synthetic, env: configuration, verifyClaims, stop, stopContinuous }),
   );
-  return { app, verifyClaims, stop };
+  return { app, verifyClaims, stop, stopContinuous };
 }
 const cancel = (app: express.Express, input: object = body) =>
   request(app).post("/api/mining/runs/cancel").send(input);
@@ -62,6 +68,122 @@ afterEach(() => {
 });
 
 describe("delegated mining cancellation", () => {
+  const continuousEnv = {
+    ...env,
+    MINING_CONTINUOUS_CONTROL_ENABLED: "true",
+    MINING_CONTINUOUS_OPERATOR_PRINCIPAL_IDS: operator,
+    MINING_CONTINUOUS_DELEGATED_SCOPE: "Mining.Continuous.Stop",
+    MINING_CONTINUOUS_GENERATION: "release-1",
+    MINING_APPROVED_RUN_ID: undefined,
+  };
+  const generationBody = { plantId: "D01", generation: "release-1" };
+  const stopGeneration = (app: express.Express, input: object = generationBody) =>
+    request(app).post("/api/mining/continuous/stop").send(input);
+
+  it("keeps generation controls default-off and separate from bounded cancel permission", async () => {
+    for (const configuration of [
+      env,
+      { ...continuousEnv, MINING_CONTINUOUS_GENERATION: "../escape" },
+      { ...continuousEnv, MINING_CONTINUOUS_OPERATOR_PRINCIPAL_IDS: undefined },
+      { ...continuousEnv, MINING_CONTINUOUS_DELEGATED_SCOPE: env.MINING_CANCEL_DELEGATED_SCOPE },
+    ]) {
+      const { app, verifyClaims, stopContinuous } = setup(configuration);
+      expect((await stopGeneration(app)).status).toBe(503);
+      expect(verifyClaims).not.toHaveBeenCalled();
+      expect(stopContinuous).not.toHaveBeenCalled();
+    }
+    const { app, verifyClaims, stopContinuous } = setup(continuousEnv);
+    expect((await stopGeneration(app)).status).toBe(403);
+    verifyClaims.mockResolvedValue({ ...claims(), scp: "Mining.Continuous.Stop", idtyp: "app" });
+    expect((await stopGeneration(app)).status).toBe(403);
+    expect(stopContinuous).not.toHaveBeenCalled();
+  });
+
+  it("authenticates and pins the operator generation, never claims publication or ingestion completed", async () => {
+    const { app, verifyClaims, stop, stopContinuous } = setup(continuousEnv);
+    verifyClaims.mockResolvedValue({ ...claims(), scp: "Mining.Continuous.Stop" });
+    for (const input of [
+      { ...generationBody, generation: "release-2" },
+      { ...generationBody, runId },
+      { ...generationBody, plantId: "other" },
+      { plantId: "D01" },
+    ])
+      expect((await stopGeneration(app, input)).status).toBe(400);
+    expect(stopContinuous).not.toHaveBeenCalled();
+    const response = await stopGeneration(app);
+    expect(response.status).toBe(202);
+    expect(response.body).toEqual({
+      plantId: "D01",
+      generation: "release-1",
+      stopRequested: true,
+      runId: null,
+      publisherStatus: "not_running",
+      ingestionStatus: "unknown",
+    });
+    expect(stopContinuous).toHaveBeenCalledExactlyOnceWith("release-1", expect.any(AbortSignal));
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("does not turn uncertain or wrong-generation stop readback into success", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { app, verifyClaims, stopContinuous } = setup(continuousEnv);
+    verifyClaims.mockResolvedValue({ ...claims(), scp: "Mining.Continuous.Stop" });
+    stopContinuous.mockRejectedValueOnce(
+      new MiningCoordinationError("uncertain", "Lost write response."),
+    );
+    expect((await stopGeneration(app)).status).toBe(503);
+    stopContinuous.mockResolvedValueOnce({
+      accepted: true,
+      generation: "release-2",
+      stopRequested: true,
+      status: null,
+    });
+    expect((await stopGeneration(app)).status).toBe(503);
+  });
+
+  it("persists generation stop through the configured store without acquiring writer authority", async () => {
+    const documents = new Map<string, StoredDocument>();
+    vi.spyOn(BlobMiningStore.prototype, "read").mockImplementation(async (path) =>
+      documents.get(path),
+    );
+    const create = vi
+      .spyOn(BlobMiningStore.prototype, "create")
+      .mockImplementation(async (path, value) => {
+        if (documents.has(path)) return false;
+        documents.set(path, { value, etag: "1", leased: false });
+        return true;
+      });
+    for (const method of ["write", "acquire", "renew", "release"] as const) {
+      vi.spyOn(BlobMiningStore.prototype, method).mockImplementation(async () => {
+        throw new Error("Stop must not acquire or mutate writer authority.");
+      });
+    }
+    const app = express();
+    app.use(express.json());
+    app.use(
+      "/api/mining",
+      createMiningCancelRouter({
+        synthetic: false,
+        verifyClaims: async () => ({ ...claims(), scp: "Mining.Continuous.Stop" }),
+        env: {
+          ...continuousEnv,
+          MINING_RUN_COORDINATION_ENABLED: "true",
+          MINING_STATE_BLOB_ENDPOINT: "https://miningstate.blob.core.windows.net",
+          MINING_STATE_CONTAINER: "mining-state",
+        },
+      }),
+    );
+    expect((await stopGeneration(app)).status).toBe(202);
+    expect(create).toHaveBeenCalledExactlyOnceWith("continuous/holds/release-1.json", {
+      version: 1,
+      plantId: "D01",
+      generation: "release-1",
+      requestedAt: expect.any(String),
+    });
+    expect((await stopGeneration(app)).status).toBe(202);
+    expect(documents.size).toBe(1);
+  });
+
   it.each([
     [{}, false],
     [env, true],

@@ -11,7 +11,7 @@ import {
   readMiningIncidentJournal,
   type MiningIncidentStore,
 } from "../../mining-incidents/runtime.js";
-import type { MiningRunRecord } from "../run-coordinator.js";
+import { assertBoundedMiningRun, type MiningRunRecord } from "../run-coordinator.js";
 import type { MiningByteStore } from "../store.js";
 import {
   assertMiningQueryConfiguration,
@@ -65,6 +65,7 @@ export async function readMiningOverview(
   signal: AbortSignal,
   reconcileIngestion = false,
 ) {
+  assertBoundedMiningRun(input.run);
   const runId = input.run.runId;
   const end = input.asOf;
   const start = new Date(Date.parse(end) - 5 * 60_000).toISOString();
@@ -114,6 +115,7 @@ export function createMiningCuratedProvider(dependencies: Dependencies) {
   const now = dependencies.now ?? Date.now;
   return async (input: MiningCuratedRequest, signal: AbortSignal) => {
     signal.throwIfAborted();
+    assertBoundedMiningRun(input.run);
     assertMiningQueryConfiguration(env);
     const runId = input.run.runId;
     if (

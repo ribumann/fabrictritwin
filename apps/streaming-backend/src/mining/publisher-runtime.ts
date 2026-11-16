@@ -9,8 +9,9 @@ import { configuredMiningStore } from "./blob-store.js";
 import { MiningCoordinationError } from "./store.js";
 import {
   MiningRunCoordinator,
+  assertBoundedMiningRun,
+  type BoundedMiningRunRecord,
   type MiningClock,
-  type MiningRunRecord,
   type MiningRunStatus,
   type StartMiningRun,
 } from "./run-coordinator.js";
@@ -86,6 +87,7 @@ export class MiningPublisherRuntime {
       return admission.status;
     }
     const { owner, run } = admission;
+    assertBoundedMiningRun(run);
     const startedAt = Date.parse(run.startedAt);
     const firstTick = this.clock.monotonic() - (this.clock.now() - startedAt);
     const incidentFailure = new AbortController();
@@ -289,7 +291,7 @@ class IncidentExecution {
   stopRequested = false;
 
   constructor(
-    private readonly run: MiningRunRecord,
+    private readonly run: BoundedMiningRunRecord,
     private readonly config: MiningPublisherIncidents,
     private readonly onFailure: (error: Error) => void,
   ) {}
