@@ -142,9 +142,91 @@ BeforeAll {
         Invoke-MiningIsolatedNativeItems -WorkspaceId $script:workspace -LakehouseId $script:lakehouse `
             -ReceiptPath $ReceiptPath -Client $Client -Apply:$Apply
     }
+
+    function New-MiningExistingDraftTestClient {
+        $fixture = New-MiningBootstrapTestClient
+        $fixture.State.Items.Add([pscustomobject]@{
+            id = $script:modelId; type = 'SemanticModel'
+            displayName = 'mining-d01-topology-semanticmodel'; workspaceId = $script:workspace
+        })
+        $fixture.State.Items.Add([pscustomobject]@{
+            id = $script:agentId; type = 'DataAgent'
+            displayName = 'mining-d01-topology-dataagent'; workspaceId = $script:workspace
+        })
+        $model = & $script:modelGenerator -WorkspaceId $script:workspace -LakehouseId $script:lakehouse `
+            -DefinitionKind SemanticModel
+        $fixture.State.Definitions[$script:modelId] = $model.SemanticModelRequest.definition
+        $agent = & $script:agentGenerator -WorkspaceId $script:workspace -SemanticModelId $script:modelId |
+            ConvertFrom-Json -AsHashtable -Depth 100
+        $fixture.State.Definitions[$script:agentId] = $agent.definition
+        return $fixture
+    }
 }
 
 Describe 'Isolated Mining native items' {
+    It 'blocks a stale <SourceFolder> draft without receipts, including repeat attempts (Apply=<Apply>)' -ForEach @(
+        @{ SourceFolder = 'semantic_model-mining-d01-topology'; Apply = $false }
+        @{ SourceFolder = 'semantic_model-mining-d01-topology'; Apply = $true }
+        @{ SourceFolder = 'semantic-model-Mining D01 topology semantic model'; Apply = $false }
+        @{ SourceFolder = 'semantic-model-Mining D01 topology semantic model'; Apply = $true }
+    ) {
+        $fixture = New-MiningExistingDraftTestClient
+        $definition = $fixture.State.Definitions[$script:agentId]
+        ($definition.parts | Where-Object path -Like '*/datasource.json').path =
+            "Files/Config/draft/$SourceFolder/datasource.json"
+        # Synthetic unsupported parts reproduce the reported path shape, not a
+        # captured cloud preimage or evidence that .platform can be ignored.
+        $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{}'))
+        $definition.parts += @(
+            @{ path = "Files/Config/draft/$SourceFolder/fewshots.json"; payload = $payload; payloadType = 'InlineBase64' }
+            @{ path = '.platform'; payload = $payload; payloadType = 'InlineBase64' }
+        )
+        $receipt = Join-Path $TestDrive 'missing-native.jsonl'
+        foreach ($attempt in 1..2) {
+            { Invoke-TestBootstrap $fixture.Client $receipt -Apply:$Apply } |
+                Should -Throw '*Data Agent definition parts differ*'
+        }
+        @($fixture.State.Calls | Where-Object {
+                $_.Method -ine 'Get' -and $_.Uri -notmatch '/getDefinition$'
+            }) | Should -HaveCount 0
+        Test-Path -LiteralPath $receipt | Should -BeFalse
+    }
+
+    It 'does not adopt or publish even a corrected unpublished draft without its ownership receipt' {
+        $fixture = New-MiningExistingDraftTestClient
+        $receipt = Join-Path $TestDrive 'unowned-native.jsonl'
+        { Invoke-TestBootstrap $fixture.Client $receipt } |
+            Should -Throw '*draft is not published; use the explicit apply path*'
+        foreach ($attempt in 1..2) {
+            { Invoke-TestBootstrap $fixture.Client $receipt -Apply } |
+                Should -Throw '*Refusing to publish a pre-existing, unowned Data Agent draft*'
+        }
+        @($fixture.State.Calls | Where-Object {
+                $_.Method -ine 'Get' -and $_.Uri -notmatch '/getDefinition$'
+            }) | Should -HaveCount 0
+        Test-Path -LiteralPath $receipt | Should -BeFalse
+    }
+
+    It 'does not ignore an extra <ExtraPart> part or mutate the existing draft' -ForEach @(
+        @{ ExtraPart = 'Files/Config/draft/semantic-model-Mining D01 topology semantic model/fewshots.json' }
+        @{ ExtraPart = '.platform' }
+        @{ ExtraPart = 'Files/Config/publish_info.json' }
+        @{ ExtraPart = 'Files/Config/published/stage_config.json' }
+    ) {
+        $fixture = New-MiningExistingDraftTestClient
+        $fixture.State.Definitions[$script:agentId].parts += @{
+            path = $ExtraPart; payloadType = 'InlineBase64'
+            payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{}'))
+        }
+        $receipt = Join-Path $TestDrive 'unexpected-part.jsonl'
+        { Invoke-TestBootstrap $fixture.Client $receipt -Apply } |
+            Should -Throw '*Data Agent definition parts differ*'
+        @($fixture.State.Calls | Where-Object {
+                $_.Method -ine 'Get' -and $_.Uri -notmatch '/getDefinition$'
+            }) | Should -HaveCount 0
+        Test-Path -LiteralPath $receipt | Should -BeFalse
+    }
+
     It 'reports only missing and unexpected Data Agent definition paths' {
         $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{}'))
         $expected = @{ parts = @(@{
