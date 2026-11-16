@@ -52,8 +52,11 @@ not a release prerequisite.
 
 Anonymous live assistant calls use Foundry with MCP tools; this remains a
 cloud-backed assistant, not a credential-free one. Foundry calls the authenticated
-backend MCP bridge, which forwards to the internal MCP server. Native Fabric
-Data Agent access requires a signed-in human and delegated On-Behalf-Of flow.
+backend MCP bridge, which forwards to the internal MCP server. Access to the
+existing shared-workspace Data Agent has used a signed-in human and delegated
+On-Behalf-Of flow. Direct service-principal access is being validated
+separately in an isolated Mining-only workspace; setup is not proof that
+authentication or queries work.
 Power BI embedding uses Cockpit's dedicated embedding service principal.
 Current source deliberately allows a visitor with no identity headers to request
 an embed configuration without sign-in; a visitor presenting identity signals
@@ -273,8 +276,14 @@ in signed-in Fabric. They expose static counts of 1 plant, 4 lines, 24 modules,
 64 equipment items, 56 tags, and 50 streams, plus 248 relationship rows and
 73.4375% equipment-tag coverage. This is not realtime telemetry. The native
 Data Agent answered count and reworded line-to-plant questions consistently
-with independent DAX, but uses that same static model. Its anonymous
-service-principal bridge is **unverified**; no role was granted. See
+with independent DAX, but uses that same static model. A dedicated application
+and service principal now have Contributor access only to a separate Mining-only
+workspace on the existing F4 capacity. The app has no password or certificate;
+its GitHub OIDC federated credential is restricted to the repository's existing
+`azure-mining-bootstrap` environment. As of 16 November 2026, that workspace
+had no items. Token exchange, Fabric source access, native query behavior, and
+an anonymous service-principal bridge remain **unverified**. No shared TriTwin
+workspace or Azure subscription role was granted. See
 [Mining analytics](mining-analytics.md) and [Mining Data Agent](mining-data-agent.md).
 
 ## Operator evidence and remaining boundaries
