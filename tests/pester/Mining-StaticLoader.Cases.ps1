@@ -439,23 +439,34 @@ It 'constructs the real encrypted SqlClient connection string without connecting
 
 It 'validates native client token tenant, caller, audience and lifetime without sign-in or account switching' {
     $script:tokenFault = ''
+    $script:azCalls = [Collections.Generic.List[object]]::new()
     Mock az -ModuleName MiningOntology {
+        $script:azCalls.Add([object[]]$args)
         $resourceIndex = [Array]::IndexOf($args, '--resource')
         $audience = $args[$resourceIndex + 1]
         $claims = @{
             tid = $script:target.TenantId; oid = $script:target.CallerObjectId; aud = $audience
+            appid = '11111111-2222-4333-8444-555555555555'
             exp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 3600
         }
         switch ($script:tokenFault) {
             'tenant' { $claims.tid = '00000000-0000-0000-0000-000000000099' }
             'caller' { $claims.oid = '00000000-0000-0000-0000-000000000099' }
             'audience' { $claims.aud = 'https://example.invalid' }
+            'application' { $claims.appid = '00000000-0000-0000-0000-000000000099' }
             'expiry' { $claims.exp = 0 }
         }
         $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($claims | ConvertTo-Json -Compress))).TrimEnd('=').Replace('+', '-').Replace('/', '_')
         @{ tenant = $script:target.TenantId; accessToken = "fixture.$payload.not-a-signature" } | ConvertTo-Json -Compress
         $global:LASTEXITCODE = 0
     }
+    $token = Get-MiningValidatedAccessToken -TenantId $script:target.TenantId `
+        -CallerObjectId $script:target.CallerObjectId -CallerApplicationId '11111111-2222-4333-8444-555555555555' `
+        -Resource 'https://api.fabric.microsoft.com'
+    $token | Should -BeLike 'fixture.*.not-a-signature'
+    @($script:azCalls[0]) | Should -Contain '--tenant'
+    @($script:azCalls[0]) | Should -Contain $script:target.TenantId
+    @($script:azCalls[0]) | Should -Not -Contain '--subscription'
     $native = New-MiningLiveClient $script:target
     $native.context.callerObjectId | Should -BeExactly $script:target.CallerObjectId
     $native.request | Should -BeOfType ([scriptblock])
@@ -468,11 +479,21 @@ It 'validates native client token tenant, caller, audience and lifetime without 
         }
     } catch { $failure = $_.Exception.GetBaseException() }
     $failure | Should -BeOfType ([System.Net.Sockets.SocketException])
-    Should -Invoke az -ModuleName MiningOntology -Times 3 -Exactly
+    Should -Invoke az -ModuleName MiningOntology -Times 4 -Exactly
+    foreach ($call in @($script:azCalls | Select-Object -Skip 1 -First 3)) {
+        @($call) | Should -Contain '--tenant'
+        @($call) | Should -Contain $script:target.TenantId
+        @($call) | Should -Not -Contain '--subscription'
+    }
     foreach ($fault in @('tenant', 'caller', 'audience', 'expiry')) {
         $script:tokenFault = $fault
-        { New-MiningLiveClient $script:target } | Should -Throw '*Token tenant, caller, audience or lifetime*'
+        { New-MiningLiveClient $script:target } | Should -Throw '*Token tenant, caller,*audience or lifetime*'
     }
-    Should -Invoke az -ModuleName MiningOntology -Times 7 -Exactly
+    $script:tokenFault = 'application'
+    { Get-MiningValidatedAccessToken -TenantId $script:target.TenantId `
+            -CallerObjectId $script:target.CallerObjectId -CallerApplicationId '11111111-2222-4333-8444-555555555555' `
+            -Resource 'https://api.fabric.microsoft.com' } |
+        Should -Throw '*Token tenant, caller, application, audience or lifetime*'
+    Should -Invoke az -ModuleName MiningOntology -Times 9 -Exactly
     $script:client.state.calls | Should -HaveCount 0
 }

@@ -1,0 +1,95 @@
+name: Isolated Mining native agent bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Create only the pinned isolated Mining Lakehouse, catalog, model, and Data Agent
+        type: boolean
+        required: true
+        default: false
+      apply_confirmation:
+        description: For apply only, enter CREATE-ISOLATED-MINING-ONLY-ITEMS
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: azure-mining-bootstrap
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CORE_OUTPUT: none
+      AZURE_CORE_ONLY_SHOW_ERRORS: "true"
+      AZURE_CONFIG_DIR: /dev/shm/mining-native-bootstrap/azure
+      APPLY: ${{ inputs.apply }}
+      APPLY_CONFIRMATION: ${{ inputs.apply_confirmation }}
+      TENANT_ID: ecd6dfda-d2ce-47a8-9901-e35f31fe18dd
+      SUBSCRIPTION_ID: 86677b6e-28fc-48e4-8988-5ab9e568eece
+      WORKSPACE_ID: 4a809e56-42a8-4c30-a84f-83a47dd8793f
+      CALLER_OBJECT_ID: da635b23-84db-4fe1-a9d2-0204c830a87b
+    steps:
+      - name: Require memory-only private workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(findmnt -n -o FSTYPE --target /dev/shm)" = tmpfs
+          mkdir -m 700 -p /dev/shm/mining-native-bootstrap/azure
+          mkdir -m 700 /dev/shm/mining-native-bootstrap/receipts
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Authenticate dedicated service principal with GitHub OIDC
+        id: login
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+        timeout-minutes: 2
+        with:
+          client-id: 40eca1a3-d05c-4cdf-9770-b59969b4fff2
+          tenant-id: ${{ env.TENANT_ID }}
+          allow-no-subscriptions: true
+          audience: api://AzureADTokenExchange
+          auth-type: SERVICE_PRINCIPAL
+      - name: Create or verify only isolated Mining native items
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:APPLY -eq 'true' -and
+              $env:APPLY_CONFIRMATION -cne 'CREATE-ISOLATED-MINING-ONLY-ITEMS') {
+            throw 'Apply requires the exact confirmation input.'
+          }
+          $privateRoot = '/dev/shm/mining-native-bootstrap'
+          $targetPath = Join-Path $privateRoot 'target.json'
+          $target = [ordered]@{
+            TenantId = $env:TENANT_ID
+            SubscriptionId = $env:SUBSCRIPTION_ID
+            WorkspaceId = $env:WORKSPACE_ID
+            CallerObjectId = $env:CALLER_OBJECT_ID
+          }
+          [IO.File]::WriteAllText(
+            $targetPath,
+            (ConvertTo-Json -InputObject $target -Compress),
+            [Text.UTF8Encoding]::new($false))
+          $parameters = @{
+            TargetPath = $targetPath
+            CatalogReceiptPath = Join-Path $privateRoot 'receipts/catalog.jsonl'
+            NativeReceiptPath = Join-Path $privateRoot 'receipts/native.jsonl'
+          }
+          if ($env:APPLY -eq 'true') {
+            $result = ./scripts/fabric/Invoke-IsolatedMiningDataAgentBootstrap.ps1 @parameters -Apply -Confirm:$false
+          } else {
+            $result = ./scripts/fabric/Invoke-IsolatedMiningDataAgentBootstrap.ps1 @parameters
+          }
+          @"
+          Status: $($result.Status)
+          Lakehouse: $($result.LakehouseStatus)
+          Catalog: $($result.CatalogStatus)
+
+          Receipts remained on the runner's tmpfs and were not uploaded or logged.
+          "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY

@@ -16,11 +16,13 @@ $prepared = .\scripts\fabric\Prepare-IsolatedMiningDataAgent.ps1 `
 
 The bootstrap target JSON contains the explicitly selected tenant, subscription,
 isolated workspace, and dedicated service-principal object IDs; no Lakehouse or
-SQL endpoint details need to be copied into it. The script confirms that Azure
-CLI is already using that exact service principal in the target tenant and
-subscription, obtains a Fabric token in memory, and resolves the Lakehouse SQL
-endpoint from Fabric. It never signs in, changes accounts, assigns roles, or
-changes capacity.
+SQL endpoint details need to be copied into it. The script requests tenant-scoped
+Fabric, Storage, and SQL tokens from the current Azure CLI profile and validates
+the tenant, service-principal object ID, audience, and expiry before use. It does
+not require an Azure subscription context or Azure RBAC role; `SubscriptionId`
+records the existing capacity association, while Fabric workspace/item access
+authorizes the data-plane calls. It resolves the Lakehouse SQL endpoint from
+Fabric. It never signs in, changes accounts, assigns roles, or changes capacity.
 
 The existing dedicated service principal is already a Contributor only in this
 isolated workspace. Its GitHub Actions federated credential
@@ -38,6 +40,20 @@ zero items at that time. This verifies federation and read-only inventory only;
 it did not create or publish items or validate Lakehouse SQL/source access or
 agent answers. No raw token or API response was exposed. `azure/login` emitted
 a nonfatal Azure CLI version parsing warning but exited successfully.
+
+The main-only `Isolated Mining native agent bootstrap` GitHub Actions workflow
+uses the existing environment-scoped OIDC credential. A normal dispatch is
+read-only verification. Creating items requires both the `apply` input and the
+exact `apply_confirmation` value `CREATE-ISOLATED-MINING-ONLY-ITEMS`; a code push
+does not run it. The job uses a memory-only Azure CLI cache and keeps its
+append-only receipts on runner tmpfs. Receipts are never printed or uploaded,
+because this repository is public. If a run fails after a write, treat its
+outcome as potentially partial; do not blindly repeat Apply. The ephemeral
+receipt is not recoverable after the runner ends, so inspect the isolated
+workspace and reconcile before another write attempt.
+
+The script can also be run locally with an authorized Azure CLI service principal
+and private absolute receipt paths:
 
 ```powershell
 $targetFile = 'C:\private\mining-target.json' # TenantId, SubscriptionId, WorkspaceId, CallerObjectId
@@ -63,7 +79,7 @@ Mining catalog and existing repository generators. Creating/publishing an item
 is not proof that its answers are correct; validate agent behavior separately.
 See [catalog-only loading](../scripts/mining-ontology/README.md#catalog-only-loading)
 for catalog permissions, verification, and failure handling. The isolated
-bootstrap has not been run against Fabric as part of this repository change.
+bootstrap has not yet been run against Fabric.
 
 ## Existing private agent
 

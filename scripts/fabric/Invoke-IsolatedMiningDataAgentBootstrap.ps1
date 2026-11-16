@@ -49,32 +49,12 @@ if ($target.WorkspaceId -ine $workspaceId.ToString()) {
     throw 'Target must identify the approved isolated workspace.'
 }
 
-$accountJson = & az account show --output json --only-show-errors 2>&1
-if ($LASTEXITCODE -ne 0) { throw "Azure CLI account inspection failed: $($accountJson -join ' ')" }
-$account = ($accountJson -join "`n") | ConvertFrom-Json
-if ($account.id -ine $target.SubscriptionId -or $account.tenantId -ine $target.TenantId -or
-    $account.user.type -cne 'servicePrincipal') {
-    throw 'The current Azure CLI profile must be the dedicated service principal in the target tenant and subscription; no sign-in or account switch was attempted.'
-}
-
-$tokenJson = & az account get-access-token --subscription $target.SubscriptionId `
-    --resource 'https://api.fabric.microsoft.com' --output json --only-show-errors 2>&1
-if ($LASTEXITCODE -ne 0) { throw "Fabric token acquisition failed: $($tokenJson -join ' ')" }
-$fabricToken = ($tokenJson -join "`n") | ConvertFrom-Json
-$segments = ([string]$fabricToken.accessToken).Split('.')
-if ($segments.Count -ne 3) { throw 'Unsupported Fabric access-token encoding.' }
-$payload = $segments[1].Replace('-', '+').Replace('_', '/')
-$payload = $payload.PadRight($payload.Length + ((4 - $payload.Length % 4) % 4), '=')
-$claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
-if ($fabricToken.tenant -ine $target.TenantId -or $claims.tid -ine $target.TenantId -or
-    $claims.oid -ine $target.CallerObjectId -or
-    $claims.aud.TrimEnd('/') -cne 'https://api.fabric.microsoft.com' -or
-    [long]$claims.exp -lt [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 600) {
-    throw 'Fabric token tenant/caller does not match the explicitly selected service-principal profile.'
-}
-
+Import-Module (Join-Path $PSScriptRoot '..\mining-ontology\MiningOntology.psm1') -Force
+$fabricAccessToken = Get-MiningValidatedAccessToken `
+    -TenantId $target.TenantId -CallerObjectId $target.CallerObjectId `
+    -CallerApplicationId '40eca1a3-d05c-4cdf-9770-b59969b4fff2' `
+    -Resource 'https://api.fabric.microsoft.com'
 Import-Module (Join-Path $PSScriptRoot 'MiningIsolatedItems.psm1') -Force
-$fabricAccessToken = [string]$fabricToken.accessToken
 $bootstrapClient = @{
     request = {
         param($Method, $Uri, $Body)
@@ -114,9 +94,8 @@ $lakehouse = Ensure-MiningIsolatedLakehouse -WorkspaceId $workspaceId `
 $resolvedTarget = $lakehouse.Target
 $resolvedTarget.TenantId = $target.TenantId
 $resolvedTarget.SubscriptionId = $target.SubscriptionId
-$resolvedTarget.CallerObjectId = $claims.oid
+$resolvedTarget.CallerObjectId = $target.CallerObjectId
 
-Import-Module (Join-Path $PSScriptRoot '..\mining-ontology\MiningOntology.psm1') -Force
 $sourceClient = New-MiningLiveClient $resolvedTarget
 $catalogMode = if ($Apply -and -not (Test-Path -LiteralPath $CatalogReceiptPath)) { 'Apply' } else { 'Verify' }
 $catalog = Invoke-MiningCatalogLoad `

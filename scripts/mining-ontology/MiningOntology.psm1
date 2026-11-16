@@ -441,4 +441,4 @@ function Get-MiningPlanReceipt {
 }
 
 . (Join-Path $PSScriptRoot 'StaticLoader.ps1')
-Export-ModuleMember -Function New-MiningCatalogTables, Invoke-MiningCatalogLoad, New-MiningOntologyPlan, Export-MiningOntologyPlan, Invoke-MiningStaticApply, New-MiningLiveClient
+Export-ModuleMember -Function New-MiningCatalogTables, Invoke-MiningCatalogLoad, New-MiningOntologyPlan, Export-MiningOntologyPlan, Invoke-MiningStaticApply, New-MiningLiveClient, Get-MiningValidatedAccessToken
