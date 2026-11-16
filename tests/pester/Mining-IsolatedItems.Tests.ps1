@@ -23,6 +23,7 @@ BeforeAll {
             LostCreateResponse = $false
             LostPublishResponse = $false
             Lakehouse = $false
+            LakehouseCreateFailure = $false
             AsyncModel = $false
             OperationPolls = 0
         }
@@ -58,6 +59,11 @@ BeforeAll {
                 return @{ statusCode = 200; headers = @{}; body = @{ value = @($state.Items.ToArray()) } }
             }
             if ($Method -ieq 'Post' -and $Uri -eq "https://api.fabric.microsoft.com/v1/workspaces/$workspaceId/lakehouses") {
+                if ($state.LakehouseCreateFailure) {
+                    return @{ statusCode = 400; headers = @{}; body = @{
+                            errorCode = 'CapacityNotAvailable'; message = 'Do not log this response body.'
+                        } }
+                }
                 $requestBody = $Body | ConvertFrom-Json -AsHashtable -Depth 20
                 $state.Lakehouse = $true
                 $item = [pscustomobject]@{
@@ -229,5 +235,20 @@ Describe 'Isolated Mining native items' {
         { Ensure-MiningIsolatedLakehouse -WorkspaceId $script:workspace -ReceiptPath $receipt `
                 -Client $fixture.Client -Apply } | Should -Throw '*unresolved pre-dispatch/response state*'
         @($fixture.State.Calls | Where-Object Uri -Match '/lakehouses$') | Should -HaveCount 1
+    }
+
+    It 'reports only the Fabric error code for a rejected Lakehouse create' {
+        $fixture = New-MiningBootstrapTestClient
+        $fixture.State.LakehouseCreateFailure = $true
+        $receipt = Join-Path $TestDrive 'lakehouse-rejected.jsonl'
+        $failure = $null
+        try {
+            Ensure-MiningIsolatedLakehouse -WorkspaceId $script:workspace -ReceiptPath $receipt `
+                -Client $fixture.Client -Apply | Out-Null
+        } catch { $failure = $_.Exception.Message }
+        $failure | Should -BeExactly 'Lakehouse create returned HTTP 400 (CapacityNotAvailable).'
+        $failure | Should -Not -Match 'Do not log this response body'
+        $records = @(Get-Content -LiteralPath $receipt | ForEach-Object { $_ | ConvertFrom-Json })
+        $records[-1].errorCode | Should -BeExactly 'CapacityNotAvailable'
     }
 }
