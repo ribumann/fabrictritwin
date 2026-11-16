@@ -36,7 +36,6 @@ jobs:
       MINING_OBSERVER_RUN_ID: ${{ inputs.run_id }}
       MINING_OBSERVER_GENERATION: ${{ inputs.generation }}
       MINING_OBSERVER_DURATION_MINUTES: ${{ inputs.duration_minutes }}
-      MINING_OBSERVER_OUTPUT_DIR: ${{ runner.temp }}/mining-continuous-flow
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
         with:
@@ -45,6 +44,8 @@ jobs:
         with:
           node-version: "24"
       - name: Run read-only public observer
+        env:
+          MINING_OBSERVER_OUTPUT_DIR: ${{ runner.temp }}/mining-continuous-flow
         run: node scripts/simulate/observe-mining-continuous.mjs
       - name: Upload bounded public evidence and terminal summary
         if: always()
