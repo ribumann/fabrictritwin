@@ -80,12 +80,14 @@ The static model and agent definitions are generated locally from the pinned
 Mining catalog and existing repository generators. Creating/publishing an item
 is not proof that its answers are correct; validate agent behavior separately.
 See [catalog-only loading](../scripts/mining-ontology/README.md#catalog-only-loading)
-for catalog permissions, verification, and failure handling. An initial Apply
-attempt reached the Lakehouse create call and received HTTP 400; a subsequent
-read-only inventory confirmed that the isolated workspace is still empty. No
-retry has been made. Rejected creates report only the HTTP status and Fabric
-`errorCode`, never the raw response body; diagnose the rejection and reconcile
-the workspace before another Apply attempt.
+for catalog permissions, verification, and failure handling. Two Apply attempts
+were rejected while creating the Lakehouse with HTTP 400 (`InvalidInput`).
+Microsoft's [Lakehouse naming rules](https://learn.microsoft.com/en-us/fabric/data-engineering/create-lakehouse)
+allow only letters, numbers, and underscores after the initial letter; the
+fixed name has been corrected to `mining_d01_static_lakehouse`. Read-only
+inventory confirmed that the isolated workspace remains empty, and no Apply
+has been run since this correction. Rejected creates report only the HTTP
+status and Fabric `errorCode`, never the raw response body.
 
 ## Existing private agent
 

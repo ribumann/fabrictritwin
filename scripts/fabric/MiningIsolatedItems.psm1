@@ -247,7 +247,7 @@ function Get-MiningIsolatedLakehouseDetails {
         if ($lakehouse.id -cne $itemId.ToString() -or
             $lakehouse.workspaceId -cne $WorkspaceId.ToString() -or
             $lakehouse.type -cne 'Lakehouse' -or
-            $lakehouse.displayName -cne 'mining-d01-static-lakehouse' -or
+            $lakehouse.displayName -cne 'mining_d01_static_lakehouse' -or
             $lakehouse.properties.defaultSchema -cne 'dbo') {
             throw 'The exact Mining Lakehouse is not the expected schema-enabled dbo Lakehouse.'
         }
@@ -296,7 +296,7 @@ function Ensure-MiningIsolatedLakehouse {
     $records = Read-MiningBootstrapReceipt $ReceiptPath $WorkspaceId ([guid]::Empty) -AllowAnyLakehouse
     $items = Get-MiningBootstrapItems $Client $WorkspaceId
     $item = Get-MiningAnalyticsMatchingItem -Items $items `
-        -DisplayName 'mining-d01-static-lakehouse' -Type 'Lakehouse'
+        -DisplayName 'mining_d01_static_lakehouse' -Type 'Lakehouse'
     $latest = Get-MiningBootstrapLatestReceipt $records 'LakehouseCreate'
     if ($item) {
         $receiptItemId = Get-MiningBootstrapOptionalValue $latest 'itemId'
@@ -338,7 +338,7 @@ function Ensure-MiningIsolatedLakehouse {
         }
         $items = Get-MiningBootstrapItems $Client $WorkspaceId
         $item = Get-MiningAnalyticsMatchingItem -Items $items `
-            -DisplayName 'mining-d01-static-lakehouse' -Type 'Lakehouse'
+            -DisplayName 'mining_d01_static_lakehouse' -Type 'Lakehouse'
         if (-not $operationResult.Result.id -or -not $item -or
             $item.id -cne [string]$operationResult.Result.id) {
             throw 'Lakehouse create operation result is not the unique exact-name item; no retry is permitted.'
@@ -356,12 +356,12 @@ function Ensure-MiningIsolatedLakehouse {
     $attemptId = [guid]::NewGuid().ToString()
     Add-MiningBootstrapReceipt $ReceiptPath $WorkspaceId ([guid]::Empty) @{
         operation = 'LakehouseCreate'; status = 'Submitting'; attemptId = $attemptId
-        displayName = 'mining-d01-static-lakehouse'
+        displayName = 'mining_d01_static_lakehouse'
     }
     $operationId = $null
     try {
         $body = @{
-            displayName = 'mining-d01-static-lakehouse'
+            displayName = 'mining_d01_static_lakehouse'
             description = 'Isolated Lakehouse for the public static Mining D01 topology catalog.'
             creationPayload = @{ enableSchemas = $true }
         } | ConvertTo-Json -Depth 20 -Compress
@@ -401,13 +401,13 @@ function Ensure-MiningIsolatedLakehouse {
         $returnedId = [guid]::Empty
         if (-not $result.id -or -not [guid]::TryParse([string]$result.id, [ref]$returnedId) -or
             $returnedId -eq [guid]::Empty -or
-            $result.type -cne 'Lakehouse' -or $result.displayName -cne 'mining-d01-static-lakehouse' -or
+            $result.type -cne 'Lakehouse' -or $result.displayName -cne 'mining_d01_static_lakehouse' -or
             $result.workspaceId -cne $WorkspaceId.ToString()) {
             throw 'Lakehouse create did not return the exact expected item identity; reconcile before retrying.'
         }
         $items = Get-MiningBootstrapItems $Client $WorkspaceId
         $item = Get-MiningAnalyticsMatchingItem -Items $items `
-            -DisplayName 'mining-d01-static-lakehouse' -Type 'Lakehouse'
+            -DisplayName 'mining_d01_static_lakehouse' -Type 'Lakehouse'
         if (-not $item -or $item.id -cne $returnedId.ToString()) {
             throw 'Lakehouse create result is not the unique exact-name item in the isolated workspace.'
         }
