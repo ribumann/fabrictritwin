@@ -88,6 +88,9 @@ class ProofTests(unittest.TestCase):
         result = self.run_proof()
         self.assertTrue(result["ProofPassed"])
         self.assertTrue(result["PlatformValid"])
+        self.assertTrue(result["LegacyPayloadsChecked"])
+        self.assertTrue(result["LegacyPayloadsMatched"])
+        self.assertTrue(all(result[name] for name in proof.PAYLOAD_MATCHES))
         self.assertNotIn("PlatformPreservedInMemory", result)
         self.assertEqual((result["Pages"], result["Items"], result["Parts"]), (1, 2, 5))
         self.assertEqual(self.definition, before)
@@ -119,6 +122,8 @@ class ProofTests(unittest.TestCase):
                 result = self.run_proof()
                 self.assertFalse(result["ProofPassed"])
                 self.assertFalse(result["BindingMatched"])
+                self.assertTrue(result["LegacyPayloadsChecked"])
+                self.assertFalse(result["LegacyPayloadsMatched"])
 
     def test_all_non_platform_payloads_must_match(self):
         for path, value in self.files.items():
@@ -130,7 +135,11 @@ class ProofTests(unittest.TestCase):
                 result = self.run_proof()
                 self.assertFalse(result["ProofPassed"])
                 self.assertTrue(result["PlatformValid"])
+                self.assertTrue(result["LegacyPayloadsChecked"])
                 self.assertFalse(result["LegacyPayloadsMatched"])
+                check = next(name for name, expected_path in proof.PAYLOAD_MATCHES.items()
+                             if expected_path == path)
+                self.assertFalse(result[check])
                 self.definition = saved
 
     def test_source_selection_types_ids_and_array_order_cannot_be_normalized(self):
@@ -246,7 +255,33 @@ class ProofTests(unittest.TestCase):
                 result = self.run_proof()
                 self.assertTrue(result["BindingMatched"])
                 self.assertFalse(result["PlatformValid"])
+                self.assertTrue(result["LegacyPayloadsChecked"])
+                self.assertTrue(result["LegacyPayloadsMatched"])
                 self.assertFalse(result["ProofPassed"])
+
+    def test_platform_diagnostics_identify_failed_checks_without_values(self):
+        cases = [
+            (lambda value: value.update({"$schema": "private-sentinel"}),
+             "PlatformSchemaMatched"),
+            (lambda value: value["metadata"].update({"displayName": "private-sentinel"}),
+             "PlatformDisplayNameMatched"),
+            (lambda value: value["metadata"].update({"unknown": "private-sentinel"}),
+             "PlatformMetadataShapeMatched"),
+            (lambda value: value["config"].update({"version": "private-sentinel"}),
+             "PlatformVersionMatched"),
+            (lambda value: value["config"].update({"logicalId": "private-sentinel"}),
+             "PlatformLogicalIdValid"),
+        ]
+        for mutate, failed_check in cases:
+            with self.subTest(check=failed_check):
+                value = platform()
+                mutate(value)
+                self.replace(".platform", value)
+                result = self.run_proof()
+                self.assertFalse(result[failed_check])
+                self.assertFalse(result["PlatformValid"])
+                self.assertTrue(result["LegacyPayloadsChecked"])
+                self.assertTrue(result["LegacyPayloadsMatched"])
 
     def test_optional_platform_description_can_be_absent(self):
         value = platform()
