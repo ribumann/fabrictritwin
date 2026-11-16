@@ -8,7 +8,7 @@ import {
   toD01PublishProfileRecords,
   validateD01PlantCatalog,
 } from "@triathlon-twin/simulator/mining";
-import type { MiningRunRecord } from "../mining/run-coordinator.js";
+import type { BoundedMiningRunRecord } from "../mining/run-coordinator.js";
 import type { MiningTag } from "./evaluator.js";
 import type { MiningIncidentRun } from "./runtime.js";
 
@@ -58,8 +58,9 @@ export function assertD01RunContract(value: unknown): asserts value is D01RunCon
 
 /** Reconstructs the exact run/catalog binding without activating incident processing. */
 export function createD01IncidentRun(
-  run: Pick<MiningRunRecord, "runId" | "startedAt" | "stopAt">,
+  run: Pick<BoundedMiningRunRecord, "runId" | "startedAt" | "stopAt" | "lifetime">,
 ): MiningIncidentRun {
+  if (run.lifetime !== undefined) throw new Error("Continuous Mining cannot use finite incidents.");
   validateD01PlantCatalog(D01_PLANT_CATALOG);
   const modules = new Map(D01_PLANT_CATALOG.modules.map((module) => [module.id, module]));
   const profile = toD01PublishProfileRecords();
@@ -105,7 +106,9 @@ export function createD01IncidentRun(
 
 /** Builds the prospective journal definition only from an already bound run. */
 export function createD01VersionedIncidentRun(
-  run: Pick<MiningRunRecord, "runId" | "startedAt" | "stopAt"> & { contract: D01RunContract },
+  run: Pick<BoundedMiningRunRecord, "runId" | "startedAt" | "stopAt" | "lifetime"> & {
+    contract: D01RunContract;
+  },
 ): MiningIncidentRun {
   assertD01RunContract(run.contract);
   return Object.freeze({

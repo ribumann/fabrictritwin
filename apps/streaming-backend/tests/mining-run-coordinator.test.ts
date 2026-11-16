@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MiningRunCoordinator,
+  assertBoundedMiningRun,
   type MiningClock,
   type StartMiningRun,
 } from "../src/mining/run-coordinator.js";
@@ -121,6 +122,262 @@ describe("mining durable run coordination", () => {
     replicaB = new MiningRunCoordinator(storage, clock);
   });
   afterEach(() => vi.useRealTimers());
+
+  it("uses a separate continuous schema with no invented duration or end time", async () => {
+    const admission = await replicaA.startContinuous({
+      plantId: "D01",
+      requestId: first,
+      generation: "release-1",
+    });
+    expect(admission.kind).toBe("started");
+    if (admission.kind !== "started") throw new Error("Missing continuous owner.");
+    expect(storage.documents.get(plantPath)?.value).toEqual({ version: 3, run: admission.run });
+    expect(admission.run).toMatchObject({
+      lifetime: { kind: "continuous", generation: "release-1" },
+    });
+    for (const field of ["durationSeconds", "stopAt", "finalFlushUntil"]) {
+      expect(admission.run).not.toHaveProperty(field);
+    }
+    expect(() => assertBoundedMiningRun(admission.run)).toThrow("bounded-run");
+    expect(
+      await replicaB.startContinuous({
+        plantId: "D01",
+        requestId: first,
+        generation: "release-1",
+      }),
+    ).toMatchObject({ kind: "observed", status: { phase: "running" } });
+    await expect(
+      replicaB.startContinuous({
+        plantId: "D01",
+        requestId: first,
+        generation: "release-2",
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+    const publish = vi.fn(async () => {});
+    for (let second = 30; second <= 1_860; second += 30) {
+      await vi.advanceTimersByTimeAsync(30_000);
+      await admission.owner.runBatch(publish);
+    }
+    expect(publish).toHaveBeenCalledTimes(62);
+    expect(await replicaB.currentStatus()).toMatchObject({ phase: "running" });
+    await expect(admission.owner.finish()).rejects.toMatchObject({ code: "invalid" });
+    await expect(
+      admission.owner.runFinalBatch(
+        {
+          runId: first,
+          timestamp: new Date().toISOString(),
+        },
+        publish,
+      ),
+    ).rejects.toMatchObject({ code: "invalid" });
+    await admission.owner.finish("failed");
+    expect(await replicaB.currentStatus()).toMatchObject({ phase: "failed" });
+    expect(storage.documents.get(`history/${first}.json`)?.value).toMatchObject({ version: 3 });
+  });
+
+  it("holds the selected generation durably even before admission, without blocking a deliberate new generation", async () => {
+    expect(await replicaA.requestContinuousStop("release-1")).toEqual({
+      accepted: true,
+      generation: "release-1",
+      stopRequested: true,
+      status: null,
+    });
+    await expect(
+      replicaB.startContinuous({
+        plantId: "D01",
+        requestId: first,
+        generation: "release-1",
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+    expect(storage.documents.has(`requests/${first}.json`)).toBe(false);
+    const next = await replicaB.startContinuous({
+      plantId: "D01",
+      requestId: second,
+      generation: "release-2",
+    });
+    if (next.kind !== "started") throw new Error("Expected deliberate new generation.");
+    expect(await replicaA.currentStatus()).toMatchObject({ runId: second, stopRequested: false });
+    await next.owner.finish("failed");
+  });
+
+  it("drains the admitted batch before generation stop, then prevents publication and restart", async () => {
+    const admission = await replicaA.startContinuous({
+      plantId: "D01",
+      requestId: first,
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner.");
+    let settle!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const batch = admission.owner.runBatch(async () => {
+      entered();
+      await new Promise<void>((resolve) => {
+        settle = resolve;
+      });
+    });
+    await started;
+    expect(await replicaB.requestContinuousStop("release-1")).toMatchObject({
+      accepted: true,
+      status: { phase: "running", stopRequested: true },
+    });
+    await expect(admission.owner.finish()).rejects.toMatchObject({ code: "conflict" });
+    settle();
+    await batch;
+    const publish = vi.fn();
+    await expect(admission.owner.runBatch(publish)).rejects.toMatchObject({ code: "cancelled" });
+    expect(publish).not.toHaveBeenCalled();
+    expect(await replicaB.currentStatus()).toMatchObject({ phase: "stopped", stopRequested: true });
+    expect(storage.documents.get(plantPath)?.value).toMatchObject({ version: 3 });
+    await expect(
+      new MiningRunCoordinator(storage, clock).startContinuous({
+        plantId: "D01",
+        requestId: second,
+        generation: "release-1",
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("observes a generation hold committed during admission before authorizing any batch", async () => {
+    const write = storage.write.bind(storage);
+    vi.spyOn(storage, "write").mockImplementation(async (path, value, etag, lease) => {
+      if (path === plantPath) await replicaB.requestContinuousStop("release-1");
+      return write(path, value, etag, lease);
+    });
+    const admission = await replicaA.startContinuous({
+      plantId: "D01",
+      requestId: first,
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner.");
+    vi.restoreAllMocks();
+    const publish = vi.fn();
+    await expect(admission.owner.runBatch(publish)).rejects.toMatchObject({ code: "cancelled" });
+    expect(publish).not.toHaveBeenCalled();
+    expect(await replicaB.currentStatus()).toMatchObject({ phase: "stopped", stopRequested: true });
+  });
+
+  it("cannot resurrect a continuous owner after safe authority expires", async () => {
+    const admission = await replicaA.startContinuous({
+      plantId: "D01",
+      requestId: first,
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner.");
+    await vi.advanceTimersByTimeAsync(45_000);
+    const renew = vi.spyOn(storage, "renew");
+    const publish = vi.fn();
+    await expect(admission.owner.runBatch(publish)).rejects.toMatchObject({ code: "lease_lost" });
+    expect(renew).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+    expect(await replicaB.currentStatus()).toMatchObject({ phase: "interrupted" });
+    await vi.advanceTimersByTimeAsync(15_001);
+    const replacement = await replicaB.startContinuous({
+      plantId: "D01",
+      requestId: second,
+      generation: "release-1",
+    });
+    expect(replacement.kind).toBe("started");
+    await expect(admission.owner.heartbeat()).rejects.toMatchObject({ code: "lease_lost" });
+    if (replacement.kind === "started") await replacement.owner.finish("failed");
+  });
+
+  it("fails closed if a continuous renewal response arrives after safe authority", async () => {
+    const admission = await replicaA.startContinuous({
+      plantId: "D01",
+      requestId: first,
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner.");
+    const renew = storage.renew.bind(storage);
+    vi.spyOn(storage, "renew").mockImplementation(async (path, lease) => {
+      await renew(path, lease);
+      vi.setSystemTime(Date.now() + 45_001);
+    });
+    const publish = vi.fn();
+    await expect(admission.owner.runBatch(publish)).rejects.toMatchObject({ code: "lease_lost" });
+    expect(admission.owner.signal.aborted).toBe(true);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("joins a failed continuous batch and releases authority only after explicit cleanup", async () => {
+    const admission = await replicaA.startContinuous({
+      plantId: "D01",
+      requestId: first,
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner.");
+    await expect(
+      admission.owner.runBatch(async () => {
+        throw new Error("Transport aborted by trusted host.");
+      }),
+    ).rejects.toThrow("Transport aborted");
+    expect(admission.owner.signal.aborted).toBe(true);
+    await admission.owner.finish("failed");
+    expect(await replicaB.currentStatus()).toMatchObject({ phase: "failed" });
+    const replacement = await replicaB.startContinuous({
+      plantId: "D01",
+      requestId: second,
+      generation: "release-1",
+    });
+    if (replacement.kind !== "started") throw new Error("Authority was not released.");
+    await replacement.owner.finish("failed");
+  });
+
+  it("reconciles an uncertain generation stop without permitting readmission", async () => {
+    storage.fault = { operation: "create", path: "continuous/holds/release-1.json", after: true };
+    await expect(replicaA.requestContinuousStop("release-1")).rejects.toMatchObject({
+      code: "uncertain",
+    });
+    await expect(
+      replicaB.startContinuous({
+        plantId: "D01",
+        requestId: first,
+        generation: "release-1",
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+    expect(await replicaB.requestContinuousStop("release-1")).toMatchObject({ accepted: true });
+    storage.documents.set("continuous/holds/release-2.json", {
+      value: { version: 1, generation: "release-1" },
+      etag: "bad",
+    });
+    await expect(
+      replicaA.startContinuous({
+        plantId: "D01",
+        requestId: second,
+        generation: "release-2",
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
+  });
+
+  it("rejects malformed or mixed lifetime records explicitly instead of inferring finite defaults", async () => {
+    const admission = await replicaA.startContinuous({
+      plantId: "D01",
+      requestId: first,
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner.");
+    const document = storage.documents.get(plantPath)!;
+    const invalidRuns = [
+      { ...admission.run, durationSeconds: 300 },
+      { ...admission.run, stopAt: new Date().toISOString() },
+      { ...admission.run, phase: "publisher_complete" },
+      { ...admission.run, lifetime: { kind: "continuous", generation: "../escape" } },
+      { ...admission.run, lifetime: { kind: "bounded", generation: "release-1" } },
+      { ...admission.run, lifetime: { kind: "continuous", generation: "release-1", extra: true } },
+      { ...admission.run, contract: undefined },
+    ];
+    for (const run of invalidRuns) {
+      storage.documents.set(plantPath, { ...document, value: { version: 3, run } });
+      await expect(replicaB.currentStatus()).rejects.toMatchObject({ code: "invalid" });
+    }
+    storage.documents.set(plantPath, { ...document, value: { version: 2, run: admission.run } });
+    await expect(replicaB.currentStatus()).rejects.toMatchObject({ code: "invalid" });
+    storage.documents.set(plantPath, document);
+    await admission.owner.finish("failed");
+  });
 
   it("admits exactly one of two independent replicas racing for D01", async () => {
     const results = await Promise.allSettled([

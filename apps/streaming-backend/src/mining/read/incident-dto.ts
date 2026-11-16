@@ -6,7 +6,7 @@ import {
 } from "../../mining-incidents/catalog.js";
 import type { MiningIncident, MiningIncidentAssessment } from "../../mining-incidents/evaluator.js";
 import type { readMiningIncidentJournal } from "../../mining-incidents/runtime.js";
-import type { MiningRunRecord } from "../run-coordinator.js";
+import type { BoundedMiningRunRecord } from "../run-coordinator.js";
 import { MiningQueryError } from "./bounded-query.js";
 
 type Metric = "feed" | "density" | "vibration" | "water-energy";
@@ -214,7 +214,7 @@ export function mapCurrentIncidentAssessments(input: {
  * This remains unmounted until independently authorized source and deployment proof is available.
  */
 export function mapCurrentIncidentJournal(input: {
-  run: Pick<MiningRunRecord, "runId" | "startedAt" | "stopAt" | "contract">;
+  run: Pick<BoundedMiningRunRecord, "runId" | "startedAt" | "stopAt" | "contract" | "lifetime">;
   journal: NonNullable<Awaited<ReturnType<typeof readMiningIncidentJournal>>>;
 }) {
   const run =

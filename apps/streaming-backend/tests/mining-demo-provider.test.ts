@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createBoundedMiningQuery } from "../src/mining/read/bounded-query.js";
 import { createMiningDemoProvider } from "../src/mining/read/demo-provider.js";
 import type { MiningRunRecord } from "../src/mining/run-coordinator.js";
+import { createD01RunContract } from "../src/mining-incidents/catalog.js";
 
 const run: MiningRunRecord = {
   plantId: "D01",
@@ -18,6 +19,34 @@ const start = "2026-01-01T11:00:00.000Z";
 const end = "2026-01-01T11:01:00.000Z";
 
 describe("public mining curated reads", () => {
+  it("does not query finite incident or overview contracts for continuous lifetimes", async () => {
+    const query = vi.fn<ReturnType<typeof createBoundedMiningQuery>>();
+    const provider = createMiningDemoProvider({}, query);
+    const continuous: MiningRunRecord = {
+      plantId: "D01",
+      runId: run.runId,
+      scenario: "normal",
+      seed: 1,
+      startedAt: run.startedAt,
+      authorityUntil: run.authorityUntil,
+      phase: "running",
+      contract: createD01RunContract(),
+      lifetime: { kind: "continuous", generation: "release-1" },
+    };
+    for (const kind of ["incidents", "overview"] as const) {
+      await expect(
+        provider(
+          {
+            kind,
+            run: continuous,
+            asOf: end,
+          },
+          new AbortController().signal,
+        ),
+      ).rejects.toThrow("bounded-run");
+    }
+    expect(query).not.toHaveBeenCalled();
+  });
   it("maps real scoped comparison rows without requiring an incident journal", async () => {
     const rows = (["A", "B", "C"] as const).map((line) => ({
       status: "OK",

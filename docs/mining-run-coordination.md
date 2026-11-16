@@ -9,6 +9,92 @@ stop/ingestion. Existing triathlon locks, routes, simulator jobs and
 `DEMO_PROFILE` behavior are unchanged. No mining storage operation is performed
 merely by importing modules.
 
+## Continuous lifetime compatibility (activation not included)
+
+This compatibility increment does **not** start a continuous publisher, install a
+worker, change simulator stepping, deploy resources, or enable continuous reads.
+Existing bounded/public defaults and their 5..1800-second admission limits are
+unchanged. The next runtime/read increment must be reviewed separately.
+
+The coordinator reads existing schema-1/schema-2 bounded records unchanged.
+Their `durationSeconds`, `stopAt` and optional `finalFlushUntil` retain their
+finite meaning. A separate, trusted source-only `startContinuous` capability
+accepts a generation and writes schema 3 with
+`lifetime: { kind: "continuous", generation: "release-1" }`; it has **no**
+duration, stop time or final-flush deadline. No HTTP start route calls it.
+Admission receipts and terminal history retain the same lifetime identity.
+Malformed/mixed lifetimes and continuous `publisher_complete` records fail
+explicitly. Continuous records cannot enter finite expected-ID replay,
+ingestion-complete calculations, incident definitions/reconciliation or the
+existing finite curated providers.
+
+Both lifetimes use the same D01 Blob lease, ETag and safe wall/monotonic
+authority checks. Continuous lifetime removes only the model-duration deadline,
+not the 45-second safe authority window. Observing an admission never grants an
+owner; late lease renewal cannot resurrect expired authority. An admitted batch
+must settle before terminal persistence and lease release. A continuous owner
+can stop or fail, but cannot truthfully claim finite publisher completion.
+Calling `finish("publisher_complete")` without an observed stop is an explicit
+invalid operation, not a cleanup action; trusted callers must settle their I/O
+and call `finish("failed")` after execution/host cancellation. Lost authority
+cannot release another owner's lease and remains interrupted until reconciled.
+
+### Authenticated generation stop
+
+`POST /api/mining/continuous/stop` is a direct backend operator endpoint, **not**
+an anonymous Cockpit/BFF action. It is disabled by default and in synthetic
+mode. It uses the existing signed delegated bearer verification and requires
+all of:
+
+| Backend configuration                                                                                                                | Meaning                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `MINING_CONTINUOUS_CONTROL_ENABLED=true`                                                                                             | Enable only this stop boundary; it never enables a publisher.                                                            |
+| `MINING_CONTINUOUS_GENERATION`                                                                                                       | Explicit 1..64-character alphanumeric/dot/underscore/hyphen generation, starting alphanumeric.                           |
+| `MINING_CONTINUOUS_OPERATOR_PRINCIPAL_IDS`                                                                                           | Comma-separated allowlisted operator object UUIDs, distinct from public service/viewer identities.                       |
+| `MINING_CONTINUOUS_DELEGATED_SCOPE`                                                                                                  | Exact delegated scope required in the verified user's `scp` claim; must differ from the configured bounded-cancel scope. |
+| Existing `ASSISTANT_AUTH_TENANT_ID`, `ASSISTANT_AUTH_CLIENT_ID`, `MINING_MANAGED_IDENTITY_CLIENT_ID` and durable-store configuration | Select the trusted caller tenant/audience and existing isolated mining store.                                            |
+
+Send exactly `{"plantId":"D01","generation":"release-1"}`, with no query
+parameters. The requested generation must match protected configuration.
+App-only roles, spoofed Easy Auth headers and the bounded-cancel scope alone do
+not authorize it. `MINING_APPROVED_RUN_ID` is not required for this
+generation-scoped action; bounded cancellation keeps its existing UUID pin.
+
+The coordinator first persists and reads back
+`continuous/holds/<generation>.json`, then reports the matching current run if
+one exists. This also works before admission, after a crash, or while a new
+UUID is racing admission. Every continuous heartbeat and batch gate checks
+generation intent. An already authorized batch may drain; no subsequent batch
+can bypass observed intent. Run-scoped trusted stop of a continuous record is
+promoted to the same generation hold. Public demo cancellation rejects
+continuous records rather than granting visitors unbounded workload control.
+
+A 202 reports confirmed durable **intent**, not that a send drained, the
+publisher stopped, Fabric ingested everything, or incidents were assessed.
+`runId: null` / `publisherStatus: "not_running"` means no matching current run
+was found, not that the hold is temporary. Reconcile timeouts/lost responses
+before other actions; retrying the same stop is idempotent. Missing/corrupt hold
+documents never become successful readback. A deliberate new configured
+generation is needed for future resumption; do not delete stop evidence.
+Generation change does not itself break a still-active owner's lease.
+
+### Compatibility-first rollout and rollback
+
+The first reader version containing schema-3 support is the minimum safe
+rollback baseline after any continuous record is written. Prior strict readers
+understand only schemas 1/2 and will reject schema 3; setting an enable flag off
+does not convert persisted records or history.
+
+Deploy compatible readers everywhere and drain older revisions **before** a
+later approved release activates a schema-3 writer. Until then this increment
+writes only existing bounded documents during normal application operation.
+To roll back after future activation, persist the selected generation stop,
+observe bounded send settlement and ended authority, disable its worker, and
+roll back only to a schema-3-compatible reader. Preserve history/holds; do not
+clear the plant blob or relabel an endless stream as a completed bounded run.
+This increment provides no cloud lifecycle, no-loss restart, physical-process
+checkpoint, exactly-once delivery or live-read acceptance claim.
+
 ## Public D01 demo controls
 
 The public demo is a separate, default-off service boundary; it does not change
