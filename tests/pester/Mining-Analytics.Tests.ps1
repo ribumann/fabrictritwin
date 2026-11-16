@@ -116,12 +116,20 @@ Describe 'Mining D01 native analytics definitions' {
                 Should -Throw '*invalid continuation URI*'
         }
 
-        It 'rejects ambiguous same-name items and a same-name item of the wrong type' {
+        It 'matches same-name items by type and rejects duplicate or wrong-type matches' {
             $item = [pscustomobject]@{
                 id = '11111111-2222-4333-8444-555555555555'
                 type = 'SemanticModel'
                 displayName = 'Mining topology'
             }
+            $endpoint = [pscustomobject]@{
+                id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+                type = 'SQLEndpoint'
+                displayName = 'Mining topology'
+            }
+            (Get-MiningAnalyticsMatchingItem -Items @($item, $endpoint) `
+                    -DisplayName 'Mining topology' -Type 'SemanticModel').id |
+                Should -BeExactly $item.id
             { Get-MiningAnalyticsMatchingItem -Items @($item, ($item | Select-Object *)) `
                     -DisplayName 'Mining topology' -Type 'SemanticModel' } |
                 Should -Throw '*Multiple Fabric items*'
