@@ -84,10 +84,12 @@ for catalog permissions, verification, and failure handling. Two Apply attempts
 were rejected while creating the Lakehouse with HTTP 400 (`InvalidInput`).
 Microsoft's [Lakehouse naming rules](https://learn.microsoft.com/en-us/fabric/data-engineering/create-lakehouse)
 allow only letters, numbers, and underscores after the initial letter; the
-fixed name has been corrected to `mining_d01_static_lakehouse`. Read-only
-inventory confirmed that the isolated workspace remains empty, and no Apply
-has been run since this correction. Rejected creates report only the HTTP
-status and Fabric `errorCode`, never the raw response body.
+fixed name was corrected to `mining_d01_static_lakehouse`. The next Apply
+created workspace items but stopped on Data Agent definition readback; a
+subsequent read-only inventory reports four workspace items. Do not retry
+Apply until the existing definitions are reconciled. Rejected creates report
+only the HTTP status and Fabric `errorCode`, and Data Agent mismatch
+diagnostics report only missing/unexpected part paths, never payloads.
 
 ## Existing private agent
 

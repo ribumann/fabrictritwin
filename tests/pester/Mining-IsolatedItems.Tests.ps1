@@ -145,6 +145,22 @@ BeforeAll {
 }
 
 Describe 'Isolated Mining native items' {
+    It 'reports only missing and unexpected Data Agent definition paths' {
+        $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{}'))
+        $expected = @{ parts = @(@{
+                    path = 'Files/Config/data_agent.json'; payload = $payload; payloadType = 'InlineBase64'
+                }) }
+        $actual = @{ parts = @(@{
+                    path = '.platform'; payload = $payload; payloadType = 'InlineBase64'
+                }) }
+        InModuleScope -ModuleName 'MiningIsolatedItems' -Parameters @{
+            expected = $expected; actual = $actual
+        } -ScriptBlock {
+            { Assert-MiningAgentDefinition $expected $actual } |
+                Should -Throw '*missing: Files/Config/data_agent.json; unexpected: .platform*'
+        }
+    }
+
     It 'creates exact model and agent definitions, publishes once, and verifies a repeat run read-only' {
         $fixture = New-MiningBootstrapTestClient
         $receipt = Join-Path $TestDrive 'native.jsonl'

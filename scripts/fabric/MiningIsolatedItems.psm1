@@ -142,9 +142,14 @@ function Assert-MiningAgentDefinition {
     if ($Published) { $allowedPaths += $publishedPaths + 'Files/Config/publish_info.json' }
     $actualPaths = @($actual.Keys | Sort-Object -CaseSensitive)
     $expectedPaths = @($allowedPaths | Sort-Object -CaseSensitive)
-    if ($actualPaths.Count -ne $expectedPaths.Count -or
-        @(Compare-Object -ReferenceObject $expectedPaths -DifferenceObject $actualPaths -CaseSensitive).Count -gt 0) {
-        throw 'Data Agent definition has missing or unexpected draft/published parts.'
+    $pathDifferences = @(Compare-Object -ReferenceObject $expectedPaths `
+            -DifferenceObject $actualPaths -CaseSensitive)
+    if ($actualPaths.Count -ne $expectedPaths.Count -or $pathDifferences.Count -gt 0) {
+        $missingPaths = @($pathDifferences | Where-Object SideIndicator -eq '<=' |
+            ForEach-Object InputObject)
+        $unexpectedPaths = @($pathDifferences | Where-Object SideIndicator -eq '=>' |
+            ForEach-Object InputObject)
+        throw "Data Agent definition parts differ (missing: $($missingPaths -join ', '); unexpected: $($unexpectedPaths -join ', '))."
     }
     foreach ($path in $expected.Keys) {
         Assert-MiningJsonPartMatches $expected[$path] $actual[$path] "Data Agent part '$path'"
