@@ -20,9 +20,11 @@ jobs:
       AZURE_CONFIG_DIR: /dev/shm/mining-fabric-identity
     steps:
       # This existing environment has a main-only branch policy, NOT a reviewer gate.
-      # Prerequisite (not provisioned here): a FIC on the dedicated application with
-      # issuer https://token.actions.githubusercontent.com, audience api://AzureADTokenExchange,
-      # subject repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap.
+      # The matching FIC was provisioned separately on the dedicated application;
+      # successful token exchange and Fabric access remain unproven until this job passes.
+      # It uses issuer https://token.actions.githubusercontent.com, audience
+      # api://AzureADTokenExchange, and subject
+      # repo:ribumann@46997953/fabrictritwin@1449513330:environment:azure-mining-bootstrap.
       # This workflow_ref is ribumann/fabrictritwin/.github/workflows/mining-fabric-identity-proof.yml@refs/heads/main,
       # not the earlier OIDC-only proof's workflow_ref; the environment subject stays the same.
       - name: Require memory-only authentication cache
