@@ -66,22 +66,30 @@ function Get-MiningAnalyticsMatchingItem {
     $nameMatches = @($Items | Where-Object {
         [string]::Equals([string]$_.displayName, $DisplayName, [StringComparison]::OrdinalIgnoreCase)
     })
-    if ($nameMatches.Count -gt 1) {
-        throw "Multiple Fabric items match '$DisplayName' by name; refusing to choose one."
-    }
     if ($nameMatches.Count -eq 0) { return $null }
-    if ($nameMatches[0].displayName -cne $DisplayName) {
-        throw "Fabric item '$($nameMatches[0].displayName)' differs in case from expected name '$DisplayName'."
+
+    $typeMatches = @($nameMatches | Where-Object { $_.type -ceq $Type })
+    if ($typeMatches.Count -gt 1) {
+        throw "Multiple Fabric items match '$DisplayName' with type '$Type'; refusing to choose one."
     }
-    if ($nameMatches[0].type -cne $Type) {
-        throw "Fabric item '$DisplayName' has type '$($nameMatches[0].type)', expected '$Type'."
+    if ($typeMatches.Count -eq 0) {
+        if ($nameMatches.Count -eq 1 -and $nameMatches[0].displayName -cne $DisplayName) {
+            throw "Fabric item '$($nameMatches[0].displayName)' differs in case from expected name '$DisplayName'."
+        }
+        if ($nameMatches.Count -eq 1) {
+            throw "Fabric item '$DisplayName' has type '$($nameMatches[0].type)', expected '$Type'."
+        }
+        throw "Multiple Fabric items match '$DisplayName', but none have type '$Type'."
+    }
+    if ($typeMatches[0].displayName -cne $DisplayName) {
+        throw "Fabric item '$($typeMatches[0].displayName)' differs in case from expected name '$DisplayName'."
     }
 
     $itemId = [guid]::Empty
-    if (-not [guid]::TryParse([string]$nameMatches[0].id, [ref]$itemId) -or $itemId -eq [guid]::Empty) {
+    if (-not [guid]::TryParse([string]$typeMatches[0].id, [ref]$itemId) -or $itemId -eq [guid]::Empty) {
         throw "Fabric item '$DisplayName' has an invalid ID."
     }
-    return $nameMatches[0]
+    return $typeMatches[0]
 }
 
 function Assert-MiningAnalyticsCreatedItemIdentity {
