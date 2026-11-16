@@ -9,11 +9,12 @@ import { configuredMiningStore } from "./blob-store.js";
 import { MiningCoordinationError } from "./store.js";
 import {
   MiningRunCoordinator,
-  assertBoundedMiningRun,
+  isContinuousMiningRun,
   type BoundedMiningRunRecord,
   type MiningClock,
   type MiningRunStatus,
   type StartMiningRun,
+  type StartContinuousMiningRun,
 } from "./run-coordinator.js";
 import {
   MiningIncidentRuntime,
@@ -80,14 +81,39 @@ export class MiningPublisherRuntime {
     if (incidents && (input.durationSeconds ?? 1_200) % 60 !== 0) {
       throw new MiningCoordinationError("invalid", "Incident processing requires whole minutes.");
     }
-    const admission = await this.coordinator.start(input);
+    return this.execute(() => this.coordinator.start(input), cancellation, incidents, onAdmission);
+  }
+
+  /** Trusted worker only. Continuous execution never activates finite incident processing. */
+  runContinuous(
+    input: StartContinuousMiningRun,
+    cancellation?: AbortSignal,
+    onAdmission?: (admission: MiningPublisherAdmission) => void,
+  ): Promise<MiningRunStatus> {
+    return this.execute(
+      () => this.coordinator.startContinuous(input),
+      cancellation,
+      undefined,
+      onAdmission,
+    );
+  }
+
+  private async execute(
+    admit: () => ReturnType<MiningRunCoordinator["start"]>,
+    cancellation?: AbortSignal,
+    incidents?: MiningPublisherIncidents,
+    onAdmission?: (admission: MiningPublisherAdmission) => void,
+  ): Promise<MiningRunStatus> {
+    cancellation?.throwIfAborted();
+    const admission = await admit();
     if (admission.kind === "observed") {
       cancellation?.throwIfAborted();
       onAdmission?.({ kind: "observed", status: admission.status });
       return admission.status;
     }
     const { owner, run } = admission;
-    assertBoundedMiningRun(run);
+    const continuous = isContinuousMiningRun(run);
+    const durationMs = continuous ? null : run.durationSeconds * 1_000;
     const startedAt = Date.parse(run.startedAt);
     const firstTick = this.clock.monotonic() - (this.clock.now() - startedAt);
     const incidentFailure = new AbortController();
@@ -113,6 +139,8 @@ export class MiningPublisherRuntime {
         signal.throwIfAborted();
       }
       if (incidents) {
+        if (isContinuousMiningRun(run))
+          throw new Error("Continuous incident processing is unavailable.");
         const execution = new IncidentExecution(run, incidents, (error) =>
           incidentFailure.abort(error),
         );
@@ -133,8 +161,18 @@ export class MiningPublisherRuntime {
       if (!stopped) {
         const activeTransport = this.publisher();
         transport = activeTransport;
-        const simulation = createD01Simulation({ ...run, startedAt: new Date(startedAt) });
-        for (let elapsed = STEP_MS; elapsed <= run.durationSeconds * 1_000; elapsed += STEP_MS) {
+        const simulation = createD01Simulation({
+          runId: run.runId,
+          seed: run.seed,
+          scenario: run.scenario,
+          startedAt: new Date(startedAt),
+          ...(continuous ? { continuous: true } : { durationSeconds: run.durationSeconds }),
+        });
+        for (
+          let elapsed = STEP_MS;
+          durationMs === null || elapsed <= durationMs;
+          elapsed += STEP_MS
+        ) {
           const wallDeadline = startedAt + elapsed;
           const tickDeadline = firstTick + elapsed;
           while (this.clock.monotonic() < tickDeadline) {
@@ -154,7 +192,7 @@ export class MiningPublisherRuntime {
             }
           };
           checkDeadline();
-          if (elapsed === run.durationSeconds * 1_000 && !run.finalFlushUntil) {
+          if (!isContinuousMiningRun(run) && elapsed === durationMs && !run.finalFlushUntil) {
             throw new Error("Mining strict deadline leaves no final-batch delivery budget.");
           }
           await owner.heartbeat();
@@ -196,7 +234,7 @@ export class MiningPublisherRuntime {
                 clearTimeout(timer);
               }
             };
-            if (elapsed === run.durationSeconds * 1_000 && run.finalFlushUntil) {
+            if (!isContinuousMiningRun(run) && elapsed === durationMs && run.finalFlushUntil) {
               await owner.runFinalBatch({ runId: run.runId, timestamp: batch.timestamp }, send);
             } else {
               await owner.runBatch(send);
@@ -206,6 +244,7 @@ export class MiningPublisherRuntime {
         if (!stopped) signal.throwIfAborted();
         if (
           !stopped &&
+          !isContinuousMiningRun(run) &&
           (simulation.elapsedSecondsSoFar !== run.durationSeconds || simulation.getPendingBatch())
         ) {
           throw new Error("Mining final batch was not delivered; publisher is incomplete.");

@@ -387,6 +387,10 @@ function terminal(phase: RunPhase): boolean {
 }
 
 export class MiningRunCoordinator {
+  /** Read-only stop check also used while no run is active. Malformed holds fail closed. */
+  continuousGenerationHeld(generation: string, signal?: AbortSignal): Promise<boolean> {
+    return generationHeld(this.store, generation, signal);
+  }
   private readonly finalFlushMilliseconds: number;
   private readonly minimumStartIntervalMs: number;
 

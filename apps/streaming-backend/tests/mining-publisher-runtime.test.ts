@@ -144,6 +144,84 @@ describe("D01 real-clock publisher", () => {
     };
   };
 
+  it("publishes continuously past finite limits under one UUID, then honors a durable generation hold", async () => {
+    const timestamps: string[] = [];
+    publish.mockImplementation(async (events) => {
+      expect(
+        events.every(
+          (event) => event.run_id === requestId && Date.parse(event.timestamp) <= Date.now(),
+        ),
+      ).toBe(true);
+      expect(events.length).toBeLessThanOrEqual(64);
+      timestamps.push(events.at(-1)!.timestamp);
+    });
+    const execution = runtime.runContinuous({ plantId: "D01", requestId, generation: "release-1" });
+    await settle();
+    await vi.advanceTimersByTimeAsync(1_860_000);
+    expect(publish).toHaveBeenCalledTimes(62);
+    expect(new Set(timestamps).size).toBe(62);
+    expect(await coordinator.currentStatus()).toMatchObject({ runId: requestId, phase: "running" });
+    await coordinator.requestContinuousStop("release-1");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await execution).toMatchObject({ phase: "stopped", stopRequested: true });
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(store.lease).toBeUndefined();
+    expect(publish).toHaveBeenCalledTimes(62);
+  });
+
+  it("does not construct a transport when observing a continuous owner", async () => {
+    const admission = await coordinator.startContinuous({
+      plantId: "D01",
+      requestId,
+      generation: "release-1",
+    });
+    const observed = await runtime.runContinuous({
+      plantId: "D01",
+      requestId,
+      generation: "release-1",
+    });
+    expect(observed.phase).toBe("running");
+    expect(factory).not.toHaveBeenCalled();
+    if (admission.kind !== "started") throw new Error("Missing owner");
+    await admission.owner.finish("failed");
+  });
+
+  it("drains ambiguous continuous sends before closing; never retries or claims completion", async () => {
+    let rejectSend!: (cause: Error) => void;
+    publish.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSend = reject;
+        }),
+    );
+    const execution = runtime.runContinuous({ plantId: "D01", requestId, generation: "release-1" });
+    const rejected = expect(execution).rejects.toThrow("Ambiguous transport failure");
+    await settle();
+    await vi.advanceTimersByTimeAsync(32_100);
+    expect(store.lease).toBeDefined();
+    expect(close).not.toHaveBeenCalled();
+    rejectSend(new Error("Ambiguous transport failure"));
+    await rejected;
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledOnce();
+    expect(await coordinator.currentStatus()).toMatchObject({ phase: "failed" });
+    expect(store.lease).toBeUndefined();
+  });
+
+  it("joins continuous host cancellation and never leaves an active writer on shutdown", async () => {
+    const host = new MiningPublisherHost(() => runtime);
+    const execution = host.startContinuous({ plantId: "D01", requestId, generation: "release-1" });
+    await execution.admission;
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(host.close()).rejects.toThrow();
+    expect(close).toHaveBeenCalledOnce();
+    expect(store.lease).toBeUndefined();
+    expect(await coordinator.currentStatus()).toMatchObject({ phase: "failed" });
+    expect(() =>
+      host.startContinuous({ plantId: "D01", requestId, generation: "release-1" }),
+    ).toThrow("shutting down");
+  });
+
   it("does no work on construction, status or default-off configuration", async () => {
     expect(configuredMiningPublisherRuntime({})).toBeUndefined();
     expect(configuredMiningPublisherRuntime({ MINING_PUBLISHER_ENABLED: "false" })).toBeUndefined();

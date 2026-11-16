@@ -18,6 +18,8 @@ import {
   validSeries,
   seriesQuery,
   verifiedRunIngestion,
+  validContinuousOverview,
+  continuousThroughputUsable,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
 import {
@@ -49,6 +51,7 @@ let catalog,
   catalogVersion,
   context,
   overview,
+  continuousOverview,
   selected,
   plant3d,
   requestEpoch = 0,
@@ -245,6 +248,61 @@ async function applyAppearance() {
   }
 }
 function drawOverview() {
+  const continuous = context?.mode === "continuous";
+  $("continuous-evidence").hidden = !continuous;
+  if (continuous) {
+    const data = continuousOverview;
+    const good =
+      continuousThroughputUsable(data) &&
+      demoRun?.runId === data?.runId &&
+      demoRun.publisherStatus === "running" &&
+      !demoRun.stopRequested;
+    text("quality", `Quality: ${good ? "good" : "unavailable / warming up, stale or stopped"}`);
+    text(
+      "freshness",
+      `Request UTC: ${timestamp(data?.asOf)} · common cutoff: ${timestamp(data?.watermark)}`,
+    );
+    text(
+      "run",
+      context.approvedRun
+        ? `Continuous ${context.approvedRun.runId} · publisher: ${demoRun?.publisherStatus ?? "unknown"} · ingestion completion: not applicable`
+        : "Continuous source waiting for a healthy owner",
+    );
+    kpis.forEach((key, index) => {
+      text(
+        `kpi-${key}`,
+        index === 0 && good ? `${number(data.throughput.value)} t/h` : "Unavailable",
+      );
+      text(
+        `meta-${key}`,
+        index === 0
+          ? `Five-minute mean · coverage ${coverage(data?.throughput?.coverage)} · source lag ${number(data?.watermarkLagSeconds)} seconds`
+          : "Not supported by the continuous slice",
+      );
+    });
+    text(
+      "continuous-source",
+      `Live source: ${context.source?.workspace ?? "unknown"} / ${context.source?.database ?? "unknown"} · generation ${context.approvedRun?.generation ?? "unknown"}`,
+    );
+    text(
+      "continuous-window",
+      `Window: ${timestamp(data?.windowStart)} to ${timestamp(data?.windowEnd)} · freshness is measured against request UTC, not the older cutoff.`,
+    );
+    const evidence = $("throughput-readings");
+    evidence.replaceChildren();
+    for (const reading of data?.readings ?? []) {
+      evidence.append(
+        node(
+          "li",
+          `${reading.tagId}: ${number(reading.value)} ${reading.unit} at ${timestamp(reading.sampleTime)}, received ${timestamp(reading.receivedAt)}; latest ${timestamp(reading.latestSampleTime)}, received ${timestamp(reading.latestReceivedAt)}, age ${number(reading.ageSeconds)}s at request; ${reading.quality}, coverage ${coverage(reading.coverage)}. Event ${reading.eventId ?? "unavailable"}.`,
+        ),
+      );
+    }
+    drawPlant();
+    drawDrawer();
+    if (demoRun) drawDemoRunStatus();
+    return;
+  }
   const valid = overview?.quality === "good";
   text("quality", `Quality: ${valid ? "good" : unknownQuality(overview?.quality)}`);
   text("freshness", `Last refresh: ${timestamp(overview?.refreshedAt)}`);
@@ -573,6 +631,7 @@ function chart(container, data) {
 }
 function clearReadState(message) {
   overview = null;
+  continuousOverview = null;
   incidents = [];
   incidentAsOf = null;
   incidentAssessment = null;
@@ -585,6 +644,35 @@ function clearReadState(message) {
   chart($("diagnostic-chart"), null);
 }
 async function refresh(scope = "all") {
+  if (context?.mode === "continuous") {
+    if (document.hidden || !context.readAvailable || !context.approvedRun) return;
+    const runId = context.approvedRun.runId;
+    const epoch = requestEpoch;
+    try {
+      const data = await reads.read("overview", { plantId: "D01", runId });
+      if (epoch !== requestEpoch || context?.approvedRun?.runId !== runId) return;
+      if (!validContinuousOverview(data, runId, catalogVersion, context.approvedRun.generation)) {
+        throw new Error("Invalid or foreign continuous evidence; values are unavailable.");
+      }
+      continuousOverview = data;
+      overview = null;
+      text(
+        "connection",
+        continuousThroughputUsable(data)
+          ? "Real validated Fabric throughput read succeeded."
+          : "Continuous source has insufficient, stale or unusable critical feed evidence; throughput unavailable.",
+      );
+      drawOverview();
+      text("incident-status", "Unavailable: live incident processing is not supported.");
+      $("incidents").replaceChildren();
+      chart($("feed-chart"), null);
+      chart($("diagnostic-chart"), null);
+    } catch (error) {
+      if (epoch === requestEpoch && context?.approvedRun?.runId === runId)
+        clearReadState(error.message);
+    }
+    return;
+  }
   if (mode === "replay") {
     incidents = [];
     incidentAsOf = null;
@@ -924,6 +1012,13 @@ let demoRun = null;
 let demoBusy = false;
 let demoStatusEpoch = 0;
 function drawDemoRunStatus(notice = "") {
+  if (context?.mode === "continuous") {
+    text(
+      "run-control-status",
+      `${notice}Continuous publishing is operator-managed; public start/stop is disabled. Publisher: ${demoRun?.publisherStatus ?? "unavailable"}${demoRun?.stopRequested ? " · generation held" : ""}.`,
+    );
+    return;
+  }
   const status = demoRun
     ? `Run ${demoRun.runId}: ${demoRun.publisherStatus}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion ${verifiedRunIngestion(overview, demoRun)}.`
     : "No active public demo run.";
@@ -955,9 +1050,18 @@ async function updateDemoStatus(notice = "") {
     if (data.plantId !== "D01" || (data.run && !/^[0-9a-f-]{36}$/.test(data.run.runId)))
       throw new Error("Invalid demo status.");
     demoRun = data.run;
+    const managed = data.mode === "continuous";
     const active = demoRun && ["running", "stopping"].includes(demoRun.publisherStatus);
-    $("run-start").disabled = !!active;
-    $("run-cancel").disabled = !active || demoRun.stopRequested;
+    $("run-start").disabled = managed || !!active;
+    $("run-cancel").disabled = managed || !active || demoRun.stopRequested;
+    $("mode").disabled = managed;
+    $("window").disabled = managed;
+    if (managed) {
+      mode = "live";
+      $("mode").value = "live";
+      $("replay-label").hidden = true;
+      if (context?.mode === "continuous") drawOverview();
+    }
     drawDemoRunStatus(notice);
     if (catalog && (context?.approvedRun?.runId ?? null) !== (demoRun?.runId ?? null)) {
       invalidate();
@@ -970,6 +1074,8 @@ async function updateDemoStatus(notice = "") {
     $("run-start").disabled = true;
     $("run-cancel").disabled = true;
     text("run-control-status", error.message);
+    if (context?.mode === "continuous")
+      clearReadState("Continuous run status unavailable; previous values withdrawn.");
   }
 }
 async function demoAction(action) {

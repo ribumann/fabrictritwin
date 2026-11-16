@@ -4,7 +4,11 @@ import {
   type MiningPublisherIncidents,
   type MiningPublisherRuntime,
 } from "./publisher-runtime.js";
-import type { MiningRunStatus, StartMiningRun } from "./run-coordinator.js";
+import type {
+  MiningRunStatus,
+  StartMiningRun,
+  StartContinuousMiningRun,
+} from "./run-coordinator.js";
 import { MiningCoordinationError } from "./store.js";
 
 export interface MiningPublisherExecution {
@@ -29,6 +33,28 @@ export class MiningPublisherHost {
     requestSignal?: AbortSignal,
     incidents?: MiningPublisherIncidents,
   ): MiningPublisherExecution {
+    const snapshot = { ...input };
+    return this.launch(
+      (runtime, signal, notify) => runtime.run(snapshot, signal, incidents, notify),
+      requestSignal,
+    );
+  }
+
+  startContinuous(input: StartContinuousMiningRun): MiningPublisherExecution {
+    const snapshot = { ...input };
+    return this.launch((runtime, signal, notify) =>
+      runtime.runContinuous(snapshot, signal, notify),
+    );
+  }
+
+  private launch(
+    run: (
+      runtime: MiningPublisherRuntime,
+      signal: AbortSignal,
+      notify: (result: MiningPublisherAdmission) => void,
+    ) => Promise<MiningRunStatus>,
+    requestSignal?: AbortSignal,
+  ): MiningPublisherExecution {
     if (this.closed) {
       throw new MiningCoordinationError("cancelled", "Mining publisher host is shutting down.");
     }
@@ -43,7 +69,6 @@ export class MiningPublisherHost {
     if (!runtime) {
       throw new MiningCoordinationError("configuration", "Mining publisher is not enabled.");
     }
-    const snapshot = { ...input };
     const controller = new AbortController();
     const abortAdmission = () => controller.abort(requestSignal?.reason);
     requestSignal?.addEventListener("abort", abortAdmission, { once: true });
@@ -59,7 +84,7 @@ export class MiningPublisherHost {
     let notified = false;
     const completion = Promise.resolve()
       .then(() =>
-        runtime.run(snapshot, controller.signal, incidents, (result) => {
+        run(runtime, controller.signal, (result) => {
           requestSignal?.throwIfAborted();
           requestSignal?.removeEventListener("abort", abortAdmission);
           notified = true;

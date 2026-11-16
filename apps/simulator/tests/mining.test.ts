@@ -82,6 +82,42 @@ function readReceipt(): {
 }
 
 describe("D01 mining contracts and catalog", () => {
+  it("continuously advances the same identities with bounded pending batches and no finite stop", () => {
+    const simulation = createD01Simulation({ runId, startedAt: start, continuous: true });
+    const finite = createD01Simulation({ runId, startedAt: start, durationSeconds: 1800 });
+    let lastSequence = 0;
+    let batches = 0;
+    for (let elapsed = 5; elapsed <= 7200; elapsed += 5) {
+      const at = new Date(start.valueOf() + elapsed * 1000);
+      const step = simulation.step(at);
+      if (elapsed < 1800) {
+        const bounded = finite.step(at);
+        expect(step).toEqual(bounded);
+        if (bounded.batch) finite.acknowledgeBatch(bounded.batch.batch_id);
+      }
+      if (step.batch) {
+        expect(step.batch.events.length).toBeLessThanOrEqual(64);
+        expect(
+          step.batch.events.every(
+            (event) => event.run_id === runId && event.sequence > lastSequence,
+          ),
+        ).toBe(true);
+        expect(
+          step.batch.events.some((event) => "state" in event && event.state === "stopped"),
+        ).toBe(false);
+        lastSequence = step.batch.events.at(-1)!.sequence;
+        simulation.acknowledgeBatch(step.batch.batch_id);
+        batches++;
+      }
+      expect(step.completed).toBe(false);
+    }
+    expect(batches).toBe(240);
+    expect(simulation.getPendingBatch()).toBeNull();
+    expect(simulation.durationSeconds).toBeNull();
+    expect(() =>
+      createD01Simulation({ runId, startedAt: start, continuous: true, durationSeconds: 300 }),
+    ).toThrow("finite duration");
+  });
   it("exports the versioned publication cadence for every canonical tag", () => {
     const sixtySecondTags = new Set([
       "D01.A.crusher.bearing_temperature",

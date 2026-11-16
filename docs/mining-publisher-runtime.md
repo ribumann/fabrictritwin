@@ -1,10 +1,108 @@
-# D01 publisher runtime (source only, default off)
+# D01 publisher runtime (default off)
 
 `MiningPublisherRuntime` is a callable trusted-backend sender, **not an HTTP
-endpoint, startup job, or deployment**. It integrates the merged deterministic
+endpoint or deployment**. It integrates the merged deterministic
 simulator and Blob lease coordinator. Existing triathlon APIs, generators,
 jobs, root simulator exports and `DEMO_PROFILE` behavior are unchanged.
-Nothing imports this runtime from the application entry point.
+The optional app-lifetime continuous worker calls it only when explicitly enabled.
+
+## Continuous throughput slice
+
+Continuous activation remains **off by default**. The backend entrypoint
+constructs the worker only outside synthetic mode, and starts it only after the
+HTTP server listens. Configure `MINING_CONTINUOUS_ENABLED=true`, an explicit
+`MINING_CONTINUOUS_GENERATION`, and the existing publisher/coordination/managed
+identity/Eventstream secret settings to activate it after operator review.
+The existing Eventstream secret reference is reused; do not copy credentials.
+Set `MINING_CONTINUOUS_READ_ENABLED=true` independently to enable compatible
+public throughput reads. Existing public service principal/read gates still
+apply. No infrastructure, permissions or capacity state is changed by this code.
+
+Each replica observes the same private D01 state. Only a fresh leased admission
+launches a sender; an observation cannot adopt one. One UUID is retained while
+healthy. Failures close/drain actual I/O before a local replacement, with
+30/60/120/240/300-second bounded failure backoff. Idle/held/other-owner checks
+are every 30 seconds. A crash or expired owner permits a **new UUID and physical
+model restart**, not replay or seamless recovery. Durable request/history blobs
+grow per attempted run, not per event/batch; repeated failures therefore still
+need operational retention/monitoring. A generation hold blocks admission even
+when no run exists, and is rechecked under the lease and at every batch gate.
+
+The simulator advances at real five-second deadlines and holds at most one
+30-second batch. Continuous mode has no duration or synthetic terminal states.
+To keep the existing lab sample's strict 0..1000g envelope valid beyond the
+finite horizon, only continuous mode collects/replaces that sample after each
+30-minute cycle. Existing finite deterministic outputs are unchanged. Other
+inventories retain their existing bounded model/clamps; long-horizon realism
+is not proven by a two-hour local test. No raw schema/catalog identity changes.
+
+### Rolling evidence and supported UI
+
+The fixed inline `continuous-throughput` query reuses existing
+`mining_DeduplicatedTelemetry` and `mining_SourceReadiness`, scanning at most ten
+minutes independent of run age. It does not alter a deployed KQL function.
+Only the selected plant/run and pinned validated-source/catalog/profile are
+read. The three critical tags are `D01.{A,B,C}.crusher.ore_flow`.
+
+The common cutoff is the oldest of their latest observed measurements. The
+five-minute trailing arithmetic mean per line uses `(cutoff-5m, cutoff]`, then
+sums the three means as throughput. Each 30-second tag requires at least 9/10
+distinct, usable observations; a full five-minute post-start window must exist.
+Any observed bad/conflicting window sample fails closed even when 9/10 other
+samples are usable; the 90% allowance tolerates absent observations, not bad
+ones. Usable coverage and observation coverage are reported separately.
+Latest/aligned bad, conflicting or missing evidence makes the KPI unavailable.
+All age checks use **request UTC**, never the older cutoff: latest and aligned
+samples must be no older than 105 seconds. Measurement, validated receipt,
+watermark/lag, actual tag value/event ID, sample count and coverage are explicit.
+The service reconfirms current accepted UUID/generation/running authority and
+stop intent after the query; a changed/held/stopped run withdraws the result.
+Query success is not whole-stream ingestion completion or a verified heartbeat.
+
+The public UI shows only this real throughput/freshness slice in continuous
+mode. Other KPIs, trends, live incidents, replay and assistant evidence are
+explicitly unavailable, not healthy empty. Public starts/cancellation are
+disabled even while the worker is waiting or held. Bounded/replay behavior
+remains unchanged when continuous read/worker mode is disabled.
+
+The verified live source is shared workspace **triatwin-dev-fabric**, Eventstream
+**mining-d01-eventstream**, Eventhouse **mining-d01-eventhouse**, query database
+**mining-d01-realtime**. The UI displays the configured query database and shared
+workspace. The dedicated **mining-d01-native-agent-demo** workspace contains
+static Lakehouse/topology/Data Agent artifacts, not this stream. Native static
+ontology instances exist (24 Modules, 56 Tags); matching IDs are not proof of
+a native live/time-series binding. `incident_source_ready=false` remains an
+unsupported capability; this slice neither calls incident completion nor
+constructs an unbounded expected-event manifest.
+
+### Practical private stop
+
+Use the signed delegated endpoint documented in
+[run coordination](mining-run-coordination.md#authenticated-generation-stop),
+or the current authorized Azure CLI login:
+
+```powershell
+.\scripts\simulate\stop-mining-continuous.ps1 `
+  -SubscriptionId <selected-subscription> -TenantId <selected-tenant> `
+  -CallerPrincipalId <approved-current-cli-caller-object-id> `
+  -ResourceGroupName <selected-resource-group> -StorageAccountName <exact-backend-state-account> `
+  -ContainerName <exact-backend-mining-state-container> `
+  -Generation <exact-configured-generation> -Apply
+```
+
+Without `-Apply` the script is read-only. It verifies the explicit
+subscription/tenant/current caller object ID/account endpoint, then conditionally creates and reads back
+only `<selected-container>/continuous/holds/<generation>.json`. The container
+must match the backend's `MINING_STATE_CONTAINER` (`mining-state` for the
+verified live deployment, with isolated `mining-state-...` names also supported).
+The result includes the exact target URI for operator comparison. Tokens stay in memory;
+no role/policy, capacity, writer lease or run state changes occur. A 412 existing
+hold is validated, never overwritten. Unknown delivery must be reconciled with
+a read-only invocation. `StopIntentConfirmed` is **not** send settlement or
+Fabric completion. Observe the owner stop, then disable the worker. Use a
+deliberate new generation to resume; never delete holds to force admission.
+Read this alongside the schema-3 minimum rollback baseline in run coordination.
+Local tests/builds do not satisfy the separate cloud multi-window acceptance gate.
 
 ## Explicit backend call
 

@@ -76,6 +76,25 @@ function fixture(result: unknown = frames(), targetUri = uri) {
 }
 
 describe("bounded mining query transport", () => {
+  it("bounds continuous work independently of run age without changing finite latest queries", async () => {
+    const f = fixture();
+    await f.query({
+      kind: "continuous-throughput",
+      runId: input.runId,
+      asOf: input.end,
+      maxRows: 3,
+    });
+    const body = JSON.parse(String(f.request.mock.calls[2][1]?.body));
+    expect(body.csl).toContain("mining_DeduplicatedTelemetry(plant, run, asof - 10m, asof)");
+    expect(body.csl).toContain("received_at <= asof");
+    expect(body.csl).toContain("watermark=min(latest_timestamp)");
+    expect(body.csl).toContain("let latest_samples = telemetry");
+    expect(body.csl).not.toMatch(/\blet latest\s*=/);
+    expect(body.csl).toContain("timestamp > cutoff - 5m");
+    expect(body.csl).not.toContain("7d");
+    expect(body.csl).not.toContain(input.runId);
+    expect(body.properties.Parameters.run).toBe(`'${input.runId}'`);
+  });
   it("reconciles only the exact run through the fixed nonfuture ingestion query", async () => {
     const f = fixture();
     const scope = { runId: input.runId, maxRows: 5, kind: "ingestion" as const };
