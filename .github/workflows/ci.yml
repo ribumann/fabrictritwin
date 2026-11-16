@@ -24,6 +24,7 @@ jobs:
       - run: npm ci --registry=https://registry.npmjs.org
       - run: npm run build
       - run: npm test
+      - run: node --test scripts/simulate/observe-mining-continuous.test.mjs
       - run: npm run lint
       - run: npm run format
       - uses: actions/setup-python@v5
