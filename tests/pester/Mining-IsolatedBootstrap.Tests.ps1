@@ -26,6 +26,10 @@ Describe 'Isolated Mining preparation' {
         $result = & $script:bootstrap -LakehouseId $script:lakehouse -SemanticModelId $script:model
         $part = $result.DataAgentDefinition.definition.parts |
             Where-Object path -Like '*/datasource.json'
+        $result.DataAgentDefinition.definition.parts | Should -HaveCount 3
+        $part.path | Should -BeExactly 'Files/Config/draft/semantic-model-Mining D01 topology semantic model/datasource.json'
+        @($result.DataAgentDefinition.definition.parts | Where-Object path -Like '*/fewshots.json') |
+            Should -HaveCount 0
         $source = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($part.payload)) | ConvertFrom-Json
         $source.workspaceId | Should -BeExactly $script:workspace
         $source.artifactId | Should -BeExactly $script:model

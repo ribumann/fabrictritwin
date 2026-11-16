@@ -91,6 +91,57 @@ Apply until the existing definitions are reconciled. Rejected creates report
 only the HTTP status and Fabric `errorCode`, and Data Agent mismatch
 diagnostics report only missing/unexpected part paths, never payloads.
 
+### Failed Verify and blocked stale-draft reconciliation
+
+After PR #101 merged, read-only main Verify run `43836621309` authenticated
+successfully but found the source under
+`Files/Config/draft/semantic-model-Mining D01 topology semantic model/`,
+rather than the generator's legacy `semantic_model-mining-d01-topology/`.
+The reported draft contains `datasource.json`, unsupported `fewshots.json`,
+and a service-generated `.platform` part. This is path evidence, not an exact
+definition capture or proof of unpublished state.
+
+The local generator now uses the documented `semantic-model-` prefix followed
+by the source display name verbatim and emits no fewshots, source description,
+or source instructions for a semantic-model source. Relationship guidance is
+retained in stage `aiInstructions`, and all source elements have stable UUIDs.
+This correction has **not** been applied to Fabric. Public Microsoft Learn
+references were independently searched and fetched for this correction; the
+verified basis and the element-ID documentation discrepancy are described below.
+No authenticated Azure/Fabric calls or cloud mutations were made. Offline tests
+do not establish live service acceptance or answer quality.
+
+No update/reconciliation write path has been added. Exact definition comparison
+still rejects unsupported fewshots, unexpected `.platform` metadata, unknown
+parts, and payload differences. The bootstrap never treats matching names or
+the historical zero-item inventory as ownership proof. Even a corrected draft
+cannot be published through Apply without its matching creation receipt.
+
+The original authorized Apply's tmpfs-only receipts are gone. Before a narrowly
+scoped repair can be reviewed, a separately authorized read-only investigation
+must privately capture:
+
+- The exact isolated workspace, Data Agent item ID/type/name, and bound semantic
+  model ID/workspace; name matching alone is insufficient.
+- The complete current definition, including `.platform`, with a frozen exact
+  legacy preimage/hash and documented treatment of service-owned metadata.
+  The reported paths alone do not prove which payloads the service retained.
+- Authoritative unpublished state, including absence of published configuration,
+  plus resolution of any outstanding create/update/publish operations.
+- An explicitly reviewed recovery/ownership authorization bound to those exact
+  IDs and preimage, because the lost receipt cannot be reconstructed from a
+  prior empty inventory.
+
+Only then can a repair implement an explicit Apply gate and a durable private
+write-ahead receipt recording exact target, preimage and replacement hashes,
+attempt and operation state **before** mutation. It must recheck the guards
+immediately before updating, read back the corrected definition, recognize an
+already-correct result without repeating writes, and block uncertain outcomes
+rather than retry blindly. Publishing requires separate verified ownership and
+authorization; it must not be used to discover whether a repair worked.
+Do not fabricate a receipt, delete/recreate the item, broadly ignore unknown
+parts, or dispatch Apply to bypass this blocker.
+
 ## Existing private agent
 
 The private, published `mining-d01-topology-dataagent` uses the existing DirectLake
@@ -105,9 +156,22 @@ topology**, not live telemetry. It does not provide an anonymous bridge.
 
 ## Reproduce the definition
 
-The definition generator selects the twelve model tables and their columns, exposes
-model measures, and includes a DAX example for line-to-plant mapping. It only
-generates JSON; it never creates, updates, or publishes an item.
+The definition generator selects the twelve model tables and their columns,
+exposes model measures, and retains line-to-plant guidance in its instructions.
+It emits exactly these three JSON parts:
+
+- `Files/Config/data_agent.json`
+- `Files/Config/draft/stage_config.json`
+- `Files/Config/draft/semantic-model-Mining D01 topology semantic model/datasource.json`
+
+The folder prefix is `semantic-model-`, while the datasource and element type
+values remain `semantic_model` and `semantic_model.*`. Spaces and capitalization
+in the source display name are preserved. Semantic-model sources do not support
+source descriptions, source instructions, or example queries, so
+`userDescription`, `dataSourceInstructions`, `fewshots.json`, and embedded
+fewShots/query replacements are omitted. The generator does not manufacture
+`.platform` or published parts. It only generates JSON; it never creates,
+updates, or publishes an item.
 
 ```powershell
 $workspace = 'db05aacb-bd7c-405a-a19b-90cc1c67d87b'
@@ -115,13 +179,61 @@ $model = '34a2e63a-f3d3-4d8f-8d26-58f298d876be'
 $definition = & .\scripts\fabric\New-MiningDataAgentDefinition.ps1 -WorkspaceId $workspace -SemanticModelId $model
 ```
 
+### Verified Microsoft Learn basis
+
+The following official references were searched and fetched on 2026-11-16:
+
+- [Add and configure data sources — Semantic Model supported configurations](https://learn.microsoft.com/fabric/data-science/data-agent-add-datasources#configure-your-data-source)
+  explicitly supports agent instructions but not data-source instructions,
+  data-source descriptions, or example queries for semantic models. The generic
+  definition schema's optional fields do not override this source-specific
+  support matrix.
+- [Data Agent definition](https://learn.microsoft.com/rest/api/fabric/articles/item-management/definitions/data-agent-definition)
+  documents the named source-folder structure, `$schema: 2.1.0` for the agent,
+  `$schema: 1.0.0` for the datasource and stage, the `semantic_model` /
+  `semantic_model.*` types, and the required stage `aiInstructions`. Those
+  schema values and source-selection fields are retained.
+- [Semantic model best practices — Prep for AI](https://learn.microsoft.com/fabric/data-science/semantic-model-best-practices#prep-for-ai-make-semantic-model-ai-ready)
+  says agent instructions are not passed to the DAX generation tool.
+  Line/plant relationship context remains in the supported stage field for
+  agent-level interpretation, not as a claim that it configures DAX joins.
+  Query-engine-specific instructions and Verified Answers belong in the
+  semantic model's Power BI **Prep for AI**, which this local fix does not
+  configure.
+
+#### Required element IDs versus the incomplete example
+
+The definition reference's **DataSourceElement** property table explicitly
+requires `id` of type `string(uuid)`, while its warehouse example omits element
+IDs (and even omits a column's required `is_selected`). The example is therefore
+not evidence that required fields may be omitted. This generator follows the
+explicit property contract: all 12 tables, 36 columns, and 14 measures have
+nonempty, distinct UUIDs as well as `display_name`, `type`, and `is_selected`.
+
+The reference does not prescribe an ID-generation algorithm or describe these
+IDs as semantic-model lineage tags. Our local choice is deterministic UUIDv5
+in the standard URL namespace, using
+`mining-d01-data-agent-elements/v1/{workspaceId}/{semanticModelId}/{elementPath}`.
+Paths include the kind and parent table (`table/Plant`,
+`column/Line/parent_id`, `measure/Plant/Plant count`), preventing repeated column
+names from sharing IDs. Identical target/path inputs retain their IDs; changing
+the target changes them. Tests check all 62 UUIDs, uniqueness, repeatability,
+target scoping, and independently calculated UUIDv5 vectors. These are
+definition-local identifiers, not invented cloud item IDs or evidence about
+the stale draft's actual preimage. Any service normalization still requires
+separately authorized readback; comparison and reconciliation remain fail-closed.
+
+### Authorized submission boundary
+
 For a new Mining-owned item, submit this definition with a unique display name
 using the [create Data Agent API](https://learn.microsoft.com/rest/api/fabric/dataagent/items/create-data-agent).
-For the specific existing Mining item, an authorized operator can submit it to
+For the specific existing **private** Mining item, an authorized operator can
+submit it to
 the [update definition API](https://learn.microsoft.com/rest/api/fabric/dataagent/items/update-data-agent-definition).
 **Update replaces the item definition**: verify the workspace and item IDs first;
-never apply it to a TriTwin agent. Follow the returned long-running operation to
-success, inspect the saved definition, then use the
+never apply it to a TriTwin agent. This is not a recovery procedure for the
+isolated stale draft above, which remains blocked. Follow the returned
+long-running operation to success, inspect the saved definition, then use the
 [publish API](https://learn.microsoft.com/rest/api/fabric/dataagent/items/publish-data-agent).
 Do not treat item creation or publish as proof that questions work.
 
@@ -147,8 +259,10 @@ equipment items, 56 tags, 50 streams and 248 catalog relationship rows for three
 separate count questions. For the line-to-plant question it returned A, B, C and
 shared, all under **Diamond recovery / three-line plant** (D01). Independently
 executed Power BI `executeQueries` DAX against the semantic model returned those
-four lines and plant mapping; the DAX example in the definition was also executed
-against that model. The MCP response provides answer text, not the generated DAX,
+four lines and plant mapping; the DAX example in the old definition was also
+executed against that model. That historical query check does not establish
+support for semantic-model fewshots; the corrected generator omits them.
+The MCP response provides answer text, not the generated DAX,
 so that independent query establishes source ground truth rather than proving the
 agent's internal query provenance. Before exposing the relevant columns and adding
 the tested example, the same native question incorrectly returned no data. These
