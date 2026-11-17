@@ -121,6 +121,18 @@ export function validAsOf(value, asOf, replay) {
   return Number.isFinite(age) && (replay ? Math.abs(age) < 1000 : age >= -15_000 && age <= 90_000);
 }
 
+// Treat the browser as up to 15 seconds behind for expiry and age checks.
+export const continuousClockSkewMs = 15_000;
+function continuousRequestCurrent(value, now) {
+  const request = Date.parse(value);
+  const latestPossibleNow = now + continuousClockSkewMs;
+  return (
+    Number.isFinite(request) &&
+    request <= latestPossibleNow &&
+    latestPossibleNow - request <= 90_000
+  );
+}
+
 export function validSeries(data, params, catalogVersion, catalog) {
   if (
     !sameScope(data, params.runId, catalogVersion) ||
@@ -174,7 +186,7 @@ export function crossRunChartData(data, params, catalogVersion, catalog, owner, 
     !owner ||
     data?.owner?.runId !== owner.runId ||
     data.owner.generation !== owner.generation ||
-    !(Date.parse(data.owner.authorityUntil) > now) ||
+    !(Date.parse(data.owner.authorityUntil) > now + continuousClockSkewMs) ||
     data.catalogVersion !== catalogVersion ||
     data.profileVersion !== "d01-publish-profile-v1" ||
     data.metric !== params.metric ||
@@ -185,10 +197,8 @@ export function crossRunChartData(data, params, catalogVersion, catalog, owner, 
     end - start > 86_400_000 ||
     Date.parse(data.start) !== start ||
     Date.parse(data.end) !== end ||
-    !Number.isFinite(asOf) ||
+    !continuousRequestCurrent(data.asOf, now) ||
     asOf < end ||
-    asOf > now ||
-    now - asOf > 90_000 ||
     !Array.isArray(data.points) ||
     data.points.length > 1000
   )
@@ -328,7 +338,7 @@ export function validContinuousOverview(
     sameScope(data.run, runId, catalogVersion) &&
     data.generation === generation &&
     data.run.generation === generation &&
-    validAsOf(data.asOf, new Date(now).toISOString(), false) &&
+    continuousRequestCurrent(data.asOf, now) &&
     ["good", "unavailable"].includes(data.quality) &&
     data.throughput?.unit === "t/h" &&
     Array.isArray(data.readings) &&
@@ -641,7 +651,7 @@ export function continuousTagReading(data, tagId, now = Date.now()) {
     return { ...reading, quality: "unavailable", value: null };
   if (
     reading.quality === "good" &&
-    now - Date.parse(reading.sampleTime) >
+    now + continuousClockSkewMs - Date.parse(reading.sampleTime) >
       (feed ? 105_000 : (reading.cadenceSeconds ?? 60) * 3_000 + 15_000)
   ) {
     return { ...reading, quality: "stale", value: null };
@@ -661,7 +671,7 @@ export function continuousSummaryFresh(data, now = Date.now()) {
     Array.isArray(summary?.windows) &&
     Number.isFinite(watermark) &&
     watermark <= request &&
-    now - watermark <= 105_000 &&
+    now + continuousClockSkewMs - watermark <= 105_000 &&
     [...continuousFeedTags, "D01.shared.water.water_flow", "D01.shared.control.power"].every(
       (tagId) => {
         const reading = continuousTagReading(data, tagId, now);
@@ -693,13 +703,11 @@ export function continuousRunningLines(data, now = Date.now()) {
     !Number.isInteger(detail.runningLines.value) ||
     !Array.isArray(detail.lineStates) ||
     !Number.isFinite(request) ||
-    request > now + 15_000 ||
-    now - request > 90_000 ||
     detail.lineStates.some(
       (state) =>
         state.quality !== "good" ||
         !Number.isFinite(Date.parse(state.sampleTime)) ||
-        now - Date.parse(state.sampleTime) > 195_000,
+        now + continuousClockSkewMs - Date.parse(state.sampleTime) > 195_000,
     )
   )
     return null;
@@ -707,16 +715,13 @@ export function continuousRunningLines(data, now = Date.now()) {
 }
 
 function continuousOwnerCurrent(data, now) {
-  const request = Date.parse(data?.asOf);
   return (
     data?.run?.publisherStatus === "running" &&
     data.run.stopRequested === false &&
     data.run.runId === data.runId &&
     data.run.generation === data.generation &&
-    Date.parse(data.run.authorityUntil) > now &&
-    Number.isFinite(request) &&
-    request <= now &&
-    now - request <= 90_000
+    Date.parse(data.run.authorityUntil) > now + continuousClockSkewMs &&
+    continuousRequestCurrent(data.asOf, now)
   );
 }
 
@@ -727,15 +732,10 @@ export function continuousThroughputUsable(data, now = Date.now()) {
     data?.quality === "good" &&
     data.throughput?.quality === "good" &&
     Number.isFinite(data.throughput.value) &&
-    data.run?.publisherStatus === "running" &&
-    data.run.stopRequested === false &&
-    Date.parse(data.run.authorityUntil) > now &&
-    Number.isFinite(requested) &&
-    requested <= now &&
-    now - requested <= 90_000 &&
+    continuousOwnerCurrent(data, now) &&
     Number.isFinite(cutoff) &&
     cutoff <= requested &&
-    now - cutoff <= 105_000 &&
+    now + continuousClockSkewMs - cutoff <= 105_000 &&
     Date.parse(data.windowStart) === cutoff - 300_000 &&
     Date.parse(data.windowEnd) === cutoff &&
     data.readings?.length === 3 &&

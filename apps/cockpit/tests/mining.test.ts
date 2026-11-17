@@ -21,7 +21,16 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("isolated mining BFF", () => {
   it("proxies only a bounded, run-free cross-run request to the authenticated demo service", async () => {
-    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(
+        async (url) =>
+          new Response(
+            String(url).includes("/context?")
+              ? JSON.stringify({ mode: "continuous", capabilities: { trends: true } })
+              : "{}",
+          ),
+      );
     const app = express();
     app.use(
       "/api/mining",
@@ -39,11 +48,68 @@ describe("isolated mining BFF", () => {
     const query =
       "start=2026-01-01T00:00:00.000Z&end=2026-01-02T00:00:00.000Z&binMinutes=5&metric=feed";
     expect((await request(app).get(`/api/mining/cross-run-trends?${query}`)).status).toBe(200);
-    expect(String(fetchImpl.mock.calls[0][0])).toContain("/api/mining/demo/cross-run-trends?");
-    expect(String(fetchImpl.mock.calls[0][0])).not.toContain("runId");
+    expect(String(fetchImpl.mock.calls[0][0])).toContain("/api/mining/demo/context?");
+    expect(String(fetchImpl.mock.calls[1][0])).toContain("/api/mining/demo/cross-run-trends?");
+    expect(String(fetchImpl.mock.calls[1][0])).not.toContain("runId");
     expect(
       (await request(app).get(`/api/mining/cross-run-trends?${query}&runId=other`)).status,
     ).toBe(400);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    { mode: "continuous", capabilities: { trends: false } },
+    { mode: "continuous", capabilities: {} },
+    { mode: "bounded", capabilities: { trends: true } },
+  ])(
+    "does not forward cross-run requests when the backend does not advertise them",
+    async (context) => {
+      const fetchImpl = vi
+        .fn<typeof fetch>()
+        .mockImplementation(async () => new Response(JSON.stringify(context)));
+      const app = express();
+      app.use(
+        "/api/mining",
+        createMiningRouter(
+          {
+            streamingBackendBaseUrl: "https://internal.example",
+            fetchImpl,
+            buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+          },
+          false,
+          true,
+          true,
+        ),
+      );
+      const query =
+        "start=2026-01-01T00:00:00.000Z&end=2026-01-01T01:00:00.000Z&binMinutes=5&metric=feed";
+      expect((await request(app).get(`/api/mining/cross-run-trends?${query}`)).status).toBe(503);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(String(fetchImpl.mock.calls[0][0])).toContain("/api/mining/demo/context?");
+    },
+  );
+  it.each([
+    { label: "malformed", body: "not-json" },
+    { label: "too large", body: "x".repeat(16_385) },
+  ])("fails closed when the capability response is $label", async ({ body }) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response(body));
+    const app = express();
+    app.use(
+      "/api/mining",
+      createMiningRouter(
+        {
+          streamingBackendBaseUrl: "https://internal.example",
+          fetchImpl,
+          buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+        },
+        false,
+        true,
+        true,
+      ),
+    );
+    const query =
+      "start=2026-01-01T00:00:00.000Z&end=2026-01-01T01:00:00.000Z&binMinutes=5&metric=feed";
+    expect((await request(app).get(`/api/mining/cross-run-trends?${query}`)).status).toBe(503);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
   it("forwards only bounded same-origin demo questions, never visitor auth or chosen scope", async () => {

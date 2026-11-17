@@ -187,7 +187,7 @@ export function mapMiningCrossRunTrendRows(
       new Set(actualTimes).size !== actualTimes.length ||
       goodCount + uncertainCount + badCount + conflictCount !== sampleCount ||
       (expectedSamples !== null && expectedSamples === 0) ||
-      (expectedSamples === null && !row.cadence_conflict)
+      (expectedSamples === null && !row.cadence_conflict && conflictCount === 0)
     ) {
       return malformed("Inconsistent Mining cross-run trend coverage.");
     }

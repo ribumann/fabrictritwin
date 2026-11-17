@@ -34,6 +34,7 @@ import {
   continuousRunningLines,
   continuousSummaryFresh,
   continuousSummaryMetric,
+  continuousClockSkewMs,
 } from "../src/ui/public/mining/data.js";
 import {
   connections,
@@ -232,6 +233,67 @@ describe("continuous throughput presentation", () => {
     expect(validContinuousOverview(data, data.runId, "catalog", "release-2", now)).toBe(false);
     expect(continuousThroughputUsable(data, now)).toBe(true);
     expect(validOverview(data, data.runId, "catalog", data.asOf, false, now)).toBe(false);
+  });
+  it("allows bounded client-behind skew without extending owner or evidence freshness", () => {
+    const { data: detail, catalog } = withDetail(fixture());
+    const data = withSummary(detail);
+    const tagId = "D01.A.crusher.ore_flow";
+    const valuesAvailable = (clientNow: number) => ({
+      overview: validContinuousOverview(
+        data,
+        data.runId,
+        "catalog",
+        "release-1",
+        clientNow,
+        catalog,
+      ),
+      throughput: continuousThroughputUsable(data, clientNow),
+      reading: continuousTagReading(data, tagId, clientNow)?.quality,
+      lines: continuousRunningLines(data, clientNow),
+      summary: continuousSummaryFresh(data, clientNow),
+    });
+    expect(valuesAvailable(now - 1_400)).toEqual({
+      overview: true,
+      throughput: true,
+      reading: "good",
+      lines: 3,
+      summary: true,
+    });
+    expect(valuesAvailable(now - 15_001)).toEqual({
+      overview: false,
+      throughput: false,
+      reading: "unavailable",
+      lines: null,
+      summary: false,
+    });
+    expect(valuesAvailable(now + 10_000)).toEqual({
+      overview: true,
+      throughput: true,
+      reading: "good",
+      lines: 3,
+      summary: true,
+    });
+    data.run.authorityUntil = new Date(now + 14_999).toISOString();
+    expect(valuesAvailable(now)).toMatchObject({
+      throughput: false,
+      reading: "unavailable",
+      lines: null,
+      summary: false,
+    });
+    data.run.authorityUntil = new Date(now + 200_000).toISOString();
+    expect(valuesAvailable(now + 30_001)).toMatchObject({ throughput: false, summary: false });
+    expect(valuesAvailable(now + 75_001)).toMatchObject({
+      overview: false,
+      throughput: false,
+      reading: "unavailable",
+      lines: null,
+      summary: false,
+    });
+    data.detail.lineStates[0].sampleTime = new Date(now - 180_001).toISOString();
+    expect(continuousRunningLines(data, now)).toBeNull();
+    const reading = data.readings.find((item) => item.tagId === tagId)!;
+    reading.latestSampleTime = new Date(now - 90_001).toISOString();
+    expect(continuousTagReading(data, tagId, now)).toMatchObject({ quality: "stale", value: null });
   });
   it("accepts a complete pinned detail bundle and exposes only direct readings and reported line state", () => {
     const { data, catalog } = withDetail(fixture());
@@ -549,6 +611,24 @@ describe("cross-run chart validation", () => {
     expect(validate({ ...data, points: [{ ...point, sampleTimes: [start] }] })).toBeNull();
     expect(validate({ ...data, points: [{ ...point, unit: "kg/m3" }] })).toBeNull();
     expect(validate({ ...data, points: [] })?.rows).toEqual([]);
+    expect(
+      crossRunChartData(data, params, "catalog", catalog, owner, Date.parse(data.asOf) - 1_400),
+    ).not.toBeNull();
+    expect(
+      crossRunChartData(data, params, "catalog", catalog, owner, Date.parse(data.asOf) - 15_001),
+    ).toBeNull();
+    expect(
+      crossRunChartData(data, params, "catalog", catalog, owner, Date.parse(data.asOf) + 10_000),
+    ).not.toBeNull();
+    expect(
+      crossRunChartData(data, params, "catalog", catalog, owner, Date.parse(data.asOf) + 75_001),
+    ).toBeNull();
+    expect(
+      validate({
+        ...data,
+        owner: { ...data.owner, authorityUntil: new Date(now + 15_000).toISOString() },
+      }),
+    ).toBeNull();
   });
 });
 describe("mining chart legends", () => {
@@ -637,6 +717,7 @@ describe("mining chart legends", () => {
     expect(contents).toContain("run-two");
     expect(contents).toContain("AMBIGUOUS_OWNER");
     expect(contents).toContain("2026-11-15T20:02:05.000Z");
+    expect(JSON.stringify(container)).toContain("missing rows mean no bin was returned");
   });
   it("shows each series range while preserving the shared axis and quality gaps", () => {
     const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
@@ -734,6 +815,37 @@ describe("mining chart legends", () => {
   });
 });
 describe("mining request lifecycle", () => {
+  it("keeps continuous chart windows behind the server under bounded client-ahead skew", () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const query = tree.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "query",
+    );
+    if (!query) throw new Error("Missing query function");
+    const serverNow = Date.parse("2026-01-01T12:00:07.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(serverNow + continuousClockSkewMs);
+    const sandbox = {
+      Date,
+      mode: "live",
+      context: { mode: "continuous", approvedRun: { runId: "owner" } },
+      continuousClockSkewMs,
+      $: () => ({ value: "30" }),
+      query: undefined as undefined | (() => { end: string }),
+    };
+    runInNewContext(`${query.getText(tree)}; this.query = query;`, sandbox);
+    expect(Date.parse(sandbox.query!().end)).toBeLessThanOrEqual(serverNow);
+    sandbox.context.mode = "bounded";
+    expect(Date.parse(sandbox.query!().end)).toBe(
+      Math.floor((serverNow + continuousClockSkewMs) / 15_000) * 15_000,
+    );
+  });
   it.each(["status failure", "generation change"])(
     "withdraws trends and invalidates pending reads on %s",
     async (scenario) => {
@@ -821,6 +933,7 @@ describe("mining request lifecycle", () => {
         mode: "continuous",
         readAvailable: true,
         approvedRun: { runId: "owner", generation: "g1" },
+        capabilities: { trends: true },
       },
       requestEpoch: 0,
       document: { hidden: false },
@@ -860,6 +973,13 @@ describe("mining request lifecycle", () => {
       { runId: "owner", generation: "g1" },
     );
     expect(chart).toHaveBeenCalledTimes(2);
+    read.mockClear();
+    chart.mockClear();
+    context.context.capabilities.trends = false;
+    await context.refresh!("all");
+    expect(read.mock.calls.map(([path]) => path)).toEqual(["overview"]);
+    expect(chart).toHaveBeenCalledWith("feed-chart", null);
+    expect(chart).toHaveBeenCalledWith("diagnostic-chart", null);
   });
   it.each([
     { mode: "replay", scope: "all" },

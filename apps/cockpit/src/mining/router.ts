@@ -4,6 +4,7 @@ import {
   proxyStreamingBackendPost,
   type StreamingBackendProxyOptions,
 } from "../api/proxy.js";
+import { buildServiceAuthHeaders } from "../api/service-auth.js";
 
 const fields = new Set([
   "plantId",
@@ -28,6 +29,46 @@ const routes = [
 ];
 const identifier = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
+async function crossRunTrendsAvailable(options: StreamingBackendProxyOptions): Promise<boolean> {
+  const headers = await (options.buildAuthHeaders ?? buildServiceAuthHeaders)();
+  const url = new URL("/api/mining/demo/context?plantId=D01", options.streamingBackendBaseUrl);
+  const response = await (options.fetchImpl ?? fetch)(url, {
+    method: "GET",
+    headers,
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok || !response.body) throw new Error("Mining context is unavailable.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > 16_384) {
+        await reader.cancel();
+        throw new Error("Mining context exceeds the permitted byte limit.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const context: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  return (
+    typeof context === "object" &&
+    context !== null &&
+    "mode" in context &&
+    context.mode === "continuous" &&
+    "capabilities" in context &&
+    typeof context.capabilities === "object" &&
+    context.capabilities !== null &&
+    "trends" in context.capabilities &&
+    context.capabilities.trends === true
+  );
+}
 
 export function createMiningRouter(
   options: StreamingBackendProxyOptions,
@@ -246,6 +287,28 @@ export function createMiningRouter(
         return;
       }
       query.set("plantId", "D01");
+      if (route === "cross-run-trends") {
+        try {
+          if (!(await crossRunTrendsAvailable(options))) {
+            res.status(503).json({
+              error: {
+                code: "mining_trend_unavailable",
+                message: "Continuous trends are unavailable.",
+              },
+            });
+            return;
+          }
+        } catch (error) {
+          console.error("[mining] Unable to check continuous trend capability", error);
+          res.status(503).json({
+            error: {
+              code: "mining_trend_unavailable",
+              message: "Continuous trend capability is unavailable.",
+            },
+          });
+          return;
+        }
+      }
       await proxyStreamingBackendGet(
         req,
         res,

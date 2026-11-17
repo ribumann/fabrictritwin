@@ -217,6 +217,48 @@ describe("bounded cross-run Mining trends", () => {
     expect(gapPoints.points[1]?.segmentId).not.toBe(gapPoints.points[0]?.segmentId);
   });
 
+  it("preserves a conflicting-only bin outside its non-conflicting schedule as unavailable", () => {
+    const row = trendRow(undefined, undefined, start, {
+      first_sample_time: start,
+      last_sample_time: start,
+      first_received_at: "2026-01-01T12:00:01.000Z",
+      last_received_at: "2026-01-01T12:00:01.000Z",
+      sample_times: [start],
+      sample_count: 1,
+      expected_samples: null,
+      good_count: 0,
+      conflict_count: 1,
+      coverage: null,
+      quality: "conflict",
+      status: "CONFLICT",
+      cadence_conflict: false,
+      coverage_complete: false,
+      value: null,
+    });
+    expect(mapMiningCrossRunTrendRows(request, [row], fixedNow).points[0]).toMatchObject({
+      status: "CONFLICT",
+      value: null,
+      coverage: null,
+      expectedSamples: null,
+      segmentId: null,
+    });
+    expect(() =>
+      mapMiningCrossRunTrendRows(
+        request,
+        [
+          {
+            ...row,
+            conflict_count: 0,
+            good_count: 1,
+            status: "COVERAGE_UNKNOWN",
+            quality: "unknown",
+          },
+        ],
+        fixedNow,
+      ),
+    ).toThrow(/coverage/);
+  });
+
   it("never exposes partial, bad, conflicting or ambiguously owned aggregates as healthy values", () => {
     const partial = trendRow(undefined, undefined, undefined, {
       sample_count: 10,

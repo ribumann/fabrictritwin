@@ -25,6 +25,7 @@ import {
   continuousRunningLines,
   continuousSummaryFresh,
   continuousSummaryMetric,
+  continuousClockSkewMs,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
 import {
@@ -115,7 +116,11 @@ function query() {
   const asOf =
     mode === "replay"
       ? replayTime
-      : new Date(Math.floor(Date.now() / 15_000) * 15_000).toISOString();
+      : new Date(
+          Math.floor(
+            (Date.now() - (context?.mode === "continuous" ? continuousClockSkewMs : 0)) / 15_000,
+          ) * 15_000,
+        ).toISOString();
   if (!asOf || !Number.isFinite(Date.parse(asOf)))
     throw new Error("Choose a valid UTC replay time.");
   const minutes = Number($("window").value);
@@ -488,7 +493,9 @@ function drawDrawer() {
   text(
     "diagnostic-scope",
     continuous
-      ? "Cross-run sensor trends are shown by metric; module operating state is not directly reported."
+      ? context.capabilities?.trends === true
+        ? "Cross-run sensor trends are shown by metric; module operating state is not directly reported."
+        : "Continuous trend reads are unavailable; module operating state is not directly reported."
       : selectedIncident?.metric === null
         ? "No supported trend metric is associated with this incident; choose a diagnostic to inspect a separate series."
         : `Selected module: ${selected} · 30-minute default trend`,
@@ -744,7 +751,7 @@ function chart(container, data) {
   container.append(
     node(
       "p",
-      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins${data.crossRun ? " · observed bin averages; runs remain separate" : ""}. Gaps and non-good-quality samples are not connected.`,
+      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins${data.crossRun ? " · observed bin averages; runs remain separate" : ""}. Gaps and non-good-quality samples are not connected.${data.crossRun ? " Within the selected window, missing rows mean no bin was returned, not zero or an unrequested interval." : ""}`,
     ),
   );
   const details = node("details"),
@@ -836,6 +843,12 @@ async function refresh(scope = "all") {
       return;
     }
     if (!current()) return;
+    if (context.capabilities?.trends !== true) {
+      chart($("feed-chart"), null);
+      chart($("diagnostic-chart"), null);
+      text("diagnostic-scope", "Continuous trend reads are unavailable.");
+      return;
+    }
     const params = query();
     const loadTrend = async (target, metric) => {
       try {
@@ -1060,6 +1073,7 @@ async function loadContext() {
       throw new Error("Invalid mining context.");
     if (context.catalogVersion !== catalogVersion)
       throw new Error("Backend and geometry catalog versions differ; mining reads are gated.");
+    $("window").disabled = context.mode === "continuous" && context.capabilities?.trends !== true;
     if (
       context.approvedRun &&
       !sameScope(context.approvedRun, context.approvedRun.runId, catalogVersion)
@@ -1264,7 +1278,7 @@ async function updateDemoStatus(notice = "") {
     $("run-start").disabled = managed || !!active;
     $("run-cancel").disabled = managed || !active || demoRun.stopRequested;
     $("mode").disabled = managed;
-    $("window").disabled = false;
+    $("window").disabled = managed && context?.capabilities?.trends !== true;
     if (managed) {
       mode = "live";
       $("mode").value = "live";
