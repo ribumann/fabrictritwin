@@ -160,7 +160,7 @@ creation or playbook generation alone is not treated as a working native capabil
 
 The public demo controls and reads are separately opt-in and do not replace the
 protected delegated APIs. See the [mining architecture and dated
-evidence](docs/release-architecture.md#isolated-d01-mining-path-readiness-gated)
+evidence](docs/release-architecture.md#public-d01-mining-demo-service-boundary-and-private-source)
 and [run coordination settings](docs/mining-run-coordination.md). Follow a
 measurement from the simulator through Fabric in the
 [Mining learning guide](docs/mining-learning-guide.md).

@@ -4,7 +4,9 @@ The [public Mining cockpit](https://ontologydemo.liberatetheinnerchild.net/minin
 shows a simulated plant connected to Microsoft Fabric. The measurements and line
 states are generated, not readings from real equipment. Fabric itself requires
 an authorized account; public visitors do not need one to view the cockpit.
-The account-free local demo in the main README is currently triathlon-only.
+The hosted publisher is operator-managed, and public start/stop controls are
+disabled. The account-free local demo in the [main README](../README.md) is
+currently triathlon-only.
 
 ## Follow a measurement
 
@@ -36,8 +38,9 @@ claims.
 3. Select a module to inspect its individual tag measurements and their units.
    A simulator-reported line state and a sensor-derived status are not proof of
    physical equipment health.
-4. Explore trends or advisory views when the cockpit marks them available.
-   Run changes and missing samples are gaps, not continuous observations.
+4. Trends, live incidents, the assistant and replay are unavailable in the
+   current continuous configuration. Do not treat historical bounded-run
+   evidence as proof that these views are enabled now.
 
 The simulator can restart with a new run ID and warm up again. A gap across
 restart is real; do not join runs as though their time series were continuous.
@@ -77,10 +80,10 @@ mining_ValidatedTelemetry
 | order by timestamp asc
 ```
 
-These are exploratory raw row counts, not deduplicated KPI calculations or
-completeness checks. Look for absent bins, changing run IDs and delays between
-`timestamp` and `received_at`. Use the source functions and the cockpit's
-coverage/quality rules when interpreting a metric.
+These are exploratory validated-table row counts, not deduplicated KPI
+calculations or completeness checks. Look for absent bins, changing run IDs and
+delays between `timestamp` and `received_at`. Use the source functions and the
+cockpit's coverage/quality rules when interpreting a metric.
 
 Line states are in `mining_ValidatedState`. A Fabric item or table existing
 does not establish that it is populated, correctly bound, or complete. No
