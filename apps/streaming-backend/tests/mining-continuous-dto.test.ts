@@ -542,9 +542,36 @@ describe("continuous D01 evidence", () => {
       query,
     )(run, asOf, new AbortController().signal);
     expect(result.throughput.value).toBe(126);
-    expect(result.continuousSummary.windows.every((window) => window.status === "QUERY_UNAVAILABLE"))
-      .toBe(true);
+    expect(
+      result.continuousSummary.windows.every((window) => window.status === "QUERY_UNAVAILABLE"),
+    ).toBe(true);
   });
+
+  it.each(["malformed", "overflow"] as const)(
+    "keeps valid throughput and detail when the summary query rejects with %s",
+    async (code) => {
+      const query = vi.fn(async (input: { kind: string }) => {
+        if (input.kind === "continuous-throughput") return rows();
+        throw new MiningQueryError(code, "Invalid summary response.");
+      });
+      const result = await createMiningContinuousProvider(
+        { MINING_CONTINUOUS_READ_ENABLED: "true" },
+        query,
+      )(run, asOf, new AbortController().signal);
+      expect(result.throughput.value).toBe(126);
+      expect(result.detail.readings).toHaveLength(53);
+      expect(
+        result.continuousSummary.windows.every((window) => window.status === "SOURCE_REJECTED"),
+      ).toBe(true);
+      expect(
+        result.continuousSummary.windows.every(
+          (window) =>
+            window.grossProcessWaterIntensity.value === null &&
+            window.energyIntensity.value === null,
+        ),
+      ).toBe(true);
+    },
+  );
 
   it("keeps valid throughput and detail when one summary row fails integrity checks", async () => {
     const summaries = summaryRows();
@@ -575,8 +602,9 @@ describe("continuous D01 evidence", () => {
     )(run, asOf, new AbortController().signal);
     expect(result.throughput.value).toBe(126);
     expect(result.detail.readings).toHaveLength(53);
-    expect(result.continuousSummary.windows.every((window) => window.status === "SOURCE_REJECTED"))
-      .toBe(true);
+    expect(
+      result.continuousSummary.windows.every((window) => window.status === "SOURCE_REJECTED"),
+    ).toBe(true);
   });
 
   it("does not suppress unexpected summary errors", async () => {
@@ -591,5 +619,22 @@ describe("continuous D01 evidence", () => {
         new AbortController().signal,
       ),
     ).rejects.toThrow("unexpected summary failure");
+  });
+
+  it("propagates summary cancellation instead of classifying it as rejected data", async () => {
+    const controller = new AbortController();
+    const cancelled = new MiningQueryError("cancelled", "Mining query was cancelled.");
+    const query = vi.fn(async (input: { kind: string }) => {
+      if (input.kind === "continuous-throughput") return rows();
+      controller.abort();
+      throw cancelled;
+    });
+    await expect(
+      createMiningContinuousProvider({ MINING_CONTINUOUS_READ_ENABLED: "true" }, query)(
+        run,
+        asOf,
+        controller.signal,
+      ),
+    ).rejects.toBe(cancelled);
   });
 });

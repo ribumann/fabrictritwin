@@ -3,6 +3,10 @@ import { createBoundedMiningQuery, MiningQueryError } from "./bounded-query.js";
 import { mapContinuousThroughput } from "./continuous-dto.js";
 import { mapContinuousSummaryRows } from "./continuous-summary-dto.js";
 
+type SummaryRead =
+  | { rows: Record<string, unknown>[]; failure: null }
+  | { rows: null; failure: "QUERY_UNAVAILABLE" | "SOURCE_REJECTED" };
+
 export function createMiningContinuousProvider(
   env: NodeJS.ProcessEnv,
   query: ReturnType<typeof createBoundedMiningQuery> = createBoundedMiningQuery({
@@ -24,7 +28,7 @@ export function createMiningContinuousProvider(
       },
       signal,
     );
-    const summaryRows = query(
+    const summaryRows: Promise<SummaryRead> = query(
       {
         kind: "continuous-summary-windows",
         runId: run.runId,
@@ -32,21 +36,31 @@ export function createMiningContinuousProvider(
         maxRows: 3,
       },
       signal,
-    ).catch((cause: unknown) => {
-      if (signal.aborted) throw cause;
-      if (
-        cause instanceof MiningQueryError &&
-        (cause.code === "timeout" || cause.code === "upstream")
-      ) {
-        return null;
-      }
-      throw cause;
-    });
-    const [rows, summaries] = await Promise.all([rowsPromise, summaryRows]);
+    ).then<SummaryRead, SummaryRead>(
+      (rows) => ({ rows, failure: null }),
+      (cause: unknown): SummaryRead => {
+        if (signal.aborted) throw cause;
+        if (cause instanceof MiningQueryError) {
+          if (cause.code === "timeout" || cause.code === "upstream") {
+            return { rows: null, failure: "QUERY_UNAVAILABLE" };
+          }
+          if (cause.code === "malformed" || cause.code === "overflow") {
+            return { rows: null, failure: "SOURCE_REJECTED" };
+          }
+        }
+        throw cause;
+      },
+    );
+    const [rows, summary] = await Promise.all([rowsPromise, summaryRows]);
     signal.throwIfAborted();
     return {
       ...mapContinuousThroughput(run, asOf, rows),
-      continuousSummary: mapContinuousSummaryRows(run, asOf, summaries),
+      continuousSummary: mapContinuousSummaryRows(
+        run,
+        asOf,
+        summary.rows,
+        summary.rows === null ? summary.failure : undefined,
+      ),
     };
   };
 }

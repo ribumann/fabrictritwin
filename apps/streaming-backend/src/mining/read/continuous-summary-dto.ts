@@ -93,6 +93,7 @@ export function mapContinuousSummaryRows(
   run: ContinuousMiningRunRecord,
   asOf: string,
   rows: Record<string, unknown>[] | null,
+  failure: "QUERY_UNAVAILABLE" | "SOURCE_REJECTED" = "QUERY_UNAVAILABLE",
 ) {
   const end = Date.parse(asOf);
   if (!Number.isFinite(end) || new Date(end).toISOString() !== asOf) return malformed();
@@ -120,8 +121,13 @@ export function mapContinuousSummaryRows(
     catalogVersion: D01_CATALOG_VERSION,
     sourceContractVersion,
     asOf,
-    windows: definitions.map(({ window, durationMs }) =>
-      mapWindow(run.runId, asOf, window, durationMs, byWindow.get(window) ?? null),
-    ),
+    windows:
+      rows === null
+        ? definitions.map(({ window, durationMs }) =>
+            unavailableWindow(window, asOf, durationMs, failure),
+          )
+        : definitions.map(({ window, durationMs }) =>
+            mapWindow(run.runId, asOf, window, durationMs, byWindow.get(window) ?? null),
+          ),
   };
 }
