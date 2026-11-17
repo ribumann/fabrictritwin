@@ -82,18 +82,27 @@ describe("bounded mining query transport", () => {
       kind: "continuous-throughput",
       runId: input.runId,
       asOf: input.end,
-      maxRows: 3,
+      maxRows: 59,
     });
     const body = JSON.parse(String(f.request.mock.calls[2][1]?.body));
     expect(body.csl).toContain("mining_DeduplicatedTelemetry(plant, run, asof - 10m, asof)");
+    expect(body.csl).toContain("mining_DeduplicatedState(plant, run, asof - 10m, asof)");
+    for (const tag of D01_PLANT_CATALOG.telemetry_tags) expect(body.csl).toContain(`"${tag.id}"`);
+    expect(body.csl).toContain('row_kind="tag"');
+    expect(body.csl).toContain('row_kind="state"');
+    expect(body.csl).toContain("candidate_count=count()");
+    expect(body.csl).toContain("aligned_count=count()");
     expect(body.csl).toContain("received_at <= asof");
     expect(body.csl).toContain("watermark=min(latest_timestamp)");
-    expect(body.csl).toContain("let latest_samples = telemetry");
+    expect(body.csl).toContain("let latest_samples = feed_tags");
     expect(body.csl).not.toMatch(/\blet latest\s*=/);
+    expect(body.csl).not.toContain("arg_max");
     expect(body.csl).toContain("timestamp > cutoff - 5m");
-    expect(body.csl).not.toContain("7d");
+    expect(body.csl).not.toMatch(/asof\s*-\s*7d/i);
+    expect(body.csl).not.toMatch(/timestamp\s*>\s*[^,\n]+\s*-\s*7d/i);
     expect(body.csl).not.toContain(input.runId);
     expect(body.properties.Parameters.run).toBe(`'${input.runId}'`);
+    expect(body.properties.Parameters.asof).toBe("datetime(2026-01-01T12:00:00.000Z)");
   });
   it("reconciles only the exact run through the fixed nonfuture ingestion query", async () => {
     const f = fixture();

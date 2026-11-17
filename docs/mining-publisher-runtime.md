@@ -59,11 +59,35 @@ The service reconfirms current accepted UUID/generation/running authority and
 stop intent after the query; a changed/held/stopped run withdraws the result.
 Query success is not whole-stream ingestion completion or a verified heartbeat.
 
-The public UI shows only this real throughput/freshness slice in continuous
-mode. Other KPIs, trends, live incidents, replay and assistant evidence are
-explicitly unavailable, not healthy empty. Public starts/cancellation are
-disabled even while the worker is waiting or held. Bounded/replay behavior
-remains unchanged when continuous read/worker mode is disabled.
+The same fixed query adds an all-or-nothing detail bundle: one scaffold row per
+catalog tag (56 total, including the existing three feed rows) and one latest
+simulator-state row for each of lines A/B/C, for 59 rows overall. The 53
+non-feed readings carry their direct latest value, quality, measurement and
+receipt timestamps, age at request UTC, and event identity. Latest samples are
+selected by timestamp and sequence; unresolved ties or conflicts never expose
+an arbitrary payload. Direct tag freshness is `3 * cadence + 15 seconds`:
+105 seconds for 30-second tags and 195 seconds for 60-second tags. The UI accepts
+older throughput-only responses, but rejects an incomplete or mismatched detail
+bundle.
+
+Line state is simulator-reported evidence, not physical equipment health or a
+simultaneous snapshot. The running-lines count is available only when all three
+line-state observations are valid and no older than 195 seconds; it counts only
+explicit `running` states with `scheduled_running=true`. No module operating
+state is inferred from a line schedule or direct sensor value. The UI shows
+direct tag readings and line evidence; unsupported indicators, trends, live
+incidents, replay and assistant evidence remain unavailable, not healthy empty.
+Public starts/cancellation are disabled even while the worker is waiting or
+held. Bounded/replay behavior remains unchanged when continuous read/worker
+mode is disabled.
+
+This is a code-only additive read/UI change: rollback may restore the earlier
+throughput-only backend/cockpit images without changing any source function,
+table, raw envelope, catalog or publisher control. Disable the existing
+continuous-read flag only if intentionally withdrawing the entire continuous
+read surface; it is not a detail-only switch. Live source advancement, the
+remote sustained public observer and deployed drawer acceptance remain separate
+release gates, not conclusions from local tests.
 
 The verified live source is shared workspace **triatwin-dev-fabric**, Eventstream
 **mining-d01-eventstream**, Eventhouse **mining-d01-eventhouse**, query database

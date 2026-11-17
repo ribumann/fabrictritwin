@@ -102,9 +102,14 @@ describe("public mining demo service boundary", () => {
     MINING_CONTINUOUS_GENERATION: "release-1",
   };
   it("serves only the configured continuous owner without a public marker and refuses public controls/unsupported views", async () => {
+    const detail = {
+      readings: [{ tagId: "D01.shared.lab.product_mass", value: 123 }],
+      lineStates: [{ scopeId: "A", state: "running" }],
+      runningLines: { value: 3, quality: "good" },
+    };
     const continuous = vi
       .fn()
-      .mockResolvedValue({ mode: "continuous", throughput: { value: 126 } });
+      .mockResolvedValue({ mode: "continuous", throughput: { value: 126 }, detail });
     const { app, store, start } = setup(continuousEnv, undefined, undefined, continuous);
     const coordinator = new MiningRunCoordinator(store);
     const admission = await coordinator.startContinuous({
@@ -128,6 +133,7 @@ describe("public mining demo service boundary", () => {
     const response = await request(app).get("/demo/overview");
     expect(response.status).toBe(200);
     expect(response.body.throughput.value).toBe(126);
+    expect(response.body.detail).toEqual(detail);
     expect(Date.parse(continuous.mock.calls[0][1])).toBeGreaterThanOrEqual(before);
     expect((await request(app).get("/demo/overview?asOf=2024-01-01T00:00:00Z")).status).toBe(503);
     expect((await request(app).get("/demo/incidents")).status).toBe(503);
@@ -147,7 +153,7 @@ describe("public mining demo service boundary", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const continuous = vi.fn().mockImplementation(async () => {
       await coordinator.requestContinuousStop("release-1");
-      return { throughput: { value: 126 } };
+      return { throughput: { value: 126 }, detail: { runningLines: { value: 3 } } };
     });
     const { app, store } = setup(continuousEnv, undefined, undefined, continuous);
     const coordinator = new MiningRunCoordinator(store);
