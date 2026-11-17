@@ -5,6 +5,7 @@ export type MiningAnswer = (
   question: string,
   evidence: string,
   signal: AbortSignal,
+  timeoutMs?: number,
 ) => Promise<string>;
 
 export function miningAssistantConfigured(env: NodeJS.ProcessEnv): boolean {
@@ -18,8 +19,11 @@ export function miningAssistantConfigured(env: NodeJS.ProcessEnv): boolean {
 /** No tools, conversation reuse, delegated identity or access to the athlete agent. */
 export function createMiningAnswer(env: NodeJS.ProcessEnv): MiningAnswer {
   let project: AIProjectClient | undefined;
-  return async (question, evidence, signal) => {
+  return async (question, evidence, signal, timeoutMs = 8_000) => {
     if (!miningAssistantConfigured(env)) throw new Error("Mining assistant is not configured.");
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 8_000) {
+      throw new Error("Mining assistant timeout is outside its bounded budget.");
+    }
     project ??= new AIProjectClient(env.FOUNDRY_PROJECT_ENDPOINT!, new DefaultAzureCredential());
     const response = await project.getOpenAIClient().responses.create(
       {
@@ -40,7 +44,7 @@ export function createMiningAnswer(env: NodeJS.ProcessEnv): MiningAnswer {
         max_output_tokens: 1200,
         reasoning: { effort: "low" },
       },
-      { signal, timeout: 8_000, maxRetries: 0 },
+      { signal, timeout: timeoutMs, maxRetries: 0 },
     );
     if (
       response.error ||

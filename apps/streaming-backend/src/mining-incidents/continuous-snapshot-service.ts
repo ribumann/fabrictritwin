@@ -85,7 +85,7 @@ export function createContinuousSnapshotService(dependencies: Dependencies) {
     }
     // Leave one minute for ingestion; this is not a completeness watermark.
     const end = start + (Math.floor((requestedAt - start) / MINUTE) - 1) * MINUTE;
-    if (end - start < 5 * MINUTE) {
+    if (end - start < 20 * MINUTE) {
       throw new MiningQueryError("upstream", "Continuous incident evidence is warming up.");
     }
     const asOf = new Date(end).toISOString();

@@ -36,8 +36,21 @@ function deferred<T>() {
 }
 
 describe("continuous incident snapshot service", () => {
+  it("rejects expired owners before starting a source read", async () => {
+    const load = vi.fn();
+    const service = createContinuousSnapshotService({
+      load,
+      isCurrentOwner: async () => true,
+      now: () => start + 21 * 60_000,
+    });
+    await expect(
+      service({ ...owner, authorityUntil: iso(20 * 60_000) }, new AbortController().signal),
+    ).rejects.toThrow(/owner is unavailable/);
+    expect(load).not.toHaveBeenCalled();
+  });
+
   it("coalesces reads but rechecks ownership even on cache hits", async () => {
-    const time = 11 * 60_000 + 5_000;
+    const time = 21 * 60_000 + 5_000;
     const pending = deferred<ContinuousIncidentSnapshot>();
     const load = vi.fn(() => pending.promise);
     const isCurrentOwner = vi.fn().mockResolvedValue(true);
@@ -50,7 +63,7 @@ describe("continuous incident snapshot service", () => {
     const second = service(owner, new AbortController().signal);
     await Promise.resolve();
     expect(load).toHaveBeenCalledTimes(1);
-    pending.resolve(snapshot(iso(10 * 60_000), time));
+    pending.resolve(snapshot(iso(20 * 60_000), time));
     const [a, b] = await Promise.all([first, second]);
     expect(a).toEqual(b);
     expect(a).not.toBe(b);
@@ -61,7 +74,7 @@ describe("continuous incident snapshot service", () => {
   });
 
   it("cancels the shared source only after the last waiting caller cancels", async () => {
-    const time = 11 * 60_000 + 5_000;
+    const time = 21 * 60_000 + 5_000;
     const pending = deferred<ContinuousIncidentSnapshot>();
     let sourceSignal: AbortSignal | undefined;
     const load = vi.fn((_owner, _asOf, signal: AbortSignal) => {
@@ -88,7 +101,7 @@ describe("continuous incident snapshot service", () => {
   });
 
   it("rejects data that becomes stale while loading", async () => {
-    let time = 11 * 60_000 + 5_000;
+    let time = 21 * 60_000 + 5_000;
     const pending = deferred<ContinuousIncidentSnapshot>();
     const service = createContinuousSnapshotService({
       load: () => pending.promise,
@@ -98,17 +111,17 @@ describe("continuous incident snapshot service", () => {
     const result = service(owner, new AbortController().signal);
     await Promise.resolve();
     time += 180_000;
-    pending.resolve(snapshot(iso(10 * 60_000), 11 * 60_000 + 5_000));
+    pending.resolve(snapshot(iso(20 * 60_000), 21 * 60_000 + 5_000));
     await expect(result).rejects.toThrow(/stale or invalid/);
   });
 
   it("does not cache failed reads and bounds concurrent work across owners", async () => {
-    const time = 11 * 60_000 + 5_000;
+    const time = 21 * 60_000 + 5_000;
     const pending = deferred<ContinuousIncidentSnapshot>();
     const load = vi
       .fn()
       .mockReturnValueOnce(pending.promise)
-      .mockResolvedValueOnce(snapshot(iso(10 * 60_000), time));
+      .mockResolvedValueOnce(snapshot(iso(20 * 60_000), time));
     const service = createContinuousSnapshotService({
       load,
       isCurrentOwner: async () => true,

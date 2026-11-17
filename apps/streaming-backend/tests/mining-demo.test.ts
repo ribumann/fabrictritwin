@@ -10,6 +10,8 @@ import type { MiningCuratedProvider } from "../src/mining/read/curated-provider.
 import type { createMiningContinuousProvider } from "../src/mining/read/continuous-provider.js";
 import type { createMiningCrossRunTrendProvider } from "../src/mining/read/cross-run-trend-provider.js";
 import type { MiningCrossRunTrendRequest } from "../src/mining/read/cross-run-trend-query.js";
+import type { createContinuousIncidentProvider } from "../src/mining-incidents/continuous-provider.js";
+import type { ContinuousIncidentSnapshot } from "../src/mining-incidents/continuous-replay.js";
 
 const principal = "11111111-1111-4111-8111-111111111111";
 const tenant = "22222222-2222-4222-8222-222222222222";
@@ -34,6 +36,7 @@ function setup(
   assistant?: { answer: MiningAnswer; curated: MiningCuratedProvider },
   continuous?: ReturnType<typeof createMiningContinuousProvider>,
   crossRunTrends?: ReturnType<typeof createMiningCrossRunTrendProvider>,
+  continuousAdvisories?: ReturnType<typeof createContinuousIncidentProvider>,
 ) {
   const documents = new Map<string, StoredDocument>();
   const leases = new Set<string>();
@@ -94,6 +97,7 @@ function setup(
       ...assistant,
       continuous,
       crossRunTrends,
+      continuousAdvisories,
     }),
   );
   return { app, start, verifyClaims, documents, store };
@@ -218,6 +222,120 @@ describe("public mining demo service boundary", () => {
     expect(continuous).toHaveBeenCalledTimes(1);
     await admission.owner.finish("failed");
   });
+  it("serves retrospective continuous advisories and grounded assistant evidence only for the current owner", async () => {
+    const assistantEnv = {
+      ...continuousEnv,
+      MINING_PUBLIC_DEMO_ASSISTANT_ENABLED: "true",
+      MINING_INGESTION_RECONCILIATION_ENABLED: "true",
+      FOUNDRY_PROJECT_ENDPOINT: "https://example.services.ai.azure.com/api/projects/mining",
+      ATHLETE_ASSISTANT_MODEL_DEPLOYMENT_NAME: "demo-model",
+    };
+    const answer = vi.fn<MiningAnswer>().mockResolvedValue("The bounded source has no advisories.");
+    const curated = vi.fn<MiningCuratedProvider>().mockResolvedValue(null);
+    const continuous = vi.fn().mockImplementation(async (run, asOf) => ({
+      mode: "continuous",
+      plantId: "D01",
+      runId: run.runId,
+      generation: run.lifetime.generation,
+      catalogVersion: "catalog",
+      asOf,
+      quality: "unavailable",
+      throughput: { value: null, unit: "t/h", quality: "unavailable" },
+      readings: [],
+      capabilities: { incidents: false, trends: false },
+    }));
+    const advisoryTime = new Date(Math.floor((Date.now() - 60_000) / 60_000) * 60_000);
+    const snapshot: ContinuousIncidentSnapshot = {
+      assessmentKind: "rolling-event-time-advisory",
+      runId: "pending",
+      windowStart: new Date(advisoryTime.getTime() - 20 * 60_000).toISOString(),
+      asOf: advisoryTime.toISOString(),
+      sourceObservedAt: new Date().toISOString(),
+      advisories: [],
+    };
+    const advisories = vi.fn(async (owner) => ({ ...snapshot, runId: owner.runId }));
+    const { app, store } = setup(
+      assistantEnv,
+      undefined,
+      { answer, curated },
+      continuous,
+      undefined,
+      advisories,
+    );
+    const coordinator = new MiningRunCoordinator(store);
+    const admission = await coordinator.startContinuous({
+      plantId: "D01",
+      requestId: "44444444-4444-4444-8444-444444444444",
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner");
+
+    expect((await request(app).get("/demo/context")).body).toMatchObject({
+      assistant: { available: true, kind: "bounded-fabric-evidence" },
+      capabilities: { incidents: true, assistant: true },
+    });
+    const response = await request(app).get("/demo/incidents");
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      assessmentKind: "rolling-event-time-advisory",
+      runId: admission.run.runId,
+      generation: "release-1",
+      totalAdvisories: 0,
+      advisories: [],
+    });
+    expect(response.body).not.toHaveProperty("incidents");
+    expect(advisories).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: admission.run.runId, startedAt: admission.run.startedAt }),
+      expect.any(AbortSignal),
+    );
+    const asked = await request(app)
+      .post("/demo/assistant")
+      .send({ plantId: "D01", question: "What do the current advisories show?" });
+    expect(asked.status).toBe(200);
+    expect(asked.body).toMatchObject({
+      runId: admission.run.runId,
+      nativeDataAgentInvoked: false,
+      evidence: {
+        mode: "continuous",
+        owner: { generation: "release-1" },
+        advisories: {
+          completeness: expect.stringContaining("not proof"),
+          totalAdvisories: 0,
+        },
+      },
+    });
+    expect(answer.mock.calls[0][3]).toBeGreaterThan(0);
+    expect(answer.mock.calls[0][3]).toBeLessThanOrEqual(8_000);
+    await admission.owner.finish("failed");
+  });
+  it("withdraws continuous advisory evidence when the generation is held during the read", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let coordinator: MiningRunCoordinator;
+    const advisories = vi.fn(async () => {
+      await coordinator.requestContinuousStop("release-1");
+      return {
+        assessmentKind: "rolling-event-time-advisory" as const,
+        runId: "44444444-4444-4444-8444-444444444444",
+        windowStart: new Date(Date.now() - 21 * 60_000).toISOString(),
+        asOf: new Date(Date.now() - 60_000).toISOString(),
+        sourceObservedAt: new Date().toISOString(),
+        advisories: [],
+      };
+    });
+    const { app, store } = setup(continuousEnv, undefined, undefined, undefined, undefined, advisories);
+    coordinator = new MiningRunCoordinator(store);
+    const admission = await coordinator.startContinuous({
+      plantId: "D01",
+      requestId: "44444444-4444-4444-8444-444444444444",
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner");
+    const response = await request(app).get("/demo/incidents");
+    expect(response.status).toBe(503);
+    expect(response.body).not.toHaveProperty("advisories");
+    expect(advisories).toHaveBeenCalledOnce();
+    await admission.owner.finish("failed");
+  });
   it("withdraws continuous evidence if a generation hold appears while the query is in flight", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const continuous = vi.fn().mockImplementation(async () => {
@@ -315,6 +433,7 @@ describe("public mining demo service boundary", () => {
       question.question,
       expect.stringContaining(runId),
       expect.any(AbortSignal),
+      expect.any(Number),
     );
     expect(response.body).toMatchObject({
       runId,

@@ -29,6 +29,7 @@ import {
   seriesQuery,
   verifiedRunIngestion,
   validContinuousOverview,
+  validContinuousAdvisories,
   continuousThroughputUsable,
   continuousTagReading,
   continuousRunningLines,
@@ -130,6 +131,7 @@ describe("continuous throughput presentation", () => {
         latestSequence: index + 1,
       };
     });
+
     const detailReadings = catalog.telemetry_tags
       .filter((tag) => !readings.some((reading) => reading.tagId === tag.id))
       .map((tag, index) => {
@@ -560,6 +562,83 @@ describe("continuous throughput presentation", () => {
     expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now)).toBe(false);
   });
 });
+describe("retrospective continuous advisory presentation", () => {
+  it("accepts only current-window evidence without durable incident identities or timestamps", () => {
+    const now = Date.parse("2026-01-01T12:00:00.000Z");
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const catalog = readCatalog();
+    const asOf = new Date(now - 60_000).toISOString();
+    const windowStart = new Date(Date.parse(asOf) - 20 * 60_000).toISOString();
+    const sourceObservedAt = new Date(now).toISOString();
+    const valid = {
+      assessmentKind: "rolling-event-time-advisory",
+      plantId: "D01",
+      catalogVersion: "catalog",
+      runId,
+      generation: "release-1",
+      windowStart,
+      asOf,
+      sourceObservedAt,
+      totalAdvisories: 1,
+      advisories: [
+        {
+          ruleId: "crusher-vibration",
+          scopeId: "B",
+          severity: "warning",
+          verification: "verified",
+          evidenceWindow: { start: windowStart, end: asOf },
+          evidence: [
+            {
+              tagId: catalog.telemetry_tags[0].id,
+              value: 1,
+              unit: catalog.telemetry_tags[0].unit,
+              sampleTime: new Date(Date.parse(asOf) - 30_000).toISOString(),
+              quality: "good",
+            },
+          ],
+          stateEvidence: [],
+        },
+      ],
+    };
+    const args = [runId, "catalog", "release-1", now, catalog] as const;
+    expect(validContinuousAdvisories(valid, ...args)).toBe(true);
+    expect(
+      validContinuousAdvisories(
+        { ...valid, advisories: [{ ...valid.advisories[0], incidentId: "invented" }] },
+        ...args,
+      ),
+    ).toBe(false);
+    expect(
+      validContinuousAdvisories(
+        {
+          ...valid,
+          advisories: [
+            {
+              ...valid.advisories[0],
+              evidence: [
+                {
+                  ...valid.advisories[0].evidence[0],
+                  sampleTime: new Date(now + 1_000).toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+        ...args,
+      ),
+    ).toBe(false);
+    expect(
+      validContinuousAdvisories(
+        { ...valid, sourceObservedAt: new Date(now + 16_000).toISOString() },
+        ...args,
+      ),
+    ).toBe(false);
+    expect(validContinuousAdvisories({ ...valid, generation: "another-owner" }, ...args)).toBe(
+      false,
+    );
+    expect(validContinuousAdvisories({ ...valid, totalAdvisories: 0 }, ...args)).toBe(false);
+  });
+});
 describe("cross-run chart validation", () => {
   it("accepts observed evidence and fails closed on foreign ownership, samples and statuses", () => {
     const catalog = readCatalog();
@@ -933,7 +1012,7 @@ describe("mining request lifecycle", () => {
         mode: "continuous",
         readAvailable: true,
         approvedRun: { runId: "owner", generation: "g1" },
-        capabilities: { trends: true },
+        capabilities: { incidents: false, trends: true },
       },
       requestEpoch: 0,
       document: { hidden: false },
@@ -945,8 +1024,11 @@ describe("mining request lifecycle", () => {
       incidents: [],
       query: () => params,
       validContinuousOverview: () => true,
+      validContinuousAdvisories: () => false,
       crossRunChartData: adapt,
       drawOverview: vi.fn(),
+      clearReadState: vi.fn(),
+      drawContinuousAdvisories: vi.fn(),
       text: vi.fn(),
       chart,
       $: (id: string) =>
@@ -973,9 +1055,22 @@ describe("mining request lifecycle", () => {
       { runId: "owner", generation: "g1" },
     );
     expect(chart).toHaveBeenCalledTimes(2);
+    context.context.capabilities.incidents = true;
+    read.mockClear();
+    chart.mockClear();
+    context.drawOverview.mockClear();
+    context.drawContinuousAdvisories.mockClear();
+    await context.refresh!("all");
+    expect(read.mock.calls.map(([path]) => path)).toContain("incidents");
+    expect(context.drawOverview).toHaveBeenCalledOnce();
+    expect(context.drawContinuousAdvisories).toHaveBeenCalledWith(
+      expect.stringContaining("Rolling advisory evidence is invalid"),
+    );
+    expect(chart).toHaveBeenCalledTimes(2);
     read.mockClear();
     chart.mockClear();
     context.context.capabilities.trends = false;
+    context.context.capabilities.incidents = false;
     await context.refresh!("all");
     expect(read.mock.calls.map(([path]) => path)).toEqual(["overview"]);
     expect(chart).toHaveBeenCalledWith("feed-chart", null);
@@ -1058,6 +1153,8 @@ describe("mining request lifecycle", () => {
       drawIncidents: vi.fn(),
       drawDrawer: vi.fn(),
       drawOverview: vi.fn(),
+      clearReadState: vi.fn(),
+      drawContinuousAdvisories: vi.fn(),
       text: vi.fn(),
       chart,
       $: (id: string) => id,

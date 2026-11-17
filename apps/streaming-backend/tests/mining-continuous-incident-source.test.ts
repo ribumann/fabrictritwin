@@ -86,6 +86,8 @@ describe("continuous incident source partitions", () => {
       new AbortController().signal,
     );
     expect(dependencies.readiness).toHaveBeenCalledTimes(2);
+    expect(dependencies.readiness).toHaveBeenNthCalledWith(1, RUN, expect.any(AbortSignal));
+    expect(dependencies.readiness).toHaveBeenNthCalledWith(2, RUN, expect.any(AbortSignal));
     expect(dependencies.query).toHaveBeenCalledTimes(4);
     expect(dependencies.query.mock.calls.map(([input]) => input)).toEqual([
       { runId: RUN, start: iso(0), end: iso(300), includeEnd: false, maxRows: 1000 },
@@ -166,13 +168,15 @@ describe("continuous incident source partitions", () => {
       contract: createD01RunContract(),
     };
     const isCurrentOwner = vi.fn().mockResolvedValue(true);
-    const provider = createContinuousIncidentProvider(fixtures([reading, state]), isCurrentOwner);
+    const source = fixtures([reading, state]);
+    source.now = () => START + 1_290_000;
+    const provider = createContinuousIncidentProvider(source, isCurrentOwner);
     const result = await provider(owner, new AbortController().signal);
     expect(result).toMatchObject({
       assessmentKind: "rolling-event-time-advisory",
       runId: RUN,
-      asOf: iso(1140),
-      sourceObservedAt: iso(1230),
+      asOf: iso(1200),
+      sourceObservedAt: iso(1290),
     });
     expect(isCurrentOwner).toHaveBeenCalledOnce();
     await expect(
@@ -181,7 +185,9 @@ describe("continuous incident source partitions", () => {
         new AbortController().signal,
       ),
     ).rejects.toThrow(/Unsupported D01 run contract/);
-    const incomplete = createContinuousIncidentProvider(fixtures([state]), isCurrentOwner);
+    const incompleteSource = fixtures([state]);
+    incompleteSource.now = () => START + 1_290_000;
+    const incomplete = createContinuousIncidentProvider(incompleteSource, isCurrentOwner);
     await expect(incomplete(owner, new AbortController().signal)).rejects.toThrow(/incomplete/);
   });
 });

@@ -1,5 +1,6 @@
 import { ClientRequestProperties } from "azure-kusto-data";
 import { continuousThroughputQuery } from "./continuous-query.js";
+import { continuousIncidentPartitionQuery } from "./continuous-incident-query.js";
 import type { MiningCrossRunTrendRequest } from "./cross-run-trend-query.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -20,6 +21,12 @@ type Query =
   | (MiningCrossRunTrendRequest & { kind: "cross-run-trend"; maxRows: 1000 })
   | (Scope & { kind: "latest"; asOf: string })
   | (Scope & { kind: "continuous-throughput"; asOf: string })
+  | (Scope & {
+      kind: "continuous-incident-partition";
+      start: string;
+      end: string;
+      includeEnd: boolean;
+    })
   | (Scope & { kind: "continuous-summary-windows"; end: string })
   | (Scope & { kind: "incidents"; asOf: string })
   | (Scope & { kind: "incident-observations"; asOf: string })
@@ -369,6 +376,20 @@ async function prepare(
   properties.setParameter("plant", "'D01'");
   properties.setParameter("run", `'${input.runId}'`);
   const head = "declare query_parameters(plant:string, run:string";
+  if (input.kind === "continuous-incident-partition") {
+    if (input.maxRows !== MAX_ROWS || typeof input.includeEnd !== "boolean") {
+      throw new MiningQueryError("invalid", "Continuous incident partitions require 1000 rows.");
+    }
+    const start = canonicalUtc(input.start, now);
+    const end = canonicalUtc(input.end, now);
+    if (Date.parse(end) - Date.parse(start) !== 300_000) {
+      throw new MiningQueryError("invalid", "Continuous incident partitions must span five minutes.");
+    }
+    properties.setParameter("start", `datetime(${start})`);
+    properties.setParameter("end", `datetime(${end})`);
+    properties.setParameter("include_end", String(input.includeEnd));
+    return continuousIncidentPartitionQuery;
+  }
   if (input.kind === "continuous-throughput") {
     properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
     return continuousThroughputQuery;
