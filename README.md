@@ -103,15 +103,15 @@ start/stop controls are disabled. A restart can produce a new run ID and a
 genuine warm-up or gap. Publisher activity alone does not prove downstream
 ingestion; read the displayed quality and coverage before interpreting a value.
 With continuous mode disabled, it offers bounded D01 runs of up to five minutes
-with one durable active writer and a ten-minute start interval. With continuous
-mode enabled, the operator-managed publisher has no anonymous start/stop
-controls; the public view reads only its current run. Water and energy
+with one durable active writer and a ten-minute start interval. In continuous
+mode, the public view reads only its current run. Water and energy
 intensities use bounded 30-minute, 2-hour and 24-hour `mining_PlantSummary`
 windows scoped to that same run. Common coverage below 90% remains unavailable;
 the windows do not stitch publisher runs or imply complete history. Plant
 markers in continuous mode describe sensor evidence freshness/quality, not
-equipment health or operating limits. Trends, live incidents, replay and the
-assistant remain unavailable in this slice.
+equipment health or operating limits. Check the cockpit's availability indicators
+before exploring trends. Live incidents, replay and the assistant remain
+unavailable in the current continuous configuration.
 
 ### Mining Fabric workspace map
 

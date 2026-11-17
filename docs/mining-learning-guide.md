@@ -38,9 +38,10 @@ claims.
 3. Select a module to inspect its individual tag measurements and their units.
    A simulator-reported line state and a sensor-derived status are not proof of
    physical equipment health.
-4. Trends, live incidents, the assistant and replay are unavailable in the
+4. Check the cockpit's availability indicators before exploring trends or other
+   views. Live incidents, the assistant and replay remain unavailable in the
    current continuous configuration. Do not treat historical bounded-run
-   evidence as proof that these views are enabled now.
+   evidence as proof that a capability is enabled now.
 
 The simulator can restart with a new run ID and warm up again. A gap across
 restart is real; do not join runs as though their time series were continuous.
