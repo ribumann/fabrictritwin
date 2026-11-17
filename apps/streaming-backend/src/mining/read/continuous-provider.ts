@@ -19,7 +19,7 @@ export function createMiningContinuousProvider(
         kind: "continuous-throughput",
         runId: run.runId,
         asOf,
-        maxRows: 3,
+        maxRows: 59,
       },
       signal,
     );

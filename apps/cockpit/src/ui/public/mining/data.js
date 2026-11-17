@@ -155,7 +155,8 @@ export function validSeries(data, params, catalogVersion, catalog) {
   });
 }
 
-export function moduleStatus(overview, moduleId) {
+export function moduleStatus(overview, moduleId, mode = overview?.mode) {
+  if (mode === "continuous") return "not directly reported";
   if (!overview || overview.quality !== "good") return "unknown";
   const module = overview.latest?.modules?.find((item) => item.moduleId === moduleId);
   const readings = overview.latest?.readings?.filter((item) => item.moduleId === moduleId);
@@ -178,9 +179,16 @@ export function validOverview(data, runId, catalogVersion, asOf, replay, now = D
   return validAsOf(data.asOf, replay ? asOf : new Date(now).toISOString(), replay);
 }
 
-export function validContinuousOverview(data, runId, catalogVersion, generation, now = Date.now()) {
+export function validContinuousOverview(
+  data,
+  runId,
+  catalogVersion,
+  generation,
+  now = Date.now(),
+  catalog = null,
+) {
   const expected = ["A", "B", "C"].map((line) => `D01.${line}.crusher.ore_flow`);
-  return (
+  const continuousScopeValid =
     data?.mode === "continuous" &&
     sameScope(data, runId, catalogVersion) &&
     sameScope(data.run, runId, catalogVersion) &&
@@ -199,9 +207,277 @@ export function validContinuousOverview(data, runId, catalogVersion, generation,
         ["good", "bad", "stale", "missing", "warming_up", "unavailable"].includes(row.quality),
     ) &&
     data.source?.workspace === "triatwin-dev-fabric" &&
-    typeof data.source.database === "string" &&
+    data.source.database === "mining-d01-realtime" &&
     data.capabilities?.incidents === false &&
-    data.capabilities?.trends === false
+    data.capabilities?.trends === false;
+  if (!continuousScopeValid) return false;
+  if (!Object.hasOwn(data, "detail")) return true;
+  return validContinuousDetail(data, catalogVersion, catalog);
+}
+
+const continuousFeedTags = new Set([
+  "D01.A.crusher.ore_flow",
+  "D01.B.crusher.ore_flow",
+  "D01.C.crusher.ore_flow",
+]);
+const continuousProfileVersion = "d01-publish-profile-v1";
+const continuousSourceContractVersion = "d01-validated-source-v1";
+const cadenceByMetric = {
+  bearing_temperature: 60,
+  feed_pressure: 30,
+  level: 60,
+  medium_density: 30,
+  motor_current: 30,
+  ore_flow: 30,
+  power: 30,
+  product_mass: 60,
+  vibration_rms: 30,
+  water_flow: 30,
+};
+const validEventId = (value) => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+const emptyEvidence = (reading) =>
+  reading.value === null &&
+  reading.sampleTime === null &&
+  reading.receivedAt === null &&
+  reading.ageSeconds === null &&
+  reading.eventId === null &&
+  reading.sequence === null;
+
+function validContinuousObservation(
+  reading,
+  request,
+  sourceStatus,
+  maxAgeMs,
+  envelope,
+  hasValue = true,
+) {
+  if (!["good", "bad", "stale", "missing", "unavailable"].includes(reading.quality)) return false;
+  if (reading.sampleTime === null) {
+    return (
+      emptyEvidence(reading) &&
+      ["bad", "missing", "unavailable"].includes(reading.quality) &&
+      (reading.quality !== "unavailable" || sourceStatus !== "READY")
+    );
+  }
+  const sample = Date.parse(reading.sampleTime);
+  const received = Date.parse(reading.receivedAt);
+  const age = (Date.parse(request) - sample) / 1000;
+  if (
+    !Number.isFinite(sample) ||
+    !Number.isFinite(received) ||
+    sample > Date.parse(request) ||
+    Date.parse(request) - sample > 600_000 ||
+    received < sample ||
+    received > Date.parse(request) ||
+    !Number.isFinite(reading.ageSeconds) ||
+    Math.abs(reading.ageSeconds - age) > 1 ||
+    !validEventId(reading.eventId) ||
+    !Number.isSafeInteger(reading.sequence) ||
+    reading.sequence < 1
+  )
+    return false;
+  if (reading.quality === "good") {
+    return (
+      sourceStatus === "READY" &&
+      Date.parse(request) - sample <= maxAgeMs &&
+      (!hasValue ||
+        (Number.isFinite(reading.value) &&
+          (!envelope || (reading.value >= envelope[0] && reading.value <= envelope[1]))))
+    );
+  }
+  if (reading.value !== null) return false;
+  if (reading.quality === "stale") return Date.parse(request) - sample > maxAgeMs;
+  if (reading.quality === "unavailable") return sourceStatus !== "READY";
+  return reading.quality === "bad";
+}
+
+function validContinuousDetail(data, catalogVersion, catalog) {
+  const detail = data.detail;
+  const sourceStatus = detail?.sourceStatus;
+  if (
+    !detail ||
+    !catalog ||
+    !Array.isArray(catalog.telemetry_tags) ||
+    catalog.telemetry_tags.length !== 56 ||
+    detail.plantId !== "D01" ||
+    detail.runId !== data.runId ||
+    detail.generation !== data.generation ||
+    detail.asOf !== data.asOf ||
+    detail.catalogVersion !== catalogVersion ||
+    detail.profileVersion !== continuousProfileVersion ||
+    detail.sourceContractVersion !== continuousSourceContractVersion ||
+    typeof sourceStatus !== "string" ||
+    sourceStatus.length === 0 ||
+    !Array.isArray(detail.readings) ||
+    detail.readings.length !== catalog.telemetry_tags.length - continuousFeedTags.size ||
+    !Array.isArray(detail.lineStates) ||
+    detail.lineStates.length !== 3 ||
+    detail.runningLines?.unit !== "lines" ||
+    !["good", "unavailable"].includes(detail.runningLines.quality)
+  )
+    return false;
+  const request = data.asOf;
+  const tags = new Map(catalog.telemetry_tags.map((tag) => [tag.id, tag]));
+  const seenTags = new Set();
+  for (const reading of detail.readings) {
+    const tag = tags.get(reading?.tagId);
+    if (
+      !tag ||
+      continuousFeedTags.has(tag.id) ||
+      seenTags.has(tag.id) ||
+      reading.moduleId !== tag.module_id ||
+      reading.equipmentId !== tag.equipment_id ||
+      reading.unit !== tag.unit ||
+      reading.cadenceSeconds !== cadenceByMetric[tag.metric] ||
+      !validContinuousObservation(
+        reading,
+        request,
+        sourceStatus,
+        reading.cadenceSeconds * 3_000 + 15_000,
+        tag.simulation_envelope,
+      )
+    )
+      return false;
+    seenTags.add(tag.id);
+  }
+  if (
+    seenTags.size !== tags.size - continuousFeedTags.size ||
+    [...continuousFeedTags].some(
+      (tagId) => !data.readings.some((reading) => reading.tagId === tagId),
+    )
+  )
+    return false;
+  for (const reading of data.readings) {
+    const tag = tags.get(reading.tagId);
+    if (
+      reading.sourceStatus !== sourceStatus ||
+      !tag ||
+      reading.moduleId !== tag.module_id ||
+      reading.unit !== tag.unit ||
+      !["good", "bad", "stale", "missing", "unavailable"].includes(reading.latestQuality) ||
+      !validContinuousObservation(
+        {
+          value: reading.latestValue,
+          quality: reading.latestQuality,
+          sampleTime: reading.latestSampleTime,
+          receivedAt: reading.latestReceivedAt,
+          ageSeconds: reading.ageSeconds,
+          eventId: reading.latestEventId,
+          sequence: reading.latestSequence,
+        },
+        request,
+        sourceStatus,
+        105_000,
+        tag.simulation_envelope,
+      )
+    )
+      return false;
+  }
+  const scopes = new Set();
+  for (const state of detail.lineStates) {
+    if (
+      !["A", "B", "C"].includes(state?.scopeId) ||
+      scopes.has(state.scopeId) ||
+      !["starting", "running", "idle", "stopped", "fault", null].includes(state.state) ||
+      !(state.scheduledRunning === null || typeof state.scheduledRunning === "boolean") ||
+      !validContinuousObservation(
+        {
+          value: null,
+          quality: state.quality,
+          sampleTime: state.sampleTime,
+          receivedAt: state.receivedAt,
+          ageSeconds: state.ageSeconds,
+          eventId: state.eventId,
+          sequence: state.sequence,
+        },
+        request,
+        sourceStatus,
+        195_000,
+        undefined,
+        false,
+      ) ||
+      (state.sampleTime === null
+        ? state.state !== null || state.scheduledRunning !== null
+        : state.state === null || typeof state.scheduledRunning !== "boolean")
+    )
+      return false;
+    scopes.add(state.scopeId);
+  }
+  if (scopes.size !== 3) return false;
+  const allCurrent = detail.lineStates.every((state) => state.quality === "good");
+  const expectedCount = allCurrent
+    ? detail.lineStates.filter(
+        (state) => state.state === "running" && state.scheduledRunning === true,
+      ).length
+    : null;
+  return (
+    detail.runningLines.value === expectedCount &&
+    detail.runningLines.quality === (expectedCount === null ? "unavailable" : "good")
+  );
+}
+
+export function continuousTagReading(data, tagId, now = Date.now()) {
+  const feed = data?.readings?.find((reading) => reading.tagId === tagId);
+  const reading = feed
+    ? {
+        tagId,
+        moduleId: feed.moduleId,
+        unit: feed.unit,
+        value: feed.latestValue,
+        quality: feed.latestQuality,
+        sampleTime: feed.latestSampleTime,
+        receivedAt: feed.latestReceivedAt,
+        ageSeconds: feed.ageSeconds,
+        eventId: feed.latestEventId,
+        sequence: feed.latestSequence,
+      }
+    : data?.detail?.readings?.find((item) => item.tagId === tagId);
+  if (!reading) return null;
+  if (!continuousOwnerCurrent(data, now))
+    return { ...reading, quality: "unavailable", value: null };
+  if (
+    reading.quality === "good" &&
+    now - Date.parse(reading.sampleTime) >
+      (feed ? 105_000 : (reading.cadenceSeconds ?? 60) * 3_000 + 15_000)
+  ) {
+    return { ...reading, quality: "stale", value: null };
+  }
+  return reading;
+}
+
+export function continuousRunningLines(data, now = Date.now()) {
+  const detail = data?.detail;
+  const request = Date.parse(data?.asOf);
+  if (
+    !continuousOwnerCurrent(data, now) ||
+    detail?.runningLines?.quality !== "good" ||
+    !Number.isInteger(detail.runningLines.value) ||
+    !Array.isArray(detail.lineStates) ||
+    !Number.isFinite(request) ||
+    request > now + 15_000 ||
+    now - request > 90_000 ||
+    detail.lineStates.some(
+      (state) =>
+        state.quality !== "good" ||
+        !Number.isFinite(Date.parse(state.sampleTime)) ||
+        now - Date.parse(state.sampleTime) > 195_000,
+    )
+  )
+    return null;
+  return detail.runningLines.value;
+}
+
+function continuousOwnerCurrent(data, now) {
+  const request = Date.parse(data?.asOf);
+  return (
+    data?.run?.publisherStatus === "running" &&
+    data.run.stopRequested === false &&
+    data.run.runId === data.runId &&
+    data.run.generation === data.generation &&
+    Date.parse(data.run.authorityUntil) > now &&
+    Number.isFinite(request) &&
+    request <= now &&
+    now - request <= 90_000
   );
 }
 

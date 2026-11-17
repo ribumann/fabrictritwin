@@ -81,9 +81,17 @@
         <p id="continuous-source"></p>
         <p id="continuous-window"></p>
         <ul id="throughput-readings"></ul>
-        <p>Only throughput is supported in this slice. Other indicators, trends, live incidents,
-          replay and assistant evidence are unavailable. Static ontology instances do not prove a
-          native live telemetry binding.</p>
+        <h3>Simulator-reported line states</h3>
+        <p>
+          These are validated simulator events for lines A, B and C, not physical equipment-health
+          observations or a simultaneous snapshot.
+        </p>
+        <ul id="line-state-readings"></ul>
+        <p>
+          Continuous detail adds direct tag readings and simulator-reported line states. Other
+          indicators, trends, live incidents, replay and assistant evidence are unavailable. Static
+          ontology instances do not prove a native live telemetry binding.
+        </p>
       </section>
       <div class="mining-workspace">
         <section class="card mining-plant" aria-labelledby="plant-heading">
@@ -218,10 +226,9 @@
       </section>
       <section class="card">
         <h2>Run control</h2>
-        <p>
-          Public D01 demo runs last up to five minutes. A shared cooldown limits repeated starts.
-          Reopening this view never starts a run. Publisher completion is not Fabric ingestion
-          completion; stop requested is not stopped.
+        <p id="run-control-help">
+          Finite and continuous publisher lifetimes differ by mode. Reopening this view never starts
+          a run; publisher completion is not Fabric ingestion completion.
         </p>
         <p id="run-control-status" role="status">Checking demo availability…</p>
         <button id="run-start" disabled>Start demo run</button>

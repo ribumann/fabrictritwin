@@ -4,6 +4,7 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { D01PlantCatalog } from "@triathlon-twin/simulator/mining";
 import {
   MiningReads,
   MiningPolling,
@@ -28,8 +29,15 @@ import {
   verifiedRunIngestion,
   validContinuousOverview,
   continuousThroughputUsable,
+  continuousTagReading,
+  continuousRunningLines,
 } from "../src/ui/public/mining/data.js";
-import { connections, createPlant3D, relevantTags, visibleModules } from "../src/ui/public/mining/plant.js";
+import {
+  connections,
+  createPlant3D,
+  relevantTags,
+  visibleModules,
+} from "../src/ui/public/mining/plant.js";
 import {
   APPEARANCE_RELEASE,
   fitModelToNode,
@@ -40,10 +48,13 @@ import {
   validateAppearanceBundle,
 } from "../src/ui/public/mining/appearance.js";
 
-const reconstructedSource = new URL("../src/ui/public/mining/plant/reconstructed/source/", import.meta.url);
+const reconstructedSource = new URL(
+  "../src/ui/public/mining/plant/reconstructed/source/",
+  import.meta.url,
+);
 const readJson = (path: string) =>
   JSON.parse(readFileSync(new URL(path, reconstructedSource), "utf8"));
-const readCatalog = () =>
+const readCatalog = (): D01PlantCatalog =>
   JSON.parse(
     readFileSync(new URL("../../simulator/src/mining/plant-catalog.json", import.meta.url), "utf8"),
   );
@@ -80,7 +91,7 @@ describe("continuous throughput presentation", () => {
         stopRequested: false,
         authorityUntil: "2026-01-01T12:00:45Z",
       },
-      source: { workspace: "triatwin-dev-fabric", database: "test-database" },
+      source: { workspace: "triatwin-dev-fabric", database: "mining-d01-realtime" },
       capabilities: { incidents: false, trends: false },
       throughput: { value: 126, unit: "t/h", quality: "good" },
       readings: ["A", "B", "C"].map((line) => ({
@@ -97,12 +108,236 @@ describe("continuous throughput presentation", () => {
     };
   }
   const now = Date.parse("2026-01-01T12:00:00Z");
+  function withDetail(data: ReturnType<typeof fixture>) {
+    const catalog = readCatalog();
+    const eventId = (sequence: number) => sequence.toString(16).padStart(64, "0");
+    const readings = data.readings.map((reading, index) => {
+      const tag = catalog.telemetry_tags.find((item) => item.id === reading.tagId)!;
+      return {
+        ...reading,
+        moduleId: tag.module_id,
+        sourceStatus: "READY",
+        latestValue: reading.value,
+        latestQuality: "good",
+        latestSampleTime: "2026-01-01T11:59:30Z",
+        latestReceivedAt: "2026-01-01T11:59:35Z",
+        ageSeconds: 30,
+        latestEventId: eventId(index + 1),
+        latestSequence: index + 1,
+      };
+    });
+    const detailReadings = catalog.telemetry_tags
+      .filter((tag) => !readings.some((reading) => reading.tagId === tag.id))
+      .map((tag, index) => {
+        const age = ["bearing_temperature", "level", "product_mass"].includes(tag.metric) ? 60 : 30;
+        const cadence = age;
+        const sampleTime = new Date(Date.parse(data.asOf) - age * 1000).toISOString();
+        return {
+          tagId: tag.id,
+          moduleId: tag.module_id,
+          equipmentId: tag.equipment_id,
+          unit: tag.unit,
+          cadenceSeconds: cadence,
+          quality: "good",
+          value: (tag.simulation_envelope[0] + tag.simulation_envelope[1]) / 2,
+          sampleTime,
+          receivedAt: new Date(Date.parse(sampleTime) + 1000).toISOString(),
+          ageSeconds: age,
+          eventId: eventId(index + 10),
+          sequence: index + 10,
+        };
+      });
+    const detailedData = {
+      ...data,
+      readings,
+      detail: {
+        plantId: "D01",
+        runId: data.runId,
+        generation: data.generation,
+        asOf: data.asOf,
+        catalogVersion: data.catalogVersion,
+        profileVersion: "d01-publish-profile-v1",
+        sourceContractVersion: "d01-validated-source-v1",
+        sourceStatus: "READY",
+        readings: detailReadings,
+        lineStates: ["A", "B", "C"].map((scopeId, index) => ({
+          scopeId,
+          state: "running",
+          scheduledRunning: true,
+          quality: "good",
+          sampleTime: "2026-01-01T11:59:45Z",
+          receivedAt: "2026-01-01T11:59:46Z",
+          ageSeconds: 15,
+          eventId: eventId(index + 100),
+          sequence: index + 100,
+        })),
+        runningLines: { value: 3, unit: "lines", quality: "good" },
+      },
+    };
+    return { data: detailedData, catalog };
+  }
   it("accepts only pinned scope/generation and never fabricates finite overview evidence", () => {
     const data = fixture();
     expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now)).toBe(true);
     expect(validContinuousOverview(data, data.runId, "catalog", "release-2", now)).toBe(false);
     expect(continuousThroughputUsable(data, now)).toBe(true);
     expect(validOverview(data, data.runId, "catalog", data.asOf, false, now)).toBe(false);
+  });
+  it("accepts a complete pinned detail bundle and exposes only direct readings and reported line state", () => {
+    const { data, catalog } = withDetail(fixture());
+    expect(data.detail.readings).toHaveLength(53);
+    expect(new Set(data.detail.readings.map((reading) => reading.tagId)).size).toBe(53);
+    expect(data.detail.readings.every((reading) => reading.quality === "good")).toBe(true);
+    expect(data.detail.lineStates.map((state) => state.scopeId)).toEqual(["A", "B", "C"]);
+    for (const reading of data.detail.readings) {
+      const tag = catalog.telemetry_tags.find((item) => item.id === reading.tagId)!;
+      expect(reading).toMatchObject({
+        moduleId: tag.module_id,
+        equipmentId: tag.equipment_id,
+        unit: tag.unit,
+        quality: "good",
+        cadenceSeconds: ["bearing_temperature", "level", "product_mass"].includes(tag.metric)
+          ? 60
+          : 30,
+      });
+    }
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now, catalog)).toBe(
+      true,
+    );
+    const detailReading = catalog.telemetry_tags.find(
+      (tag) => !data.readings.some((reading) => reading.tagId === tag.id),
+    )!;
+    expect(continuousTagReading(data, detailReading.id, now)).toMatchObject({
+      quality: "good",
+      value: (detailReading.simulation_envelope[0] + detailReading.simulation_envelope[1]) / 2,
+    });
+    expect(continuousRunningLines(data, now)).toBe(3);
+    expect(moduleStatus(data, "D01.A.crusher", "continuous")).toBe("not directly reported");
+  });
+  it("rejects partial or mismatched detail bundles without breaking legacy overview reads", () => {
+    const { data, catalog } = withDetail(fixture());
+    const partial = {
+      ...data,
+      detail: { ...data.detail, readings: data.detail.readings.slice(1) },
+    };
+    expect(validContinuousOverview(partial, data.runId, "catalog", "release-1", now, catalog)).toBe(
+      false,
+    );
+    const wrongSource = {
+      ...data,
+      detail: { ...data.detail, sourceContractVersion: "other" },
+    };
+    expect(
+      validContinuousOverview(wrongSource, data.runId, "catalog", "release-1", now, catalog),
+    ).toBe(false);
+    const legacy = fixture();
+    expect(
+      validContinuousOverview(legacy, legacy.runId, "catalog", "release-1", now, catalog),
+    ).toBe(true);
+  });
+  it("uses cadence freshness without treating line schedules or stale state as module health", () => {
+    const { data, catalog } = withDetail(fixture());
+    const reading = data.detail.readings.find((item) => item.cadenceSeconds === 30)!;
+    reading.sampleTime = new Date(now - 105_000).toISOString();
+    reading.receivedAt = new Date(now - 100_000).toISOString();
+    reading.ageSeconds = 105;
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now, catalog)).toBe(
+      true,
+    );
+    expect(continuousTagReading(data, reading.tagId, now + 1)).toMatchObject({
+      quality: "stale",
+      value: null,
+    });
+    reading.ageSeconds = 106;
+    reading.sampleTime = new Date(now - 106_000).toISOString();
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now, catalog)).toBe(
+      false,
+    );
+    Object.assign(reading, { quality: "stale", value: null });
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now, catalog)).toBe(
+      true,
+    );
+    data.detail.lineStates[0].state = "idle";
+    data.detail.runningLines.value = 2;
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now, catalog)).toBe(
+      true,
+    );
+    expect(continuousRunningLines(data, now)).toBe(2);
+    expect(moduleStatus(data, "D01.A.crusher")).toBe("not directly reported");
+    data.detail.lineStates[0].quality = "stale";
+    data.detail.lineStates[0].sampleTime = new Date(now - 196_000).toISOString();
+    data.detail.lineStates[0].ageSeconds = 196;
+    Object.assign(data.detail.runningLines, { value: null, quality: "unavailable" });
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now, catalog)).toBe(
+      true,
+    );
+    expect(continuousRunningLines(data, now)).toBeNull();
+  });
+  it("withdraws direct values and the line count for stopped, held or expired owners", () => {
+    for (const change of [
+      { publisherStatus: "failed" },
+      { stopRequested: true },
+      { authorityUntil: "2026-01-01T11:59:59Z" },
+    ]) {
+      const { data } = withDetail(fixture());
+      Object.assign(data.run, change);
+      expect(continuousRunningLines(data, now)).toBeNull();
+      expect(continuousTagReading(data, data.detail.readings[0].tagId, now)).toMatchObject({
+        quality: "unavailable",
+        value: null,
+      });
+    }
+  });
+  it("updates the visible connection banner when continuous evidence recovers", () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const draw = tree.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "drawOverview",
+    );
+    if (!draw) throw new Error("Missing mining overview renderer");
+    const data = fixture();
+    const rendered = new Map<string, string>();
+    const elements = new Map();
+    const element = (id: string) => {
+      if (!elements.has(id))
+        elements.set(id, { hidden: false, childNodes: [], replaceChildren() {}, append() {} });
+      return elements.get(id);
+    };
+    const context = {
+      context: { mode: "continuous", approvedRun: data.run, source: data.source },
+      continuousOverview: { ...data, quality: "unavailable" } as typeof data | null,
+      demoRun: data.run,
+      continuousThroughputUsable: (value: object) => continuousThroughputUsable(value, now),
+      continuousRunningLines: (value: object) => continuousRunningLines(value, now),
+      $: element,
+      text: (id: string, value: string) => rendered.set(id, value),
+      timestamp: formatTimestamp,
+      coverage: String,
+      number: String,
+      node: () => ({}),
+      kpis: ["throughput", "runningLines", "grossProcessWaterIntensity", "energyIntensity"],
+      drawPlant() {},
+      drawDrawer() {},
+      drawDemoRunStatus() {},
+      drawOverview: undefined as undefined | (() => void),
+    };
+    runInNewContext(`${draw.getText(tree)}; this.drawOverview = drawOverview;`, context);
+    context.drawOverview!();
+    expect(rendered.get("connection")).toContain("throughput unavailable");
+    context.continuousOverview = data;
+    context.drawOverview!();
+    expect(rendered.get("quality")).toBe("Quality: good");
+    expect(rendered.get("connection")).toBe("Real validated Fabric throughput read succeeded.");
+    context.continuousOverview = null;
+    context.drawOverview!();
+    expect(rendered.get("quality")).toContain("unavailable");
+    expect(rendered.get("connection")).toContain("throughput unavailable");
   });
   it("withdraws stale, stopped, incomplete, duplicate, or numerically inconsistent KPI evidence", () => {
     const data = fixture();

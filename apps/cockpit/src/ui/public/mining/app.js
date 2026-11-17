@@ -20,6 +20,8 @@ import {
   verifiedRunIngestion,
   validContinuousOverview,
   continuousThroughputUsable,
+  continuousTagReading,
+  continuousRunningLines,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
 import {
@@ -123,8 +125,12 @@ function query() {
 function drawPlant() {
   if (!catalog) return;
   const utilities = $("utilities").checked;
+  const statusOverview = context?.mode === "continuous" ? continuousOverview : overview;
   const statuses = new Map(
-    catalog.modules.map((module) => [module.id, moduleStatus(overview, module.id)]),
+    catalog.modules.map((module) => [
+      module.id,
+      moduleStatus(statusOverview, module.id, context?.mode),
+    ]),
   );
   const topology = new Set(selectedIncident?.affectedModuleIds ?? []);
   renderTop($("plant-top"), catalog, lines, utilities, selected, select, statuses, topology);
@@ -144,9 +150,9 @@ function drawPlant() {
     const item = node("li"),
       button = node(
         "button",
-        `${module.label} · ${moduleStatus(overview, module.id)}${topology.has(module.id) ? " · topology context (not proven cause)" : ""}${appearanceNote}`,
+        `${module.label} · ${moduleStatus(statusOverview, module.id, context?.mode)}${topology.has(module.id) ? " · topology context (not proven cause)" : ""}${appearanceNote}`,
       );
-    button.dataset.status = moduleStatus(overview, module.id);
+    button.dataset.status = moduleStatus(statusOverview, module.id, context?.mode);
     button.type = "button";
     button.setAttribute("aria-pressed", String(module.id === selected));
     button.addEventListener("click", () => select(module.id));
@@ -252,11 +258,19 @@ function drawOverview() {
   $("continuous-evidence").hidden = !continuous;
   if (continuous) {
     const data = continuousOverview;
+    const runningLines = continuousRunningLines(data);
+    const hasLineStateDetail = Array.isArray(data?.detail?.lineStates);
     const good =
       continuousThroughputUsable(data) &&
       demoRun?.runId === data?.runId &&
       demoRun.publisherStatus === "running" &&
       !demoRun.stopRequested;
+    text(
+      "connection",
+      good
+        ? "Real validated Fabric throughput read succeeded."
+        : "Continuous source has insufficient, stale or unusable critical feed evidence; throughput unavailable.",
+    );
     text("quality", `Quality: ${good ? "good" : "unavailable / warming up, stale or stopped"}`);
     text(
       "freshness",
@@ -277,8 +291,16 @@ function drawOverview() {
         `meta-${key}`,
         index === 0
           ? `Five-minute mean · coverage ${coverage(data?.throughput?.coverage)} · source lag ${number(data?.watermarkLagSeconds)} seconds`
-          : "Not supported by the continuous slice",
+          : index === 1
+            ? !hasLineStateDetail
+              ? "Line-state detail is unavailable from this backend release"
+              : runningLines === null
+                ? "Requires all three fresh simulator-reported A/B/C states; not a physical snapshot"
+                : "Validated simulator-reported A/B/C states; latest events are not a simultaneous physical snapshot"
+            : "Not supported by the continuous slice",
       );
+      if (index === 1)
+        text(`kpi-${key}`, runningLines === null ? "Unavailable" : `${runningLines} / 3 lines`);
     });
     text(
       "continuous-source",
@@ -298,6 +320,23 @@ function drawOverview() {
         ),
       );
     }
+    const lineEvidence = $("line-state-readings");
+    lineEvidence.replaceChildren();
+    for (const state of data?.detail?.lineStates ?? []) {
+      const currentAge =
+        state.sampleTime === null ? null : (Date.now() - Date.parse(state.sampleTime)) / 1000;
+      const quality = state.quality === "good" && currentAge > 195 ? "stale" : state.quality;
+      lineEvidence.append(
+        node(
+          "li",
+          `Line ${state.scopeId}: ${state.state ?? "unknown"}; scheduled running ${state.scheduledRunning === null ? "unknown" : state.scheduledRunning ? "yes" : "no"}; measured ${timestamp(state.sampleTime)}, received ${timestamp(state.receivedAt)}; age ${number(state.ageSeconds)}s at request UTC; ${quality}.`,
+        ),
+      );
+    }
+    if (!lineEvidence.childNodes.length)
+      lineEvidence.append(
+        node("li", "Line-state evidence is unavailable from this backend response."),
+      );
     drawPlant();
     drawDrawer();
     if (demoRun) drawDemoRunStatus();
@@ -386,41 +425,70 @@ function drawDrawer() {
   const module = catalog.modules.find((item) => item.id === selected);
   text("asset-heading", module.label);
   text("asset-id", selected);
-  text("asset-status", `Status: ${moduleStatus(overview, selected)}`);
+  const continuous = context?.mode === "continuous";
+  text(
+    "asset-status",
+    continuous
+      ? "Status: not directly reported; no per-module operating-state source is available"
+      : `Status: ${moduleStatus(overview, selected)}`,
+  );
   text(
     "diagnostic-scope",
-    selectedIncident?.metric === null
-      ? "No supported trend metric is associated with this incident; choose a diagnostic to inspect a separate series."
-      : `Selected module: ${selected} · 30-minute default trend`,
+    continuous
+      ? "Module operating state is not directly reported. Continuous trend reads are unavailable."
+      : selectedIncident?.metric === null
+        ? "No supported trend metric is associated with this incident; choose a diagnostic to inspect a separate series."
+        : `Selected module: ${selected} · 30-minute default trend`,
   );
   const readings = $("readings");
   readings.replaceChildren();
   const tags = relevantTags(catalog, selected);
+  if (continuous && !continuousOverview?.detail)
+    readings.append(
+      node(
+        "p",
+        "Direct tag and line-state details are unavailable from this backend release; module operating status is not directly reported.",
+      ),
+    );
   if (!tags.length)
     readings.append(
       node("p", "No numeric sensor is authored for this equipment. No value is inferred."),
     );
   for (const tag of tags) {
-    const reading = overview?.latest?.readings?.find(
-      (item) =>
-        item.tagId === tag.id &&
-        item.moduleId === selected &&
-        item.equipmentId === tag.equipment_id &&
-        item.unit === tag.unit,
-    );
-    const good =
-      overview?.quality === "good" &&
-      usable(reading) &&
-      reading.sampleTime &&
-      Number.isFinite(Date.parse(reading.sampleTime));
+    const reading = continuous
+      ? continuousTagReading(continuousOverview, tag.id)
+      : overview?.latest?.readings?.find(
+          (item) =>
+            item.tagId === tag.id &&
+            item.moduleId === selected &&
+            item.equipmentId === tag.equipment_id &&
+            item.unit === tag.unit,
+        );
+    const good = continuous
+      ? reading?.quality === "good" && usable(reading)
+      : overview?.quality === "good" &&
+        usable(reading) &&
+        reading.sampleTime &&
+        Number.isFinite(Date.parse(reading.sampleTime));
     const article = node("article");
     article.append(node("h3", tag.metric.replaceAll("_", " ")));
     const details = node("dl");
     for (const [label, value] of [
       ["Reading", good ? `${number(reading.value)} ${tag.unit}` : `Unknown ${tag.unit}`],
-      ["Quality", good ? "good" : unknownQuality(reading?.quality)],
-      ["Sample (UTC)", timestamp(reading?.sampleTime)],
-      ["Ingested (UTC)", timestamp(reading?.ingestionTime)],
+      [
+        "Quality",
+        continuous
+          ? (reading?.quality ?? "missing")
+          : good
+            ? "good"
+            : unknownQuality(reading?.quality),
+      ],
+      [continuous ? "Measured (UTC)" : "Sample (UTC)", timestamp(reading?.sampleTime)],
+      [
+        continuous ? "Received (UTC)" : "Ingested (UTC)",
+        timestamp(continuous ? reading?.receivedAt : reading?.ingestionTime),
+      ],
+      ...(continuous ? [["Age at request UTC", `${number(reading?.ageSeconds)}s`]] : []),
       [
         "Normal demo band",
         Array.isArray(reading?.normalBand) && reading.normalBand.length === 2
@@ -636,8 +704,8 @@ function clearReadState(message) {
   incidentAsOf = null;
   incidentAssessment = null;
   selectedIncident = null;
-  text("connection", message);
   drawOverview();
+  text("connection", message);
   text("incident-status", "Unknown — incident source unavailable.");
   $("incidents").replaceChildren();
   chart($("feed-chart"), null);
@@ -651,17 +719,20 @@ async function refresh(scope = "all") {
     try {
       const data = await reads.read("overview", { plantId: "D01", runId });
       if (epoch !== requestEpoch || context?.approvedRun?.runId !== runId) return;
-      if (!validContinuousOverview(data, runId, catalogVersion, context.approvedRun.generation)) {
+      if (
+        !validContinuousOverview(
+          data,
+          runId,
+          catalogVersion,
+          context.approvedRun.generation,
+          Date.now(),
+          catalog,
+        )
+      ) {
         throw new Error("Invalid or foreign continuous evidence; values are unavailable.");
       }
       continuousOverview = data;
       overview = null;
-      text(
-        "connection",
-        continuousThroughputUsable(data)
-          ? "Real validated Fabric throughput read succeeded."
-          : "Continuous source has insufficient, stale or unusable critical feed evidence; throughput unavailable.",
-      );
       drawOverview();
       text("incident-status", "Unavailable: live incident processing is not supported.");
       $("incidents").replaceChildren();
@@ -1014,11 +1085,19 @@ let demoStatusEpoch = 0;
 function drawDemoRunStatus(notice = "") {
   if (context?.mode === "continuous") {
     text(
+      "run-control-help",
+      "Continuous publishing has no fixed five-minute run duration; it is operator-managed and public start/stop is disabled. Reopening this view never starts a publisher.",
+    );
+    text(
       "run-control-status",
       `${notice}Continuous publishing is operator-managed; public start/stop is disabled. Publisher: ${demoRun?.publisherStatus ?? "unavailable"}${demoRun?.stopRequested ? " · generation held" : ""}.`,
     );
     return;
   }
+  text(
+    "run-control-help",
+    "Finite public D01 demo runs last up to five minutes. A shared cooldown limits repeated starts. Reopening this view never starts a run. Publisher completion is not Fabric ingestion completion; stop requested is not stopped.",
+  );
   const status = demoRun
     ? `Run ${demoRun.runId}: ${demoRun.publisherStatus}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion ${verifiedRunIngestion(overview, demoRun)}.`
     : "No active public demo run.";
@@ -1060,7 +1139,16 @@ async function updateDemoStatus(notice = "") {
       mode = "live";
       $("mode").value = "live";
       $("replay-label").hidden = true;
-      if (context?.mode === "continuous") drawOverview();
+      if (context?.mode === "continuous") {
+        if (
+          !demoRun ||
+          demoRun.publisherStatus !== "running" ||
+          demoRun.stopRequested ||
+          continuousOverview?.runId !== demoRun.runId
+        )
+          continuousOverview = null;
+        drawOverview();
+      }
     }
     drawDemoRunStatus(notice);
     if (catalog && (context?.approvedRun?.runId ?? null) !== (demoRun?.runId ?? null)) {
