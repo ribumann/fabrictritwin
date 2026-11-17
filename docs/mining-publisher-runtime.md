@@ -99,6 +99,40 @@ a native live/time-series binding. `incident_source_ready=false` remains an
 unsupported capability; this slice neither calls incident completion nor
 constructs an unbounded expected-event manifest.
 
+### Remote public-flow observer
+
+Use `.github/workflows/mining-continuous-flow-observer.yml` from `main` and
+dispatch it manually with the current run UUID, exact generation identifier,
+and a 15- or 35-minute duration. The inputs have no baked-in run/generation
+defaults; this observer never starts or stops a publisher. It issues only
+credentialless GETs to the fixed public Cockpit origin:
+`/api/mining/context` and
+`/api/mining/overview?plantId=D01&runId=<run-id>`. Cockpit must route these
+through both `MINING_PUBLIC_DEMO_ENABLED` and
+`MINING_PUBLIC_DEMO_READ_ENABLED`; the backend continuous read gate must also
+be enabled. The observer verifies the returned continuous mode, shared source,
+catalog, run, generation and live authority, so a misrouted legacy reader fails
+closed rather than counting as evidence.
+
+The remote runner samples at about 30-second cadence and fails on a gap over
+60 seconds, stale request UTC/watermark, invalid five-minute rolling window,
+source/readiness or scope mismatch, owner churn/stop, or insufficient per-tag
+measurement, receipt and event-ID advancement. Each of the three critical
+tags must advance; constant numeric values are valid when that evidence
+progresses. Backwards source timestamps fail immediately, while equal adjacent
+timestamps are allowed. `ingestionStatus: "unknown"` is deliberately not
+treated as either healthy or failed. The watermark is a rolling cutoff, not a
+five-minute wall-clock boundary. On success or ordinary observer failure, the
+workflow uploads bounded public-only JSONL evidence and a terminal summary for
+seven days. It does not run on a schedule, deploy, authenticate to
+Azure/Fabric, or call start/stop routes.
+
+This observer proves sustained freshness and consistency only through the
+public API. It does **not** prove raw-to-validated ingestion, SDK send
+settlement, full tag/detail coverage, incident readiness, or a native live
+ontology binding. Those claims still require the separately reviewed exact
+Fabric/Kusto trace and other parent-owned acceptance evidence.
+
 ### Practical private stop
 
 Use the signed delegated endpoint documented in

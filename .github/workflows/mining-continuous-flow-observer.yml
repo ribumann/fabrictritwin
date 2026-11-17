@@ -1,0 +1,57 @@
+name: Observe public Mining continuous flow
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Current D01 continuous run UUID (version 4)
+        required: true
+        type: string
+      generation:
+        description: Exact current continuous generation identifier
+        required: true
+        type: string
+      duration_minutes:
+        description: Sustained public observation duration
+        required: true
+        default: "15"
+        type: choice
+        options:
+          - "15"
+          - "35"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mining-public-flow-observer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: github.repository == 'ribumann/fabrictritwin' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      MINING_OBSERVER_RUN_ID: ${{ inputs.run_id }}
+      MINING_OBSERVER_GENERATION: ${{ inputs.generation }}
+      MINING_OBSERVER_DURATION_MINUTES: ${{ inputs.duration_minutes }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: Run read-only public observer
+        env:
+          MINING_OBSERVER_OUTPUT_DIR: ${{ runner.temp }}/mining-continuous-flow
+        run: node scripts/simulate/observe-mining-continuous.mjs
+      - name: Upload bounded public evidence and terminal summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mining-continuous-flow-${{ github.run_id }}
+          path: ${{ runner.temp }}/mining-continuous-flow/
+          if-no-files-found: warn
+          retention-days: 7

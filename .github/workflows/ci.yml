@@ -21,9 +21,12 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+      - name: Validate continuous-observer workflow contexts
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes= .github/workflows/mining-continuous-flow-observer.yml
       - run: npm ci --registry=https://registry.npmjs.org
       - run: npm run build
       - run: npm test
+      - run: node --test scripts/simulate/observe-mining-continuous.test.mjs
       - run: npm run lint
       - run: npm run format
       - uses: actions/setup-python@v5
