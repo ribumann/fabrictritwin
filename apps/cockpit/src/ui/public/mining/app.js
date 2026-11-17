@@ -16,6 +16,7 @@ import {
   validIncidentAssessment,
   incidentAssessmentLabel,
   validSeries,
+  crossRunChartData,
   seriesQuery,
   verifiedRunIngestion,
   validContinuousOverview,
@@ -24,6 +25,7 @@ import {
   continuousRunningLines,
   continuousSummaryFresh,
   continuousSummaryMetric,
+  continuousClockSkewMs,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
 import {
@@ -48,7 +50,9 @@ const number = (value) =>
     ? value.toLocaleString(undefined, { maximumFractionDigits: 2 })
     : "Unknown";
 const preciseNumber = (value) =>
-  Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "Unknown";
+  Number.isFinite(value)
+    ? value.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    : "Unknown";
 const timestamp = formatTimestamp;
 const coverage = (value) =>
   Number.isFinite(value) && value >= 0 && value <= 1 ? `${Math.round(value * 100)}%` : "unknown";
@@ -112,7 +116,11 @@ function query() {
   const asOf =
     mode === "replay"
       ? replayTime
-      : new Date(Math.floor(Date.now() / 15_000) * 15_000).toISOString();
+      : new Date(
+          Math.floor(
+            (Date.now() - (context?.mode === "continuous" ? continuousClockSkewMs : 0)) / 15_000,
+          ) * 15_000,
+        ).toISOString();
   if (!asOf || !Number.isFinite(Date.parse(asOf)))
     throw new Error("Choose a valid UTC replay time.");
   const minutes = Number($("window").value);
@@ -159,7 +167,8 @@ function drawPlant() {
       );
     button.dataset.status = status.replaceAll(" ", "-");
     if (context?.mode === "continuous")
-      button.title = "Sensor freshness and quality only; equipment operating status is not reported.";
+      button.title =
+        "Sensor freshness and quality only; equipment operating status is not reported.";
     button.type = "button";
     button.setAttribute("aria-pressed", String(module.id === selected));
     button.addEventListener("click", () => select(module.id));
@@ -332,14 +341,15 @@ function drawOverview() {
                 }
                 if (value.quality === "good" && Number.isFinite(value.value))
                   return `${window}: ${preciseNumber(value.value)} ${value.unit} · ${coverage(value.coverage)} common coverage`;
-                const status = {
-                  INSUFFICIENT_COMMON_COVERAGE: "insufficient common coverage",
-                  STATE_COVERAGE_INCOMPLETE: "state coverage incomplete",
-                  FEED_BELOW_10_TPH: "feed below 10 t/h",
-                  SOURCE_REJECTED: "source rejected the window",
-                  QUERY_UNAVAILABLE: "summary query unavailable",
-                  NO_DATA: "no supported data",
-                }[evidence.status] ?? `${value.quality} source quality`;
+                const status =
+                  {
+                    INSUFFICIENT_COMMON_COVERAGE: "insufficient common coverage",
+                    STATE_COVERAGE_INCOMPLETE: "state coverage incomplete",
+                    FEED_BELOW_10_TPH: "feed below 10 t/h",
+                    SOURCE_REJECTED: "source rejected the window",
+                    QUERY_UNAVAILABLE: "summary query unavailable",
+                    NO_DATA: "no supported data",
+                  }[evidence.status] ?? `${value.quality} source quality`;
                 return `${window}: unavailable (${status}${value.coverage === null ? "" : ` · ${coverage(value.coverage)} common coverage`})`;
               })
               .join(" · ")
@@ -483,7 +493,9 @@ function drawDrawer() {
   text(
     "diagnostic-scope",
     continuous
-      ? "Module operating state is not directly reported. Continuous trend reads are unavailable."
+      ? context.capabilities?.trends === true
+        ? "Cross-run sensor trends are shown by metric; module operating state is not directly reported."
+        : "Continuous trend reads are unavailable; module operating state is not directly reported."
       : selectedIncident?.metric === null
         ? "No supported trend metric is associated with this incident; choose a diagnostic to inspect a separate series."
         : `Selected module: ${selected} · 30-minute default trend`,
@@ -666,8 +678,14 @@ function chart(container, data) {
     return;
   }
   const colors = ["#4338ca", "#0f766e", "#b45309"];
+  const drawable = (row) =>
+    usable(row) &&
+    (!data.crossRun ||
+      (row.status === "OBSERVED" &&
+        typeof row.runId === "string" &&
+        typeof row.segmentId === "string"));
   const unitRanges = new Map();
-  for (const row of rows.filter(usable)) {
+  for (const row of rows.filter(drawable)) {
     const range = unitRanges.get(row.unit) ?? [row.value, row.value];
     unitRanges.set(row.unit, [Math.min(range[0], row.value), Math.max(range[1], row.value)]);
   }
@@ -675,33 +693,50 @@ function chart(container, data) {
     const items = rows
       .filter((row) => `${row.seriesId} (${row.unit})` === group)
       .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-    const values = items.filter(usable).map((row) => row.value);
+    const values = items.filter(drawable).map((row) => row.value);
     if (!values.length) return;
     const [low, high] = unitRanges.get(items[0].unit);
     const span = high - low || 1;
     let points = [];
     const flush = () => {
       if (points.length) {
-        const line = document.createElementNS(svg.namespaceURI, "polyline");
-        line.setAttribute("points", points.join(" "));
-        line.setAttribute("stroke", colors[index % colors.length]);
-        line.setAttribute("stroke-dasharray", index === 1 ? "6 3" : index === 2 ? "2 3" : "none");
-        svg.append(line);
+        if (data.crossRun && points.length === 1) {
+          const dot = document.createElementNS(svg.namespaceURI, "circle");
+          const [x, y] = points[0].split(",");
+          dot.setAttribute("cx", x);
+          dot.setAttribute("cy", y);
+          dot.setAttribute("r", "3");
+          dot.setAttribute("fill", colors[index % colors.length]);
+          svg.append(dot);
+        } else {
+          const line = document.createElementNS(svg.namespaceURI, "polyline");
+          line.setAttribute("points", points.join(" "));
+          line.setAttribute("stroke", colors[index % colors.length]);
+          line.setAttribute("stroke-dasharray", index === 1 ? "6 3" : index === 2 ? "2 3" : "none");
+          svg.append(line);
+        }
         points = [];
       }
     };
     let previous = null;
     for (const row of items) {
       if (
-        !usable(row) ||
-        (previous !== null && Date.parse(row.timestamp) - previous > data.binMinutes * 60_000 * 1.5)
+        !drawable(row) ||
+        (previous !== null &&
+          (data.crossRun
+            ? row.runId !== previous.runId ||
+              row.segmentId !== previous.segmentId ||
+              Date.parse(row.timestamp) - Date.parse(previous.timestamp) !==
+                data.binMinutes * 60_000
+            : Date.parse(row.timestamp) - Date.parse(previous.timestamp) >
+              data.binMinutes * 60_000 * 1.5))
       )
         flush();
-      if (usable(row))
+      if (drawable(row))
         points.push(
           `${40 + (Math.max(0, Date.parse(row.timestamp) - start) / (end - start)) * 540},${165 - ((row.value - low) / span) * 120}`,
         );
-      previous = Date.parse(row.timestamp);
+      previous = row;
     }
     flush();
     const label = node(
@@ -711,10 +746,12 @@ function chart(container, data) {
     container.append(label);
   });
   container.prepend(svg);
+  if (data.crossRun && !rows.some(drawable))
+    container.append(node("p", "Unknown — no fully observed trend averages are available."));
   container.append(
     node(
       "p",
-      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins. Gaps and non-good-quality samples are not connected.`,
+      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins${data.crossRun ? " · observed bin averages; runs remain separate" : ""}. Gaps and non-good-quality samples are not connected.${data.crossRun ? " Within the selected window, missing rows mean no bin was returned, not zero or an unrequested interval." : ""}`,
     ),
   );
   const details = node("details"),
@@ -723,9 +760,17 @@ function chart(container, data) {
     table = node("table");
   wrap.className = "mining-chart-table";
   const head = node("tr");
-  ["Time (UTC)", "Series", "Value / unit", "Quality / coverage"].forEach((label) =>
-    head.append(node("th", label)),
-  );
+  (data.crossRun
+    ? [
+        "Bin start (UTC)",
+        "Series",
+        "Bin average / unit",
+        "Status / coverage",
+        "Run ID",
+        "First / last sample (UTC)",
+      ]
+    : ["Time (UTC)", "Series", "Value / unit", "Quality / coverage"]
+  ).forEach((label) => head.append(node("th", label)));
   const thead = node("thead");
   thead.append(head);
   table.append(thead);
@@ -735,8 +780,11 @@ function chart(container, data) {
     [
       timestamp(row.timestamp),
       row.seriesId,
-      `${usable(row) ? number(row.value) : "Unknown"} ${row.unit}`,
-      `${row.quality} / ${coverage(row.coverage)}`,
+      `${drawable(row) ? number(row.value) : "Unknown"} ${row.unit}`,
+      `${data.crossRun ? `${row.status} · ` : ""}${row.quality} / ${coverage(row.coverage)}`,
+      ...(data.crossRun
+        ? [row.runId, `${timestamp(row.firstSampleTime)} / ${timestamp(row.lastSampleTime)}`]
+        : []),
     ].forEach((value) => tr.append(node("td", value)));
     tbody.append(tr);
   }
@@ -763,10 +811,16 @@ async function refresh(scope = "all") {
   if (context?.mode === "continuous") {
     if (document.hidden || !context.readAvailable || !context.approvedRun) return;
     const runId = context.approvedRun.runId;
+    const generation = context.approvedRun.generation;
     const epoch = requestEpoch;
+    const current = () =>
+      epoch === requestEpoch &&
+      !document.hidden &&
+      context?.approvedRun?.runId === runId &&
+      context?.approvedRun?.generation === generation;
     try {
       const data = await reads.read("overview", { plantId: "D01", runId });
-      if (epoch !== requestEpoch || context?.approvedRun?.runId !== runId) return;
+      if (!current()) return;
       if (
         !validContinuousOverview(
           data,
@@ -784,12 +838,53 @@ async function refresh(scope = "all") {
       drawOverview();
       text("incident-status", "Unavailable: live incident processing is not supported.");
       $("incidents").replaceChildren();
+    } catch (error) {
+      if (current()) clearReadState(error.message);
+      return;
+    }
+    if (!current()) return;
+    if (context.capabilities?.trends !== true) {
       chart($("feed-chart"), null);
       chart($("diagnostic-chart"), null);
-    } catch (error) {
-      if (epoch === requestEpoch && context?.approvedRun?.runId === runId)
-        clearReadState(error.message);
+      text("diagnostic-scope", "Continuous trend reads are unavailable.");
+      return;
     }
+    const params = query();
+    const loadTrend = async (target, metric) => {
+      try {
+        const request = {
+          plantId: "D01",
+          start: params.start,
+          end: params.end,
+          metric,
+          binMinutes: params.binMinutes,
+        };
+        const data = await reads.read("cross-run-trends", request);
+        if (!current() || (target === "diagnostic-chart" && $("diagnostic").value !== metric))
+          return;
+        const chartData = crossRunChartData(data, request, catalogVersion, catalog, {
+          runId,
+          generation,
+        });
+        if (!chartData) throw new Error("Cross-run trend evidence is invalid or unavailable.");
+        chart($(target), chartData);
+        if (target === "diagnostic-chart")
+          text(
+            "diagnostic-scope",
+            "Observed cross-run sensor averages; module state is not inferred.",
+          );
+      } catch (error) {
+        if (current() && (target !== "diagnostic-chart" || $("diagnostic").value === metric)) {
+          chart($(target), null);
+          $(target).append(node("p", error.message));
+        }
+      }
+    };
+    const tasks = [];
+    if (scope === "all" || scope === "detail") tasks.push(loadTrend("feed-chart", "feed"));
+    if (scope === "all" || scope === "detail" || scope === "diagnostic")
+      tasks.push(loadTrend("diagnostic-chart", $("diagnostic").value));
+    await Promise.all(tasks);
     return;
   }
   if (mode === "replay") {
@@ -978,6 +1073,7 @@ async function loadContext() {
       throw new Error("Invalid mining context.");
     if (context.catalogVersion !== catalogVersion)
       throw new Error("Backend and geometry catalog versions differ; mining reads are gated.");
+    $("window").disabled = context.mode === "continuous" && context.capabilities?.trends !== true;
     if (
       context.approvedRun &&
       !sameScope(context.approvedRun, context.approvedRun.runId, catalogVersion)
@@ -1182,7 +1278,7 @@ async function updateDemoStatus(notice = "") {
     $("run-start").disabled = managed || !!active;
     $("run-cancel").disabled = managed || !active || demoRun.stopRequested;
     $("mode").disabled = managed;
-    $("window").disabled = managed;
+    $("window").disabled = managed && context?.capabilities?.trends !== true;
     if (managed) {
       mode = "live";
       $("mode").value = "live";
@@ -1192,14 +1288,22 @@ async function updateDemoStatus(notice = "") {
           !demoRun ||
           demoRun.publisherStatus !== "running" ||
           demoRun.stopRequested ||
-          continuousOverview?.runId !== demoRun.runId
-        )
-          continuousOverview = null;
+          continuousOverview?.runId !== demoRun.runId ||
+          context.approvedRun?.generation !== demoRun.generation
+        ) {
+          invalidate();
+          reads.reset();
+          clearReadState("Continuous owner is unavailable; previous trends withdrawn.");
+        }
         drawOverview();
       }
     }
     drawDemoRunStatus(notice);
-    if (catalog && (context?.approvedRun?.runId ?? null) !== (demoRun?.runId ?? null)) {
+    if (
+      catalog &&
+      ((context?.approvedRun?.runId ?? null) !== (demoRun?.runId ?? null) ||
+        (managed && (context?.approvedRun?.generation ?? null) !== (demoRun?.generation ?? null)))
+    ) {
       invalidate();
       reads.reset();
       await loadContext();
@@ -1210,8 +1314,11 @@ async function updateDemoStatus(notice = "") {
     $("run-start").disabled = true;
     $("run-cancel").disabled = true;
     text("run-control-status", error.message);
-    if (context?.mode === "continuous")
+    if (context?.mode === "continuous") {
+      invalidate();
+      reads.reset();
       clearReadState("Continuous run status unavailable; previous values withdrawn.");
+    }
   }
 }
 async function demoAction(action) {
@@ -1266,6 +1373,10 @@ $("replay-time").addEventListener("change", async () => {
 });
 $("window").addEventListener("change", () => {
   invalidate();
+  if (context?.mode === "continuous") {
+    $("feed-chart").replaceChildren(node("p", "Loading cross-run trend…"));
+    $("diagnostic-chart").replaceChildren(node("p", "Loading cross-run trend…"));
+  }
   refresh("detail");
   configurePolling();
 });

@@ -24,6 +24,12 @@ import {
   type MiningAnswer,
 } from "../mining/assistant.js";
 import { createMiningContinuousProvider } from "../mining/read/continuous-provider.js";
+import { createMiningCrossRunTrendProvider } from "../mining/read/cross-run-trend-provider.js";
+import {
+  prepareMiningCrossRunTrendQuery,
+  type MiningCrossRunMetric,
+} from "../mining/read/cross-run-trend-query.js";
+import { MiningQueryError } from "../mining/read/bounded-query.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -41,6 +47,7 @@ interface Options {
   incidents?: Pick<MiningDemoIncidentProcessor, "start">;
   answer?: MiningAnswer;
   continuous?: ReturnType<typeof createMiningContinuousProvider>;
+  crossRunTrends?: ReturnType<typeof createMiningCrossRunTrendProvider>;
 }
 
 function error(res: Response, status: number, code: string, message: string): void {
@@ -65,6 +72,7 @@ export function createMiningDemoRouter(options: Options): Router {
   const curated = options.curated ?? createMiningDemoProvider(env);
   const answer = options.answer ?? createMiningAnswer(env);
   const continuous = options.continuous ?? createMiningContinuousProvider(env);
+  const crossRunTrends = options.crossRunTrends ?? createMiningCrossRunTrendProvider(env);
   const continuousMode =
     env.MINING_CONTINUOUS_ENABLED === "true" || env.MINING_CONTINUOUS_READ_ENABLED === "true";
   const visibleRun = async (
@@ -202,6 +210,97 @@ export function createMiningDemoRouter(options: Options): Router {
       fail(res, cause);
     }
   });
+  router.get("/cross-run-trends", async (req, res) => {
+    if (
+      !continuousMode ||
+      env.MINING_PUBLIC_DEMO_READ_ENABLED !== "true" ||
+      env.MINING_CONTINUOUS_READ_ENABLED !== "true"
+    ) {
+      error(res, 503, "mining_continuous_unavailable", "Continuous trends are unavailable.");
+      return;
+    }
+    const allowed = new Set(["plantId", "start", "end", "metric", "binMinutes"]);
+    if (
+      Object.entries(req.query).some(
+        ([key, value]) => !allowed.has(key) || typeof value !== "string" || value.length > 128,
+      ) ||
+      req.query.plantId !== "D01" ||
+      typeof req.query.start !== "string" ||
+      typeof req.query.end !== "string" ||
+      typeof req.query.metric !== "string" ||
+      !["feed", "density", "vibration", "water-energy"].includes(req.query.metric) ||
+      !["1", "5"].includes(String(req.query.binMinutes))
+    ) {
+      error(res, 400, "invalid_mining_query", "Invalid cross-run trend scope.");
+      return;
+    }
+    const input = {
+      start: req.query.start,
+      end: req.query.end,
+      asOf: new Date().toISOString(),
+      metric: req.query.metric as MiningCrossRunMetric,
+      binMinutes: req.query.binMinutes === "1" ? (1 as const) : (5 as const),
+    };
+    try {
+      prepareMiningCrossRunTrendQuery(input);
+    } catch (cause) {
+      if (!(cause instanceof MiningQueryError) || cause.code !== "invalid") throw cause;
+      error(res, 400, "invalid_mining_query", "Invalid cross-run trend window.");
+      return;
+    }
+    try {
+      assertMiningDemoQueryConfiguration(env);
+      const { store, coordinator } = dependencies();
+      const signal: AbortSignal = res.locals.miningDemoSignal;
+      const initial = await visibleRun(store, await coordinator.currentStatus(signal), signal);
+      const current =
+        initial?.admission === "accepted" &&
+        initial.phase === "running" &&
+        !initial.stopRequested &&
+        initial.run &&
+        isContinuousMiningRun(initial.run) &&
+        Date.parse(initial.run.authorityUntil) > Date.now()
+          ? initial.run
+          : undefined;
+      if (!current) {
+        error(
+          res,
+          503,
+          "mining_continuous_unavailable",
+          "The continuous publisher is unavailable.",
+        );
+        return;
+      }
+      const data = await crossRunTrends(input, signal);
+      const latest = await coordinator.currentStatus(signal);
+      if (
+        latest?.admission !== "accepted" ||
+        latest.phase !== "running" ||
+        latest.stopRequested ||
+        latest.runId !== current.runId ||
+        !latest.run ||
+        !isContinuousMiningRun(latest.run) ||
+        latest.run.lifetime.generation !== current.lifetime.generation ||
+        !(Date.parse(latest.run.authorityUntil) > Date.now())
+      ) {
+        throw new MiningCoordinationError(
+          "prerequisite",
+          "Continuous authority changed during the read.",
+        );
+      }
+      if (res.headersSent || res.destroyed) return;
+      res.json({
+        ...data,
+        owner: {
+          runId: current.runId,
+          generation: current.lifetime.generation,
+          authorityUntil: latest.run.authorityUntil,
+        },
+      });
+    } catch (cause) {
+      fail(res, cause, "mining_trend_unavailable");
+    }
+  });
   for (const route of ["context", "overview", "trends", "incidents", "compare-lines"] as const) {
     router.get(`/${route}`, async (req, res) => {
       if (env.MINING_PUBLIC_DEMO_READ_ENABLED !== "true") {
@@ -264,7 +363,12 @@ export function createMiningDemoRouter(options: Options): Router {
               catalogVersion: D01_CATALOG_VERSION,
               readAvailable: env.MINING_CONTINUOUS_READ_ENABLED === "true",
               assistant: { available: false, kind: "bounded-fabric-evidence" },
-              capabilities: { incidents: false, trends: false, replay: false, assistant: false },
+              capabilities: {
+                incidents: false,
+                trends: env.MINING_CONTINUOUS_READ_ENABLED === "true",
+                replay: false,
+                assistant: false,
+              },
               unavailableReason:
                 "Managed continuous source; waiting for a healthy owner and rolling-window coverage.",
             });

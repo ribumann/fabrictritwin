@@ -3,6 +3,7 @@ import { DefaultAzureCredential, type TokenCredential } from "@azure/identity";
 export interface ServiceAuthOptions {
   scope?: string;
   credential?: TokenCredential;
+  abortSignal?: AbortSignal;
 }
 
 interface CachedToken {
@@ -36,7 +37,9 @@ export async function getServiceAccessToken(options: ServiceAuthOptions = {}): P
   }
 
   const credential = options.credential ?? (sharedCredential ??= new DefaultAzureCredential());
-  const result = await credential.getToken(scope);
+  const result = options.abortSignal
+    ? await credential.getToken(scope, { abortSignal: options.abortSignal })
+    : await credential.getToken(scope);
   if (!result) {
     throw new Error(`Failed to acquire a service access token for scope "${scope}".`);
   }
