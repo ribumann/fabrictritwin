@@ -96,18 +96,22 @@ Mining uses its own Eventstream, Eventhouse, KQL database, and raw tables in the
 existing workspace and capacity; it does not share or modify the triathlon
 Eventstream or database.
 
-The public [Cockpit Mining view](https://ontologydemo.liberatetheinnerchild.net/mining)
+The public [Cockpit Mining view](https://ontologydemo.liberatetheinnerchild.net/mining/)
 uses generated telemetry through the real Mining Eventstream and Eventhouse.
+The hosted configuration uses an operator-managed continuous publisher; public
+start/stop controls are disabled. A restart can produce a new run ID and a
+genuine warm-up or gap. Publisher activity alone does not prove downstream
+ingestion; read the displayed quality and coverage before interpreting a value.
 With continuous mode disabled, it offers bounded D01 runs of up to five minutes
-with one durable active writer and a ten-minute start interval. With continuous
-mode enabled, the operator-managed publisher has no anonymous start/stop
-controls; the public view reads only its current run. Water and energy
+with one durable active writer and a ten-minute start interval. In continuous
+mode, the public view reads only its current run. Water and energy
 intensities use bounded 30-minute, 2-hour and 24-hour `mining_PlantSummary`
 windows scoped to that same run. Common coverage below 90% remains unavailable;
 the windows do not stitch publisher runs or imply complete history. Plant
 markers in continuous mode describe sensor evidence freshness/quality, not
-equipment health or operating limits. Trends, live incidents, replay and the
-assistant remain unavailable in this slice.
+equipment health or operating limits. Check the cockpit's availability indicators
+before exploring trends. Live incidents, replay and the assistant remain
+unavailable in the current continuous configuration.
 
 ### Mining Fabric workspace map
 
@@ -132,13 +136,11 @@ Names and purposes are not proof of dependencies. Before any cleanup decision,
 provide exact item IDs and their dependency list for explicit approval. No
 workspace item or database in this map is approved for deletion.
 
-On 15 November 2026, a completed public run reconciled the exact expected
-505 telemetry and 32 state event IDs, with no conflicts or quarantined events.
-[Durable incident assessments](docs/mining-incidents.md) survived a backend
-restart with their original event and capture times. The
-[public evidence assistant](docs/mining-assistant.md) answered through the deployed
-web form and distinguished complete ingestion from stale samples. It uses a
-bounded Fabric snapshot, not the native Fabric Data Agent.
+On 15 November 2026, an earlier bounded-run configuration reconciled 505
+telemetry and 32 state event IDs, and its incident and assistant capabilities
+were exercised. That historical evidence does not establish those capabilities
+in the current continuous configuration; the cockpit reports them unavailable
+unless they are explicitly enabled and verified.
 
 These are dated observations, not a continuing availability guarantee. Current
 reads can fail when Fabric is unavailable or throttled; a fresh refresh time does
@@ -158,8 +160,10 @@ creation or playbook generation alone is not treated as a working native capabil
 
 The public demo controls and reads are separately opt-in and do not replace the
 protected delegated APIs. See the [mining architecture and dated
-evidence](docs/release-architecture.md#isolated-d01-mining-path-readiness-gated)
-and [run coordination settings](docs/mining-run-coordination.md).
+evidence](docs/release-architecture.md#public-d01-mining-demo-service-boundary-and-private-source)
+and [run coordination settings](docs/mining-run-coordination.md). Follow a
+measurement from the simulator through Fabric in the
+[Mining learning guide](docs/mining-learning-guide.md).
 
 ## Development
 
