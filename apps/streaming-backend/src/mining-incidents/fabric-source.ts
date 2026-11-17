@@ -90,7 +90,7 @@ export function assertReconciledIncidentObservations(
   }
 }
 
-function mapRow(
+export function mapFabricIncidentObservation(
   row: Record<string, unknown>,
   run: MiningIncidentRun,
   asOf: number,
@@ -219,7 +219,7 @@ export function createFabricIncidentSource(
       const known = new Map(committed.map((item) => [item.eventId, fingerprint(item)]));
       const observations: Observation[] = [];
       for (const row of rows) {
-        const observation = mapRow(row, definition, asOfMs, receivedMs);
+        const observation = mapFabricIncidentObservation(row, definition, asOfMs, receivedMs);
         const body = fingerprint(observation);
         const prior = known.get(observation.eventId);
         if (prior !== undefined && prior !== body) invalid("Conflicting incident source event.");
