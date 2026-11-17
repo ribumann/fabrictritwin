@@ -9,7 +9,7 @@ BeforeAll {
     $script:Manifest = Get-Content -LiteralPath $script:ManifestPath -Raw | ConvertFrom-Json
     $script:ExpectedSourceHashes = @{
         'infra/fabric/eventhouse/MiningValidation.kql' = '0ba0f1c5fcb85522f4281c6d11a71358623fc4589ca042ed89c3db2b52cad6ae'
-        'infra/fabric/eventhouse/MiningQueries.kql' = 'ba3fdff7ca680f8fb8a915d47b0db42302356fea1596b87ec786b697e5dadf26'
+        'infra/fabric/eventhouse/MiningQueries.kql' = '7571ddc34d662fc226f07d9affb2bb930e76b128abd403f4896f3834d3811cb3'
         'apps/simulator/src/mining/plant-catalog.json' = '0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce'
         'apps/simulator/src/mining/catalog.ts' = 'ae699fe26beaad2f245a317ecb96e9dbfdecdf0414a34e1eb26a31f5f1930a66'
         'infra/fabric/eventhouse/MiningSchema.kql' = '2d780c59767ae0937914aeb3e36c48182ad2d913720ad199526e1858e62dbdec'
@@ -20,8 +20,8 @@ Describe 'Synthetic mining KQL engine self-test' {
     It 'pins the exact generated payload and frozen source files' {
         $script:Manifest.schemaVersion | Should -Be 2
         $script:Manifest.status | Should -Be 'synthetic-engine-self-test-only'
-        $script:Manifest.sourceRevision | Should -Be 'd01-kql-coverage-bins-v5'
-        $script:Manifest.sourceBaseCommit | Should -Be '4d1f93b6d1cc7e940d24f73621742329c112197d'
+        $script:Manifest.sourceRevision | Should -Be 'd01-kql-state-sequence-v6'
+        $script:Manifest.sourceBaseCommit | Should -Be 'b8556e18a7fcf0a90495984c4871450bdf4effce'
         $script:Manifest.historicalSource.sourceCommit | Should -Be '324d73496913b4a2944713eb8861f2b7fdba4c02'
         $script:Manifest.historicalSource.sourceFiles[1].sha256 | Should -Be 'aa2e41fa8d370f77e217da5304cd0ad7c5c4c1cce2b22b8ca541fa9b38f19c05'
         $script:Manifest.historicalSource.querySha256 | Should -Be 'a1a05bf82f28989d32b8c7190e7fc3a341038b90f4e28a5c9d1edae4f15034b4'
@@ -38,8 +38,8 @@ Describe 'Synthetic mining KQL engine self-test' {
         $script:Manifest.previousCandidates[2].miningQueriesSha256 | Should -Be '63f84951b34cf27722fb74f58234dac659af058d50dc2cb1430b58409fe48b4c'
         $script:Manifest.previousCandidates[2].querySha256 | Should -Be '380c2234bbd86545ea52b8cc0af90e58a7671b38aa5f76c4b8974c7eae9ffd41'
         $script:Manifest.previousCandidates[2].queryBytes | Should -Be 108395
-        $script:Manifest.querySha256 | Should -Be '3a73db0741ad4f7e12fe3ec1c15f773cf63e0d3e33b9def7765a93e3de0865fa'
-        $script:Manifest.queryBytes | Should -Be 109541
+        $script:Manifest.querySha256 | Should -Be '58563d5709b1c5461b25e0db9da2fa934c6c13b3c880b642dfe82a2fc1eec712'
+        $script:Manifest.queryBytes | Should -Be 110965
         $script:Manifest.fixtureSha256 | Should -Be '5cd30adec57140734879e33ecffc4101da264dbe0fb172eff584b593e20fbac1'
         (Get-FileHash -LiteralPath $script:QueryPath -Algorithm SHA256).Hash.ToLowerInvariant() |
             Should -Be $script:Manifest.querySha256
