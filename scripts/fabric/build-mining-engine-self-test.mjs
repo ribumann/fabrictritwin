@@ -30,13 +30,13 @@ const historicalSourceFiles = [
     sha256: 'd8b21287a96c87a041f7f741f3233f4da47bcd0a1c53bcd8db6e88a5bb2c26c1',
   },
 ];
-const sourceRevision = 'd01-kql-coverage-bins-v5';
-const sourceBaseCommit = '4d1f93b6d1cc7e940d24f73621742329c112197d';
+const sourceRevision = 'd01-kql-state-sequence-v6';
+const sourceBaseCommit = 'b8556e18a7fcf0a90495984c4871450bdf4effce';
 const sourceFiles = historicalSourceFiles.map((source) => ({
   ...source,
   sha256: ({
     'infra/fabric/eventhouse/MiningValidation.kql': '0ba0f1c5fcb85522f4281c6d11a71358623fc4589ca042ed89c3db2b52cad6ae',
-    'infra/fabric/eventhouse/MiningQueries.kql': 'ba3fdff7ca680f8fb8a915d47b0db42302356fea1596b87ec786b697e5dadf26',
+    'infra/fabric/eventhouse/MiningQueries.kql': '7571ddc34d662fc226f07d9affb2bb930e76b128abd403f4896f3834d3811cb3',
     'infra/fabric/eventhouse/MiningSchema.kql': '2d780c59767ae0937914aeb3e36c48182ad2d913720ad199526e1858e62dbdec',
   })[source.path] ?? source.sha256,
 }));

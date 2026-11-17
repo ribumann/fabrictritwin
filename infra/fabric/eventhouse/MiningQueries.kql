@@ -230,20 +230,29 @@
         state_by_minute
         | summarize latest_timestamp = max(timestamp)
             by scope_id, minute;
-    let state_latest_conflicts =
+    let state_latest_sequences =
         state_by_minute
         | join kind=inner state_latest_times on scope_id, minute
         | where timestamp == latest_timestamp
-        | summarize latest_conflict_count = countif(event_conflict) by scope_id, minute;
+        | summarize latest_sequence = max(sequence) by scope_id, minute;
+    let state_latest_candidates =
+        state_by_minute
+        | join kind=inner state_latest_times on scope_id, minute
+        | where timestamp == latest_timestamp
+        | join kind=inner state_latest_sequences on scope_id, minute
+        | where sequence == latest_sequence
+        | summarize candidate_count = count(),
+            candidate_conflict_count = countif(event_conflict)
+            by scope_id, minute, latest_timestamp, latest_sequence;
     let state_bins =
         state_by_minute
-        | where not(event_conflict)
-        | summarize arg_max(timestamp, state, scheduled_running)
-            by scope_id, minute
         | join kind=inner state_latest_times on scope_id, minute
         | where timestamp == latest_timestamp
-        | join kind=inner state_latest_conflicts on scope_id, minute
-        | where latest_conflict_count == 0
+        | join kind=inner state_latest_sequences on scope_id, minute
+        | where sequence == latest_sequence
+        | join kind=inner state_latest_candidates on scope_id, minute, latest_timestamp, latest_sequence
+        | where candidate_count == 1 and candidate_conflict_count == 0
+        | project scope_id, minute, timestamp, state, scheduled_running
         | join kind=leftouter startup on scope_id
         | where state == "running" and scheduled_running and
         (isnull(started_at) or timestamp >= started_at + 2m)
@@ -331,28 +340,45 @@
     let running_latest_times =
         running_state_source
         | summarize latest_timestamp = max(timestamp) by scope_id;
-    let running_latest_conflicts =
+    let running_latest_sequences =
         running_state_source
         | join kind=inner running_latest_times on scope_id
         | where timestamp == latest_timestamp
-        | summarize current_conflict_count = countif(event_conflict) by scope_id;
+        | summarize latest_sequence = max(sequence) by scope_id;
+    let running_latest_candidates =
+        running_state_source
+        | join kind=inner running_latest_times on scope_id
+        | where timestamp == latest_timestamp
+        | join kind=inner running_latest_sequences on scope_id
+        | where sequence == latest_sequence
+        | summarize candidate_count = count(),
+            candidate_conflict_count = countif(event_conflict)
+            by scope_id, latest_timestamp, latest_sequence;
     let running_lines =
         running_state_source
-        | where not(event_conflict)
-        | summarize arg_max(timestamp, state, scheduled_running) by scope_id
         | join kind=inner running_latest_times on scope_id
         | where timestamp == latest_timestamp
-        | join kind=inner running_latest_conflicts on scope_id
-        | where current_conflict_count == 0
+        | join kind=inner running_latest_sequences on scope_id
+        | where sequence == latest_sequence
+        | join kind=inner running_latest_candidates on scope_id, latest_timestamp, latest_sequence
+        | where candidate_count == 1 and candidate_conflict_count == 0
         | where scope_id in ("A", "B", "C")
         | summarize running = countif(state == "running" and scheduled_running),
             observed = count();
+    let state_tie_count = toscalar(
+        union
+            (state_latest_candidates | where candidate_count > 1 | project scope_id, minute),
+            (running_latest_candidates
+                | where candidate_count > 1
+                | project scope_id, minute = bin(latest_timestamp - 1ms, 1m))
+        | distinct scope_id, minute
+        | count);
     let state_conflict_count = toscalar(
         union
             (state_source | where event_conflict | project event_id),
             (running_state_source | where event_conflict | project event_id)
         | distinct event_id
-        | count);
+        | count) + state_tie_count;
     let values =
         aggregate
         | extend join_key = 1

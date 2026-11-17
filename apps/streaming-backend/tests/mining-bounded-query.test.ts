@@ -104,6 +104,34 @@ describe("bounded mining query transport", () => {
     expect(body.properties.Parameters.run).toBe(`'${input.runId}'`);
     expect(body.properties.Parameters.asof).toBe("datetime(2026-01-01T12:00:00.000Z)");
   });
+  it("uses one fixed, exact-run query for the three continuous summary windows", async () => {
+    const f = fixture();
+    await f.query({
+      kind: "continuous-summary-windows",
+      runId: input.runId,
+      end: input.end,
+      maxRows: 3,
+    });
+    const body = JSON.parse(String(f.request.mock.calls[2][1]?.body));
+    expect(body.csl).toContain("mining_PlantSummary(plant, run, end - 30m, end)");
+    expect(body.csl).toContain("mining_PlantSummary(plant, run, end - 2h, end)");
+    expect(body.csl).toContain("mining_PlantSummary(plant, run, end - 24h, end)");
+    expect(body.csl).toContain('extend window_id = "30m"');
+    expect(body.csl).toContain('extend window_id = "2h"');
+    expect(body.csl).toContain('extend window_id = "24h"');
+    expect(body.csl).not.toContain(input.runId);
+    expect(body.properties.Parameters.run).toBe(`'${input.runId}'`);
+    expect(body.properties.Parameters.end).toBe("datetime(2026-01-01T12:00:00.000Z)");
+    await expect(
+      f.query({
+        kind: "continuous-summary-windows",
+        runId: input.runId,
+        end: input.end,
+        maxRows: 2,
+      }),
+    ).rejects.toThrow("exactly three rows");
+    expect(f.request).toHaveBeenCalledTimes(3);
+  });
   it("reconciles only the exact run through the fixed nonfuture ingestion query", async () => {
     const f = fixture();
     const scope = { runId: input.runId, maxRows: 5, kind: "ingestion" as const };

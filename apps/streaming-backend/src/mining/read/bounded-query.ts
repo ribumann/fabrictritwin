@@ -18,6 +18,7 @@ interface Scope {
 type Query =
   | (Scope & { kind: "latest"; asOf: string })
   | (Scope & { kind: "continuous-throughput"; asOf: string })
+  | (Scope & { kind: "continuous-summary-windows"; end: string })
   | (Scope & { kind: "incidents"; asOf: string })
   | (Scope & { kind: "incident-observations"; asOf: string })
   | (Scope & { kind: "source-readiness" })
@@ -358,6 +359,20 @@ async function prepare(
   if (input.kind === "continuous-throughput") {
     properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
     return continuousThroughputQuery;
+  }
+  if (input.kind === "continuous-summary-windows") {
+    if (input.maxRows !== 3) {
+      throw new MiningQueryError(
+        "invalid",
+        "Continuous Mining summaries require exactly three rows.",
+      );
+    }
+    properties.setParameter("end", `datetime(${canonicalUtc(input.end, now)})`);
+    return `${head}, end:datetime); union
+      (mining_PlantSummary(plant, run, end - 30m, end) | extend window_id = "30m"),
+      (mining_PlantSummary(plant, run, end - 2h, end) | extend window_id = "2h"),
+      (mining_PlantSummary(plant, run, end - 24h, end) | extend window_id = "24h")
+      | order by window_id asc`;
   }
   if (input.kind === "source-readiness") {
     return `${head}); mining_SourceReadiness()`;

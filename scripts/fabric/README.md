@@ -388,16 +388,20 @@ query results and all error branches remain unverified.
 The builder checks each pinned source against its exact frozen bytes, or
 against the equivalent original CRLF checkout form when read from an LF
 Git-blob checkout. It then normalizes source text to LF for extraction.
-Source pins remain unchanged; the output hash identifies the normalized
-successor payload and is reproducible across Windows and Linux.
+Each manifest freezes its source pins; the output hash identifies the
+normalized successor payload and is reproducible across Windows and Linux.
 
-Manifest v2 identifies successor `d01-kql-coverage-bins-v5` relative to
-`sourceBaseCommit`; `sourceFiles` pins its effective inputs, not unchanged
-inputs from the original commit. `historicalSource` preserves the original
-source pins and the reviewed v1 payload identity. The deployable PlantLatest
-binding and extracted payload use `latest_telemetry` instead of reserved
-`latest`, which native parsing rejected. This successor does not refresh any
-trusted receipt expectations, authorize deployment, or prove native execution.
+Manifest v2 identifies successor `d01-kql-state-sequence-v6` relative to
+`sourceBaseCommit` `b8556e18a7fcf0a90495984c4871450bdf4effce`; `sourceFiles`
+pins its effective inputs, not unchanged inputs from the original commit.
+`historicalSource` preserves the original source pins and the reviewed v1
+payload identity. The v6 summary selects state by latest timestamp and then
+sequence, rejecting unresolved latest-candidate ties. The extracted payload
+is regenerated from those pinned definitions while retaining the happy-path
+fixture expectations. The deployable PlantLatest binding and extracted payload
+use `latest_telemetry` instead of reserved `latest`, which native parsing
+rejected. This successor does not refresh any trusted receipt expectations,
+authorize deployment, or prove native execution.
 Existing independently protected receipt identities still require exact
 comparison and fresh authorized readback; none are supplied by this manifest.
 `previousCandidates` retains the exact v2 source/payload identity rejected by

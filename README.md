@@ -97,10 +97,40 @@ existing workspace and capacity; it does not share or modify the triathlon
 Eventstream or database.
 
 The public [Cockpit Mining view](https://ontologydemo.liberatetheinnerchild.net/mining)
-offers anonymous, bounded D01 runs of generated telemetry through the real
-Mining Eventstream and Eventhouse. Runs last up to five minutes, share one
-durable active writer and have a ten-minute start interval. Cancellation
-requests a stop; publisher completion alone does not prove ingestion.
+uses generated telemetry through the real Mining Eventstream and Eventhouse.
+With continuous mode disabled, it offers bounded D01 runs of up to five minutes
+with one durable active writer and a ten-minute start interval. With continuous
+mode enabled, the operator-managed publisher has no anonymous start/stop
+controls; the public view reads only its current run. Water and energy
+intensities use bounded 30-minute, 2-hour and 24-hour `mining_PlantSummary`
+windows scoped to that same run. Common coverage below 90% remains unavailable;
+the windows do not stitch publisher runs or imply complete history. Plant
+markers in continuous mode describe sensor evidence freshness/quality, not
+equipment health or operating limits. Trends, live incidents, replay and the
+assistant remain unavailable in this slice.
+
+### Mining Fabric workspace map
+
+This names-only map records the reviewed baseline, not a dependency inventory
+or deletion approval. Keep the live mining and triathlon resources separate.
+
+| Workspace item | Purpose | Disposition |
+|---|---|---|
+| `mining-d01-eventstream` | Live Mining transport | Keep |
+| `mining-d01-eventhouse` Eventhouse | Live Mining Eventhouse container | Keep |
+| `mining-d01-realtime` KQL database | Live Mining query database inside the Eventhouse | Keep |
+| `mining-d01-eventhouse` KQL database | Eventhouse default database; distinct from `mining-d01-realtime` | Dependency review only; cleanup is not approved |
+| `mining_d01_lakehouse`, `mining_d01_ontology`, ontology-generated graph/Eventhouse | Static catalog and topology artifacts | Keep; no live ontology telemetry binding is claimed |
+| `mining_d01_operations` | KQL dashboard | Keep and verify against live signals |
+| `mining-d01-topology-semanticmodel`, `mining-d01-topology-report` | Topology reporting | Keep and verify |
+| `mining-d01-snapshot-*` model/report items | Per-run snapshots | Cleanup candidates only after dependency review and explicit approval |
+| `mining-d01-topology-dataagent`, `mining-d01-operations-agent` | Earlier agent experiments | Park; cleanup is not approved |
+| Separate static workspace and its model/lakehouse/Data Agent | Isolated parked artifacts | Retain pending an explicit cleanup decision |
+| `triatwin-dev-*` and triathlon resources | Shared triathlon solution | Preserve; outside Mining cleanup scope |
+
+Names and purposes are not proof of dependencies. Before any cleanup decision,
+provide exact item IDs and their dependency list for explicit approval. No
+workspace item or database in this map is approved for deletion.
 
 On 15 November 2026, a completed public run reconciled the exact expected
 505 telemetry and 32 state event IDs, with no conflicts or quarantined events.

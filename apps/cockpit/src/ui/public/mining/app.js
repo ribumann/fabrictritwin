@@ -22,6 +22,8 @@ import {
   continuousThroughputUsable,
   continuousTagReading,
   continuousRunningLines,
+  continuousSummaryFresh,
+  continuousSummaryMetric,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
 import {
@@ -45,6 +47,8 @@ const number = (value) =>
   Number.isFinite(value)
     ? value.toLocaleString(undefined, { maximumFractionDigits: 2 })
     : "Unknown";
+const preciseNumber = (value) =>
+  Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "Unknown";
 const timestamp = formatTimestamp;
 const coverage = (value) =>
   Number.isFinite(value) && value >= 0 && value <= 1 ? `${Math.round(value * 100)}%` : "unknown";
@@ -129,7 +133,7 @@ function drawPlant() {
   const statuses = new Map(
     catalog.modules.map((module) => [
       module.id,
-      moduleStatus(statusOverview, module.id, context?.mode),
+      moduleStatus(statusOverview, module.id, context?.mode, catalog),
     ]),
   );
   const topology = new Set(selectedIncident?.affectedModuleIds ?? []);
@@ -148,11 +152,14 @@ function drawPlant() {
       ? ` · ${issue}${showScreenedOut && binding?.asset.quality.status === "excluded" ? " Review only." : ""}`
       : "";
     const item = node("li"),
+      status = statuses.get(module.id) ?? "unknown",
       button = node(
         "button",
-        `${module.label} · ${moduleStatus(statusOverview, module.id, context?.mode)}${topology.has(module.id) ? " · topology context (not proven cause)" : ""}${appearanceNote}`,
+        `${module.label} · ${status}${context?.mode === "continuous" ? " · sensor evidence only" : ""}${topology.has(module.id) ? " · topology context (not proven cause)" : ""}${appearanceNote}`,
       );
-    button.dataset.status = moduleStatus(statusOverview, module.id, context?.mode);
+    button.dataset.status = status.replaceAll(" ", "-");
+    if (context?.mode === "continuous")
+      button.title = "Sensor freshness and quality only; equipment operating status is not reported.";
     button.type = "button";
     button.setAttribute("aria-pressed", String(module.id === selected));
     button.addEventListener("click", () => select(module.id));
@@ -283,24 +290,65 @@ function drawOverview() {
         : "Continuous source waiting for a healthy owner",
     );
     kpis.forEach((key, index) => {
-      text(
-        `kpi-${key}`,
-        index === 0 && good ? `${number(data.throughput.value)} t/h` : "Unavailable",
-      );
-      text(
-        `meta-${key}`,
-        index === 0
-          ? `Five-minute mean · coverage ${coverage(data?.throughput?.coverage)} · source lag ${number(data?.watermarkLagSeconds)} seconds`
-          : index === 1
-            ? !hasLineStateDetail
-              ? "Line-state detail is unavailable from this backend release"
-              : runningLines === null
-                ? "Requires all three fresh simulator-reported A/B/C states; not a physical snapshot"
-                : "Validated simulator-reported A/B/C states; latest events are not a simultaneous physical snapshot"
-            : "Not supported by the continuous slice",
-      );
-      if (index === 1)
+      if (index === 0) {
+        text(`kpi-${key}`, good ? `${number(data.throughput.value)} t/h` : "Unavailable");
+        text(
+          `meta-${key}`,
+          `Five-minute mean · coverage ${coverage(data?.throughput?.coverage)} · source lag ${number(data?.watermarkLagSeconds)} seconds`,
+        );
+      } else if (index === 1) {
         text(`kpi-${key}`, runningLines === null ? "Unavailable" : `${runningLines} / 3 lines`);
+        text(
+          `meta-${key}`,
+          !hasLineStateDetail
+            ? "Line-state detail is unavailable from this backend release"
+            : runningLines === null
+              ? "Requires all three fresh simulator-reported A/B/C states; not a physical snapshot"
+              : "Validated simulator-reported A/B/C states; latest events are not a simultaneous physical snapshot",
+        );
+      } else {
+        const now = Date.now();
+        const candidates = ["30m", "2h", "24h"].map((window) => ({
+          window,
+          value: continuousSummaryMetric(data, window, key, now),
+        }));
+        const displayed = candidates.find((candidate) => candidate.value);
+        const unit = units[index];
+        text(
+          `kpi-${key}`,
+          displayed
+            ? `${preciseNumber(displayed.value.value)} ${unit} · ${displayed.window}`
+            : "Unavailable",
+        );
+        const windows = data?.continuousSummary?.windows;
+        const details = Array.isArray(windows)
+          ? ["30m", "2h", "24h"]
+              .map((window) => {
+                const evidence = windows.find((item) => item.window === window);
+                const value = evidence?.[key];
+                if (!evidence || !value) return `${window}: unavailable`;
+                if (!continuousSummaryFresh(data, now)) {
+                  return `${window}: stale or owner unavailable${value.coverage === null ? "" : ` · ${coverage(value.coverage)} common coverage`}`;
+                }
+                if (value.quality === "good" && Number.isFinite(value.value))
+                  return `${window}: ${preciseNumber(value.value)} ${value.unit} · ${coverage(value.coverage)} common coverage`;
+                const status = {
+                  INSUFFICIENT_COMMON_COVERAGE: "insufficient common coverage",
+                  STATE_COVERAGE_INCOMPLETE: "state coverage incomplete",
+                  FEED_BELOW_10_TPH: "feed below 10 t/h",
+                  SOURCE_REJECTED: "source rejected the window",
+                  QUERY_UNAVAILABLE: "summary query unavailable",
+                  NO_DATA: "no supported data",
+                }[evidence.status] ?? `${value.quality} source quality`;
+                return `${window}: unavailable (${status}${value.coverage === null ? "" : ` · ${coverage(value.coverage)} common coverage`})`;
+              })
+              .join(" · ")
+          : "These rolling summary windows are unavailable from this backend release";
+        text(
+          `meta-${key}`,
+          `${details} · current publisher run only; no cross-run history is stitched`,
+        );
+      }
     });
     text(
       "continuous-source",
@@ -429,7 +477,7 @@ function drawDrawer() {
   text(
     "asset-status",
     continuous
-      ? "Status: not directly reported; no per-module operating-state source is available"
+      ? `Status: ${moduleStatus(continuousOverview, selected, "continuous", catalog)}; sensor freshness/quality only, not equipment operating status`
       : `Status: ${moduleStatus(overview, selected)}`,
   );
   text(

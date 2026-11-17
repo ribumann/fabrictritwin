@@ -8,6 +8,7 @@ import {
 import { createD01RunContract } from "../src/mining-incidents/catalog.js";
 import type { ContinuousMiningRunRecord } from "../src/mining/run-coordinator.js";
 import { mapContinuousThroughput } from "../src/mining/read/continuous-dto.js";
+import { MiningQueryError } from "../src/mining/read/bounded-query.js";
 import { createMiningContinuousProvider } from "../src/mining/read/continuous-provider.js";
 
 const asOf = "2026-01-01T12:00:00.000Z";
@@ -149,6 +150,46 @@ function rows(): Record<string, unknown>[] {
     state_conflict: false,
   }));
   return [...telemetry, ...states];
+}
+
+function summaryRows(): Record<string, unknown>[] {
+  const durations = { "30m": 30, "2h": 120, "24h": 1440 };
+  return Object.entries(durations).map(([window_id, minutes]) => {
+    const end = Date.parse(asOf);
+    const start = new Date(end - minutes * 60_000).toISOString();
+    const first = new Date(Date.parse(start) + 30_000).toISOString();
+    const last = new Date(end - 30_000).toISOString();
+    return {
+      window_id,
+      status: window_id === "24h" ? "INSUFFICIENT_COMMON_COVERAGE" : "OK",
+      plant_id: "D01",
+      run_id: run.runId,
+      window_start_utc: start,
+      window_end_utc: asOf,
+      line_a_feed_tph: 40,
+      line_b_feed_tph: 40,
+      line_c_feed_tph: 40,
+      plant_feed_tph: 120,
+      processed_tonnes: 20,
+      running_lines: 3,
+      good_sample_count: 100,
+      non_good_sample_count: 0,
+      uncertain_sample_count: 0,
+      bad_sample_count: 0,
+      late_sample_count: 0,
+      conflicting_event_count: 0,
+      gross_process_water_m3_per_t: window_id === "24h" ? null : 0.5,
+      whole_plant_energy_kwh_per_t: window_id === "24h" ? null : 2,
+      feed_coverage: 1,
+      water_coverage: 1,
+      power_coverage: 1,
+      common_coverage: window_id === "24h" ? 0.127 : 0.96,
+      first_event_time: first,
+      last_event_time: last,
+      first_received_at: new Date(Date.parse(first) + 1_000).toISOString(),
+      last_received_at: new Date(Date.parse(last) + 1_000).toISOString(),
+    };
+  });
 }
 
 describe("continuous D01 evidence", () => {
@@ -459,8 +500,10 @@ describe("continuous D01 evidence", () => {
     expect(mapContinuousThroughput(run, asOf, feedConflict).throughput.value).toBeNull();
   });
 
-  it("uses only the bounded read when independently enabled and requests the 59-row cap", async () => {
-    const query = vi.fn(async () => rows());
+  it("reads fixed summary windows alongside the bounded continuous detail query", async () => {
+    const query = vi.fn(async (input: { kind: string }) =>
+      input.kind === "continuous-throughput" ? rows() : summaryRows(),
+    );
     const signal = new AbortController().signal;
     await expect(createMiningContinuousProvider({}, query)(run, asOf, signal)).rejects.toThrow(
       "disabled",
@@ -470,9 +513,128 @@ describe("continuous D01 evidence", () => {
       query,
     )(run, asOf, signal);
     expect(result.throughput.value).toBe(126);
-    expect(query).toHaveBeenCalledExactlyOnceWith(
+    expect(result.continuousSummary.windows).toHaveLength(3);
+    expect(result.continuousSummary.windows[2].grossProcessWaterIntensity).toMatchObject({
+      value: null,
+      coverage: 0.127,
+      quality: "missing",
+    });
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenNthCalledWith(
+      1,
       { kind: "continuous-throughput", runId: run.runId, asOf, maxRows: 59 },
       signal,
     );
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      { kind: "continuous-summary-windows", runId: run.runId, end: asOf, maxRows: 3 },
+      signal,
+    );
+  });
+
+  it("keeps throughput when the additive summary query times out", async () => {
+    const query = vi.fn(async (input: { kind: string }) => {
+      if (input.kind === "continuous-throughput") return rows();
+      throw new MiningQueryError("timeout", "The mining query timed out.");
+    });
+    const result = await createMiningContinuousProvider(
+      { MINING_CONTINUOUS_READ_ENABLED: "true" },
+      query,
+    )(run, asOf, new AbortController().signal);
+    expect(result.throughput.value).toBe(126);
+    expect(
+      result.continuousSummary.windows.every((window) => window.status === "QUERY_UNAVAILABLE"),
+    ).toBe(true);
+  });
+
+  it.each(["malformed", "overflow"] as const)(
+    "keeps valid throughput and detail when the summary query rejects with %s",
+    async (code) => {
+      const query = vi.fn(async (input: { kind: string }) => {
+        if (input.kind === "continuous-throughput") return rows();
+        throw new MiningQueryError(code, "Invalid summary response.");
+      });
+      const result = await createMiningContinuousProvider(
+        { MINING_CONTINUOUS_READ_ENABLED: "true" },
+        query,
+      )(run, asOf, new AbortController().signal);
+      expect(result.throughput.value).toBe(126);
+      expect(result.detail.readings).toHaveLength(53);
+      expect(
+        result.continuousSummary.windows.every((window) => window.status === "SOURCE_REJECTED"),
+      ).toBe(true);
+      expect(
+        result.continuousSummary.windows.every(
+          (window) =>
+            window.grossProcessWaterIntensity.value === null &&
+            window.energyIntensity.value === null,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it("keeps valid throughput and detail when one summary row fails integrity checks", async () => {
+    const summaries = summaryRows();
+    summaries[1] = { ...summaries[1], run_id: "22222222-2222-4222-8222-222222222222" };
+    const query = vi.fn(async (input: { kind: string }) =>
+      input.kind === "continuous-throughput" ? rows() : summaries,
+    );
+    const result = await createMiningContinuousProvider(
+      { MINING_CONTINUOUS_READ_ENABLED: "true" },
+      query,
+    )(run, asOf, new AbortController().signal);
+    expect(result.throughput.value).toBe(126);
+    expect(result.detail.readings).toHaveLength(53);
+    expect(result.continuousSummary.windows[1].status).toBe("SOURCE_REJECTED");
+    expect(result.continuousSummary.windows[0].status).toBe("OK");
+    expect(result.continuousSummary.windows[2].status).toBe("INSUFFICIENT_COMMON_COVERAGE");
+  });
+
+  it("keeps valid throughput and detail when the summary batch structure is malformed", async () => {
+    const summaries = summaryRows();
+    summaries[1] = summaries[0];
+    const query = vi.fn(async (input: { kind: string }) =>
+      input.kind === "continuous-throughput" ? rows() : summaries,
+    );
+    const result = await createMiningContinuousProvider(
+      { MINING_CONTINUOUS_READ_ENABLED: "true" },
+      query,
+    )(run, asOf, new AbortController().signal);
+    expect(result.throughput.value).toBe(126);
+    expect(result.detail.readings).toHaveLength(53);
+    expect(
+      result.continuousSummary.windows.every((window) => window.status === "SOURCE_REJECTED"),
+    ).toBe(true);
+  });
+
+  it("does not suppress unexpected summary errors", async () => {
+    const query = vi.fn(async (input: { kind: string }) => {
+      if (input.kind === "continuous-throughput") return rows();
+      throw new Error("unexpected summary failure");
+    });
+    await expect(
+      createMiningContinuousProvider({ MINING_CONTINUOUS_READ_ENABLED: "true" }, query)(
+        run,
+        asOf,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("unexpected summary failure");
+  });
+
+  it("propagates summary cancellation instead of classifying it as rejected data", async () => {
+    const controller = new AbortController();
+    const cancelled = new MiningQueryError("cancelled", "Mining query was cancelled.");
+    const query = vi.fn(async (input: { kind: string }) => {
+      if (input.kind === "continuous-throughput") return rows();
+      controller.abort();
+      throw cancelled;
+    });
+    await expect(
+      createMiningContinuousProvider({ MINING_CONTINUOUS_READ_ENABLED: "true" }, query)(
+        run,
+        asOf,
+        controller.signal,
+      ),
+    ).rejects.toBe(cancelled);
   });
 });
