@@ -73,6 +73,29 @@ describe("mining summary source mapping", () => {
     });
   });
 
+  it("keeps ratios unavailable below the minimum feed rate instead of dividing by zero", () => {
+    const emptyFeed = {
+      ...row(),
+      status: "FEED_BELOW_10_TPH",
+      line_a_feed_tph: 0,
+      line_b_feed_tph: 0,
+      line_c_feed_tph: 0,
+      plant_feed_tph: 0,
+      processed_tonnes: 0,
+      gross_process_water_m3_per_t: null,
+      whole_plant_energy_kwh_per_t: null,
+    };
+    const result = mapSummaryRows(request, [emptyFeed]);
+    expect(result.grossProcessWaterIntensity).toMatchObject({
+      value: null,
+      quality: "missing",
+    });
+    expect(result.energyIntensity).toMatchObject({
+      value: null,
+      quality: "missing",
+    });
+  });
+
   it("keeps unavailable controls distinct and never fabricates zero data", () => {
     expect(mapSummaryRows(request, [{ ...row(), status: "NO_DATA" }]).throughput).toMatchObject({
       value: null,

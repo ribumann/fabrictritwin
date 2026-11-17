@@ -61,7 +61,7 @@ function coverage(value: unknown): number | null {
   return number;
 }
 
-/** Source-only mapping. Never mount until the reviewed summary state-conflict fix and readiness are proven. */
+/** Validates the exact run and window before exposing bounded PlantSummary KPIs. */
 export function mapSummaryRows(
   input: { runId: string; start: string; end: string },
   rows: Record<string, unknown>[],

@@ -155,8 +155,19 @@ export function validSeries(data, params, catalogVersion, catalog) {
   });
 }
 
-export function moduleStatus(overview, moduleId, mode = overview?.mode) {
-  if (mode === "continuous") return "not directly reported";
+export function moduleStatus(overview, moduleId, mode = overview?.mode, catalog = null, now = Date.now()) {
+  if (mode === "continuous") {
+    if (!overview?.detail || !Array.isArray(catalog?.telemetry_tags)) return "not directly reported";
+    const tags = catalog.telemetry_tags.filter((tag) => tag.module_id === moduleId);
+    if (!tags.length) return overview?.detail ? "no direct sensor tags" : "not directly reported";
+    const readings = tags.map((tag) => continuousTagReading(overview, tag.id, now));
+    if (readings.some((reading) => reading?.quality === "bad")) return "sensor evidence flagged";
+    if (readings.some((reading) => reading?.quality === "stale")) return "sensor evidence stale";
+    if (readings.every((reading) => reading?.quality === "good" && Number.isFinite(reading.value))) {
+      return "sensor evidence current";
+    }
+    return "sensor evidence incomplete";
+  }
   if (!overview || overview.quality !== "good") return "unknown";
   const module = overview.latest?.modules?.find((item) => item.moduleId === moduleId);
   const readings = overview.latest?.readings?.filter((item) => item.moduleId === moduleId);
@@ -211,8 +222,62 @@ export function validContinuousOverview(
     data.capabilities?.incidents === false &&
     data.capabilities?.trends === false;
   if (!continuousScopeValid) return false;
+  if (Object.hasOwn(data, "continuousSummary") && !validContinuousSummary(data)) return false;
   if (!Object.hasOwn(data, "detail")) return true;
   return validContinuousDetail(data, catalogVersion, catalog);
+}
+
+function validContinuousSummary(data) {
+  const summary = data?.continuousSummary;
+  const request = Date.parse(data?.asOf);
+  if (
+    !summary ||
+    summary.plantId !== "D01" ||
+    summary.runId !== data.runId ||
+    summary.generation !== data.generation ||
+    summary.catalogVersion !== data.catalogVersion ||
+    summary.sourceContractVersion !== continuousSourceContractVersion ||
+    summary.asOf !== data.asOf ||
+    !Number.isFinite(request) ||
+    !Array.isArray(summary.windows) ||
+    summary.windows.length !== continuousSummaryWindows.length
+  )
+    return false;
+  const seen = new Set();
+  for (const window of summary.windows) {
+    const definition = continuousSummaryWindows.find((item) => item.window === window?.window);
+    if (
+      !definition ||
+      seen.has(window.window) ||
+      window.windowStart !== new Date(request - definition.durationMs).toISOString() ||
+      window.windowEnd !== data.asOf ||
+      !continuousSummaryStatuses.has(window.status)
+    )
+      return false;
+    seen.add(window.window);
+    for (const [metric, unit] of [
+      ["grossProcessWaterIntensity", "m\u00b3/t"],
+      ["energyIntensity", "kWh/t"],
+    ]) {
+      const reading = window[metric];
+      if (
+        reading?.unit !== unit ||
+        reading.windowStart !== window.windowStart ||
+        reading.windowEnd !== window.windowEnd ||
+        !["good", "uncertain", "bad", "missing", "unavailable"].includes(reading.quality) ||
+        !(reading.coverage === null ||
+          (Number.isFinite(reading.coverage) && reading.coverage >= 0 && reading.coverage <= 1)) ||
+        (reading.quality === "good"
+          ? !Number.isFinite(reading.value) ||
+            reading.value < 0 ||
+            reading.coverage === null ||
+            reading.coverage < 0.9
+          : reading.value !== null)
+      )
+        return false;
+    }
+  }
+  return seen.size === continuousSummaryWindows.length;
 }
 
 const continuousFeedTags = new Set([
@@ -222,6 +287,20 @@ const continuousFeedTags = new Set([
 ]);
 const continuousProfileVersion = "d01-publish-profile-v1";
 const continuousSourceContractVersion = "d01-validated-source-v1";
+const continuousSummaryWindows = [
+  { window: "30m", durationMs: 30 * 60_000 },
+  { window: "2h", durationMs: 2 * 60 * 60_000 },
+  { window: "24h", durationMs: 24 * 60 * 60_000 },
+];
+const continuousSummaryStatuses = new Set([
+  "OK",
+  "NO_DATA",
+  "STATE_COVERAGE_INCOMPLETE",
+  "INSUFFICIENT_COMMON_COVERAGE",
+  "FEED_BELOW_10_TPH",
+  "SOURCE_REJECTED",
+  "QUERY_UNAVAILABLE",
+]);
 const cadenceByMetric = {
   bearing_temperature: 60,
   feed_pressure: 30,
@@ -443,6 +522,45 @@ export function continuousTagReading(data, tagId, now = Date.now()) {
     return { ...reading, quality: "stale", value: null };
   }
   return reading;
+}
+
+export function continuousSummaryFresh(data, now = Date.now()) {
+  const request = Date.parse(data?.asOf);
+  const watermark = Date.parse(data?.watermark);
+  const summary = data?.continuousSummary;
+  return (
+    continuousOwnerCurrent(data, now) &&
+    summary?.runId === data.runId &&
+    summary?.generation === data.generation &&
+    summary?.asOf === data.asOf &&
+    Array.isArray(summary?.windows) &&
+    Number.isFinite(watermark) &&
+    watermark <= request &&
+    now - watermark <= 105_000 &&
+    [
+      ...continuousFeedTags,
+      "D01.shared.water.water_flow",
+      "D01.shared.control.power",
+    ].every((tagId) => {
+      const reading = continuousTagReading(data, tagId, now);
+      return reading?.quality === "good" && Number.isFinite(reading.value);
+    })
+  );
+}
+
+export function continuousSummaryMetric(data, windowId, metric, now = Date.now()) {
+  if (!continuousSummaryFresh(data, now)) return null;
+  const value = data.continuousSummary.windows.find((window) => window.window === windowId)?.[
+    metric
+  ];
+  return (
+    value?.quality === "good" &&
+    Number.isFinite(value.value) &&
+    value.coverage >= 0.9 &&
+    value.coverage <= 1
+  )
+    ? value
+    : null;
 }
 
 export function continuousRunningLines(data, now = Date.now()) {

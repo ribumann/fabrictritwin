@@ -1,6 +1,7 @@
 import type { ContinuousMiningRunRecord } from "../run-coordinator.js";
 import { createBoundedMiningQuery, MiningQueryError } from "./bounded-query.js";
 import { mapContinuousThroughput } from "./continuous-dto.js";
+import { mapContinuousSummaryRows } from "./continuous-summary-dto.js";
 
 export function createMiningContinuousProvider(
   env: NodeJS.ProcessEnv,
@@ -14,7 +15,7 @@ export function createMiningContinuousProvider(
     if (env.MINING_CONTINUOUS_READ_ENABLED !== "true") {
       throw new MiningQueryError("configuration", "Continuous Mining reads are disabled.");
     }
-    const rows = await query(
+    const rowsPromise = query(
       {
         kind: "continuous-throughput",
         runId: run.runId,
@@ -23,7 +24,29 @@ export function createMiningContinuousProvider(
       },
       signal,
     );
+    const summaryRows = query(
+      {
+        kind: "continuous-summary-windows",
+        runId: run.runId,
+        end: asOf,
+        maxRows: 3,
+      },
+      signal,
+    ).catch((cause: unknown) => {
+      if (signal.aborted) throw cause;
+      if (
+        cause instanceof MiningQueryError &&
+        (cause.code === "timeout" || cause.code === "upstream")
+      ) {
+        return null;
+      }
+      throw cause;
+    });
+    const [rows, summaries] = await Promise.all([rowsPromise, summaryRows]);
     signal.throwIfAborted();
-    return mapContinuousThroughput(run, asOf, rows);
+    return {
+      ...mapContinuousThroughput(run, asOf, rows),
+      continuousSummary: mapContinuousSummaryRows(run, asOf, summaries),
+    };
   };
 }

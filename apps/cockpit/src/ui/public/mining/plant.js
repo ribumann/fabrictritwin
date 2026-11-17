@@ -86,10 +86,11 @@ export function renderTop(
       transform: `translate(${x} ${z}) rotate(${(-(module.rotation[1] ?? 0) * 180) / Math.PI})`,
       class: module.id === selected ? "selected" : "",
     });
-    group.setAttribute("data-status", statuses.get(module.id) ?? "unknown");
+    const status = statuses.get(module.id) ?? "unknown";
+    group.setAttribute("data-status", status.replaceAll(" ", "-"));
     if (topology.has(module.id)) group.setAttribute("data-topology", "true");
     const title = svg("title");
-    title.textContent = `${module.label} · ${statuses.get(module.id) ?? "unknown"}${topology.has(module.id) ? " · topology context (not proven cause)" : ""}`;
+    title.textContent = `${module.label} · ${status}${status.startsWith("sensor evidence") ? " · freshness/quality only, not equipment health" : ""}${topology.has(module.id) ? " · topology context (not proven cause)" : ""}`;
     group.append(
       title,
       svg("rect", { x: -width / 2, y: -depth / 2, width, height: depth, rx: 0.3 }),
@@ -344,7 +345,14 @@ export async function createPlant3D(container, catalog, select) {
       if (model) model.visible = visible;
       const status = statuses.get(module.id);
       const box = statusBoxes.get(module.id);
-      const colors = { warning: 0xb45309, high: 0xdc2626, stopped: 0x5b6479 };
+      const colors = {
+        warning: 0xb45309,
+        high: 0xdc2626,
+        stopped: 0x5b6479,
+        "sensor evidence current": 0x2563eb,
+        "sensor evidence stale": 0xb45309,
+        "sensor evidence flagged": 0x7c3aed,
+      };
       box.visible = visible && (!!colors[status] || topology.has(module.id) || selectedModuleId === module.id);
       box.material.color.setHex(
         topology.has(module.id)

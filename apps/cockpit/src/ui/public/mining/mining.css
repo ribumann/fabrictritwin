@@ -178,6 +178,23 @@
 #plant-top g[data-status="stopped"] rect {
   fill: var(--surface-sunken);
 }
+#plant-top g[data-status="sensor-evidence-current"] rect {
+  fill: var(--info-soft);
+  stroke: var(--info);
+}
+#plant-top g[data-status="sensor-evidence-stale"] rect {
+  fill: var(--warning-soft);
+  stroke: var(--warning);
+}
+#plant-top g[data-status="sensor-evidence-flagged"] rect {
+  fill: var(--neutral-soft);
+  stroke: var(--neutral);
+}
+#plant-top g[data-status="sensor-evidence-incomplete"] rect,
+#plant-top g[data-status="no-direct-sensor-tags"] rect {
+  fill: var(--surface-muted);
+  stroke: var(--neutral);
+}
 #plant-top g[data-topology="true"] rect {
   stroke: var(--info);
   stroke-dasharray: 1 0.5;
@@ -187,6 +204,19 @@
 }
 .mining-objects button[data-status="high"] {
   background: var(--danger-soft);
+}
+.mining-objects button[data-status="sensor-evidence-current"] {
+  background: var(--info-soft);
+}
+.mining-objects button[data-status="sensor-evidence-stale"] {
+  background: var(--warning-soft);
+}
+.mining-objects button[data-status="sensor-evidence-flagged"] {
+  background: var(--neutral-soft);
+}
+.mining-objects button[data-status="sensor-evidence-incomplete"],
+.mining-objects button[data-status="no-direct-sensor-tags"] {
+  background: var(--surface-muted);
 }
 #plant-top polyline {
   fill: none;

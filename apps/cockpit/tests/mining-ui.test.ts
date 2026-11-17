@@ -31,6 +31,8 @@ import {
   continuousThroughputUsable,
   continuousTagReading,
   continuousRunningLines,
+  continuousSummaryFresh,
+  continuousSummaryMetric,
 } from "../src/ui/public/mining/data.js";
 import {
   connections,
@@ -176,6 +178,53 @@ describe("continuous throughput presentation", () => {
     };
     return { data: detailedData, catalog };
   }
+  function withSummary(data: ReturnType<typeof fixture>) {
+    const definitions = [
+      { window: "30m", duration: 30 * 60_000, coverage: 0.966667, status: "OK", value: 2.1502 },
+      { window: "2h", duration: 2 * 60 * 60_000, coverage: 0.991667, status: "OK", value: 2.1517 },
+      {
+        window: "24h",
+        duration: 24 * 60 * 60_000,
+        coverage: 0.127083,
+        status: "INSUFFICIENT_COMMON_COVERAGE",
+        value: null,
+      },
+    ];
+    return {
+      ...data,
+      continuousSummary: {
+        plantId: "D01",
+        runId: data.runId,
+        generation: data.generation,
+        catalogVersion: data.catalogVersion,
+        sourceContractVersion: "d01-validated-source-v1",
+        asOf: data.asOf,
+        windows: definitions.map(({ window, duration, coverage, status, value }) => {
+          const windowStart = new Date(Date.parse(data.asOf) - duration).toISOString();
+          const water = {
+            value,
+            unit: "m\u00b3/t",
+            coverage,
+            quality: value === null ? "missing" : "good",
+            windowStart,
+            windowEnd: data.asOf,
+          };
+          return {
+            window,
+            windowStart,
+            windowEnd: data.asOf,
+            status,
+            grossProcessWaterIntensity: water,
+            energyIntensity: {
+              ...water,
+              value: value === null ? null : value * 0.8,
+              unit: "kWh/t",
+            },
+          };
+        }),
+      },
+    };
+  }
   it("accepts only pinned scope/generation and never fabricates finite overview evidence", () => {
     const data = fixture();
     expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now)).toBe(true);
@@ -212,7 +261,9 @@ describe("continuous throughput presentation", () => {
       value: (detailReading.simulation_envelope[0] + detailReading.simulation_envelope[1]) / 2,
     });
     expect(continuousRunningLines(data, now)).toBe(3);
-    expect(moduleStatus(data, "D01.A.crusher", "continuous")).toBe("not directly reported");
+    expect(moduleStatus(data, "D01.A.crusher", "continuous", catalog, now)).toBe(
+      "sensor evidence current",
+    );
   });
   it("rejects partial or mismatched detail bundles without breaking legacy overview reads", () => {
     const { data, catalog } = withDetail(fixture());
@@ -263,7 +314,9 @@ describe("continuous throughput presentation", () => {
       true,
     );
     expect(continuousRunningLines(data, now)).toBe(2);
-    expect(moduleStatus(data, "D01.A.crusher")).toBe("not directly reported");
+    expect(moduleStatus(data, "D01.A.crusher", "continuous", catalog, now)).toBe(
+      "sensor evidence stale",
+    );
     data.detail.lineStates[0].quality = "stale";
     data.detail.lineStates[0].sampleTime = new Date(now - 196_000).toISOString();
     data.detail.lineStates[0].ageSeconds = 196;
@@ -272,6 +325,87 @@ describe("continuous throughput presentation", () => {
       true,
     );
     expect(continuousRunningLines(data, now)).toBeNull();
+  });
+  it("validates current-owner intensity windows and preserves incomplete 24-hour coverage", () => {
+    const { data, catalog } = withDetail(fixture());
+    const summarized = withSummary(data);
+    expect(
+      validContinuousOverview(summarized, data.runId, "catalog", "release-1", now, catalog),
+    ).toBe(true);
+    expect(continuousSummaryFresh(summarized, now)).toBe(true);
+    expect(
+      continuousSummaryMetric(summarized, "30m", "grossProcessWaterIntensity", now),
+    ).toMatchObject({ value: 2.1502, coverage: 0.966667, unit: "m\u00b3/t" });
+    expect(continuousSummaryMetric(summarized, "2h", "energyIntensity", now)).toMatchObject({
+      value: 2.1517 * 0.8,
+      coverage: 0.991667,
+    });
+    expect(continuousSummaryMetric(summarized, "24h", "energyIntensity", now)).toBeNull();
+    expect(
+      validContinuousOverview(data, data.runId, "catalog", "release-1", now, catalog),
+    ).toBe(true);
+  });
+  it("rejects malformed, foreign, low-coverage and stale continuous summary evidence", () => {
+    const { data, catalog } = withDetail(fixture());
+    const summarized = withSummary(data);
+    for (const change of [
+      { runId: "22222222-2222-4222-8222-222222222222" },
+      { asOf: "2026-01-01T11:59:00Z" },
+      {
+        windows: summarized.continuousSummary.windows.slice(1),
+      },
+    ]) {
+      const invalid = {
+        ...summarized,
+        continuousSummary: { ...summarized.continuousSummary, ...change },
+      };
+      expect(
+        validContinuousOverview(invalid, data.runId, "catalog", "release-1", now, catalog),
+      ).toBe(false);
+    }
+    for (const change of [
+      { unit: "g/t" },
+      { coverage: 1.01 },
+      { quality: "good", value: 1, coverage: 0.89 },
+      { quality: "good", value: Number.NaN },
+    ]) {
+      const invalid = withSummary(data);
+      Object.assign(invalid.continuousSummary.windows[0].grossProcessWaterIntensity, change);
+      expect(
+        validContinuousOverview(invalid, data.runId, "catalog", "release-1", now, catalog),
+      ).toBe(false);
+    }
+    const expired = withSummary({ ...data, run: { ...data.run, authorityUntil: "2026-01-01T12:05:00Z" } });
+    expect(continuousSummaryFresh(expired, now + 50_000)).toBe(false);
+    expect(continuousSummaryMetric(expired, "30m", "grossProcessWaterIntensity", now + 50_000))
+      .toBeNull();
+  });
+  it("labels module sensor evidence without inferring equipment health or line schedule", () => {
+    const { data, catalog } = withDetail(fixture());
+    data.detail.lineStates[0].state = "fault";
+    data.detail.lineStates[0].scheduledRunning = false;
+    expect(moduleStatus(data, "D01.A.crusher", "continuous", catalog, now)).toBe(
+      "sensor evidence current",
+    );
+    const tag = catalog.telemetry_tags.find(
+      (item) => item.module_id === "D01.A.crusher" && item.metric === "vibration_rms",
+    )!;
+    const reading = data.detail.readings.find((item) => item.tagId === tag.id)!;
+    reading.sampleTime = new Date(now - 105_000).toISOString();
+    reading.receivedAt = new Date(now - 100_000).toISOString();
+    reading.ageSeconds = 105;
+    expect(moduleStatus(data, "D01.A.crusher", "continuous", catalog, now + 1)).toBe(
+      "sensor evidence stale",
+    );
+    reading.quality = "bad";
+    reading.value = null;
+    expect(moduleStatus(data, "D01.A.crusher", "continuous", catalog, now)).toBe(
+      "sensor evidence flagged",
+    );
+    reading.quality = "missing";
+    expect(moduleStatus(data, "D01.A.crusher", "continuous", catalog, now)).toBe(
+      "sensor evidence incomplete",
+    );
   });
   it("withdraws direct values and the line count for stopped, held or expired owners", () => {
     for (const change of [
@@ -315,11 +449,16 @@ describe("continuous throughput presentation", () => {
       demoRun: data.run,
       continuousThroughputUsable: (value: object) => continuousThroughputUsable(value, now),
       continuousRunningLines: (value: object) => continuousRunningLines(value, now),
+      continuousSummaryFresh: (value: object, at: number) => continuousSummaryFresh(value, at),
+      continuousSummaryMetric: (value: object, window: string, metric: string, at: number) =>
+        continuousSummaryMetric(value, window, metric, at),
       $: element,
       text: (id: string, value: string) => rendered.set(id, value),
       timestamp: formatTimestamp,
       coverage: String,
       number: String,
+      preciseNumber: String,
+      units: ["t/h", "lines", "m\u00b3/t", "kWh/t"],
       node: () => ({}),
       kpis: ["throughput", "runningLines", "grossProcessWaterIntensity", "energyIntensity"],
       drawPlant() {},
