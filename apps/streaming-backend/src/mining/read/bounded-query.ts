@@ -362,7 +362,10 @@ async function prepare(
   }
   if (input.kind === "continuous-summary-windows") {
     if (input.maxRows !== 3) {
-      throw new MiningQueryError("invalid", "Continuous Mining summaries require exactly three rows.");
+      throw new MiningQueryError(
+        "invalid",
+        "Continuous Mining summaries require exactly three rows.",
+      );
     }
     properties.setParameter("end", `datetime(${canonicalUtc(input.end, now)})`);
     return `${head}, end:datetime); union

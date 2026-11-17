@@ -120,16 +120,41 @@ describe("continuous PlantSummary mapping", () => {
     ).toBe(true);
   });
 
-  it("rejects duplicate, missing, foreign-run and misaligned window rows", () => {
+  it("rejects only an invalid source window while preserving the other valid windows", () => {
     for (const candidate of [
-      [row("30m"), row("30m"), row("24h")],
-      [row("30m"), row("2h")],
       [row("30m"), row("2h", { run_id: "22222222-2222-4222-8222-222222222222" }), row("24h")],
       [row("30m"), row("2h", { window_end_utc: "2026-01-01T11:59:59.000Z" }), row("24h")],
     ]) {
-      expect(() => mapContinuousSummaryRows(run, asOf, candidate)).toThrow(
-        "Invalid continuous Mining summary evidence",
+      const result = mapContinuousSummaryRows(run, asOf, candidate);
+      expect(result.windows[1]).toMatchObject({
+        status: "SOURCE_REJECTED",
+        grossProcessWaterIntensity: { value: null, quality: "unavailable" },
+      });
+      expect(result.windows[0].grossProcessWaterIntensity.quality).toBe("good");
+      expect(result.windows[2].grossProcessWaterIntensity.quality).toBe("good");
+    }
+  });
+
+  it("marks every window unavailable when the summary batch structure is malformed", () => {
+    for (const candidate of [
+      [row("30m"), row("30m"), row("24h")],
+      [row("30m"), row("2h")],
+      [row("30m"), row("2h"), { ...row("24h"), window_id: "other" }],
+      [row("30m"), null, row("24h")],
+    ]) {
+      const result = mapContinuousSummaryRows(
+        run,
+        asOf,
+        candidate as unknown as Record<string, unknown>[],
       );
+      expect(result.windows.every((window) => window.status === "SOURCE_REJECTED")).toBe(true);
+      expect(
+        result.windows.every(
+          (window) =>
+            window.grossProcessWaterIntensity.value === null &&
+            window.energyIntensity.value === null,
+        ),
+      ).toBe(true);
     }
   });
 });

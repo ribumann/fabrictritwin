@@ -545,4 +545,51 @@ describe("continuous D01 evidence", () => {
     expect(result.continuousSummary.windows.every((window) => window.status === "QUERY_UNAVAILABLE"))
       .toBe(true);
   });
+
+  it("keeps valid throughput and detail when one summary row fails integrity checks", async () => {
+    const summaries = summaryRows();
+    summaries[1] = { ...summaries[1], run_id: "22222222-2222-4222-8222-222222222222" };
+    const query = vi.fn(async (input: { kind: string }) =>
+      input.kind === "continuous-throughput" ? rows() : summaries,
+    );
+    const result = await createMiningContinuousProvider(
+      { MINING_CONTINUOUS_READ_ENABLED: "true" },
+      query,
+    )(run, asOf, new AbortController().signal);
+    expect(result.throughput.value).toBe(126);
+    expect(result.detail.readings).toHaveLength(53);
+    expect(result.continuousSummary.windows[1].status).toBe("SOURCE_REJECTED");
+    expect(result.continuousSummary.windows[0].status).toBe("OK");
+    expect(result.continuousSummary.windows[2].status).toBe("INSUFFICIENT_COMMON_COVERAGE");
+  });
+
+  it("keeps valid throughput and detail when the summary batch structure is malformed", async () => {
+    const summaries = summaryRows();
+    summaries[1] = summaries[0];
+    const query = vi.fn(async (input: { kind: string }) =>
+      input.kind === "continuous-throughput" ? rows() : summaries,
+    );
+    const result = await createMiningContinuousProvider(
+      { MINING_CONTINUOUS_READ_ENABLED: "true" },
+      query,
+    )(run, asOf, new AbortController().signal);
+    expect(result.throughput.value).toBe(126);
+    expect(result.detail.readings).toHaveLength(53);
+    expect(result.continuousSummary.windows.every((window) => window.status === "SOURCE_REJECTED"))
+      .toBe(true);
+  });
+
+  it("does not suppress unexpected summary errors", async () => {
+    const query = vi.fn(async (input: { kind: string }) => {
+      if (input.kind === "continuous-throughput") return rows();
+      throw new Error("unexpected summary failure");
+    });
+    await expect(
+      createMiningContinuousProvider({ MINING_CONTINUOUS_READ_ENABLED: "true" }, query)(
+        run,
+        asOf,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("unexpected summary failure");
+  });
 });

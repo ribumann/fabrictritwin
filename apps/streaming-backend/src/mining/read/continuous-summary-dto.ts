@@ -26,6 +26,37 @@ function unavailableMetric(unit: "m\u00b3/t" | "kWh/t", windowStart: string, win
   };
 }
 
+function unavailableWindow(
+  window: WindowId,
+  end: string,
+  durationMs: number,
+  status: "QUERY_UNAVAILABLE" | "SOURCE_REJECTED",
+) {
+  const start = new Date(Date.parse(end) - durationMs).toISOString();
+  return {
+    window,
+    windowStart: start,
+    windowEnd: end,
+    status,
+    grossProcessWaterIntensity: unavailableMetric("m\u00b3/t", start, end),
+    energyIntensity: unavailableMetric("kWh/t", start, end),
+  };
+}
+
+function rejectedBatch(run: ContinuousMiningRunRecord, asOf: string) {
+  return {
+    plantId: "D01" as const,
+    runId: run.runId,
+    generation: run.lifetime.generation,
+    catalogVersion: D01_CATALOG_VERSION,
+    sourceContractVersion,
+    asOf,
+    windows: definitions.map(({ window, durationMs }) =>
+      unavailableWindow(window, asOf, durationMs, "SOURCE_REJECTED"),
+    ),
+  };
+}
+
 function mapWindow(
   runId: string,
   end: string,
@@ -35,16 +66,7 @@ function mapWindow(
 ) {
   const endTime = Date.parse(end);
   const start = new Date(endTime - durationMs).toISOString();
-  if (!row) {
-    return {
-      window,
-      windowStart: start,
-      windowEnd: end,
-      status: "QUERY_UNAVAILABLE",
-      grossProcessWaterIntensity: unavailableMetric("m\u00b3/t", start, end),
-      energyIntensity: unavailableMetric("kWh/t", start, end),
-    };
-  }
+  if (!row) return unavailableWindow(window, end, durationMs, "QUERY_UNAVAILABLE");
   const { window_id: _windowId, ...summaryRow } = row;
   try {
     const summary = mapSummaryRows({ runId, start, end }, [summaryRow]);
@@ -57,17 +79,11 @@ function mapWindow(
       energyIntensity: summary.energyIntensity,
     };
   } catch (cause) {
-    if (cause instanceof MiningQueryError && cause.code === "upstream") {
-      return {
-        window,
-        windowStart: start,
-        windowEnd: end,
-        status: "SOURCE_REJECTED",
-        grossProcessWaterIntensity: unavailableMetric("m\u00b3/t", start, end),
-        energyIntensity: unavailableMetric("kWh/t", start, end),
-      };
-    }
-    if (cause instanceof MiningQueryError) return malformed();
+    if (
+      cause instanceof MiningQueryError &&
+      (cause.code === "upstream" || cause.code === "malformed")
+    )
+      return unavailableWindow(window, end, durationMs, "SOURCE_REJECTED");
     throw cause;
   }
 }
@@ -80,20 +96,23 @@ export function mapContinuousSummaryRows(
 ) {
   const end = Date.parse(asOf);
   if (!Number.isFinite(end) || new Date(end).toISOString() !== asOf) return malformed();
-  if (rows !== null && rows.length !== definitions.length) return malformed();
+  if (rows !== null && (!Array.isArray(rows) || rows.length !== definitions.length)) {
+    return rejectedBatch(run, asOf);
+  }
   const byWindow = new Map<WindowId, Record<string, unknown>>();
   for (const row of rows ?? []) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return rejectedBatch(run, asOf);
     const window = row.window_id;
     if (
       typeof window !== "string" ||
       !definitions.some((definition) => definition.window === window) ||
       byWindow.has(window as WindowId)
     ) {
-      return malformed();
+      return rejectedBatch(run, asOf);
     }
     byWindow.set(window as WindowId, row);
   }
-  if (rows !== null && byWindow.size !== definitions.length) return malformed();
+  if (rows !== null && byWindow.size !== definitions.length) return rejectedBatch(run, asOf);
   return {
     plantId: "D01" as const,
     runId: run.runId,
