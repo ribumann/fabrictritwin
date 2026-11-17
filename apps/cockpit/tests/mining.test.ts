@@ -21,6 +21,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("isolated mining BFF", () => {
   it("proxies only a bounded, run-free cross-run request to the authenticated demo service", async () => {
+    const buildAuthHeaders = vi.fn(async () => ({ authorization: "Bearer service" }));
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockImplementation(
@@ -38,7 +39,7 @@ describe("isolated mining BFF", () => {
         {
           streamingBackendBaseUrl: "https://internal.example",
           fetchImpl,
-          buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+          buildAuthHeaders,
         },
         false,
         true,
@@ -51,11 +52,147 @@ describe("isolated mining BFF", () => {
     expect(String(fetchImpl.mock.calls[0][0])).toContain("/api/mining/demo/context?");
     expect(String(fetchImpl.mock.calls[1][0])).toContain("/api/mining/demo/cross-run-trends?");
     expect(String(fetchImpl.mock.calls[1][0])).not.toContain("runId");
+    expect(fetchImpl.mock.calls[0][1]?.signal).toBe(fetchImpl.mock.calls[1][1]?.signal);
+    expect(buildAuthHeaders).toHaveBeenCalledTimes(1);
     expect(
       (await request(app).get(`/api/mining/cross-run-trends?${query}&runId=other`)).status,
     ).toBe(400);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+  it("uses one deadline for stalled authentication, capability and trend response bodies", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const query =
+      "start=2026-01-01T00:00:00.000Z&end=2026-01-01T01:00:00.000Z&binMinutes=5&metric=feed";
+    const stalledBody = (cancel: ReturnType<typeof vi.fn>) =>
+      new Response(new ReadableStream({ cancel }));
+    const capabilityCancelled = vi.fn();
+    const trendCancelled = vi.fn();
+    const capabilityFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(stalledBody(capabilityCancelled));
+    const trendFetch = vi.fn<typeof fetch>().mockImplementation(async (url) => {
+      if (String(url).includes("/context?")) {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        return new Response(JSON.stringify({ mode: "continuous", capabilities: { trends: true } }));
+      }
+      return stalledBody(trendCancelled);
+    });
+    const authFetch = vi.fn<typeof fetch>();
+    const authAborted = vi.fn();
+    const makeApp = (
+      fetchImpl: typeof fetch,
+      buildAuthHeaders: (signal?: AbortSignal) => Promise<Record<string, string>>,
+    ) => {
+      const app = express();
+      app.use(
+        "/api/mining",
+        createMiningRouter(
+          {
+            streamingBackendBaseUrl: "https://internal.example",
+            fetchImpl,
+            buildAuthHeaders,
+          },
+          false,
+          true,
+          true,
+        ),
+      );
+      return app;
+    };
+    const auth = async () => ({ authorization: "Bearer service" });
+    const started = Date.now();
+    const responses = await Promise.all([
+      request(
+        makeApp(
+          authFetch,
+          (signal) =>
+            new Promise((_resolve, reject) => {
+              signal?.addEventListener(
+                "abort",
+                () => {
+                  authAborted();
+                  reject(new Error("cancelled"));
+                },
+                { once: true },
+              );
+            }),
+        ),
+      ).get(`/api/mining/cross-run-trends?${query}`),
+      request(makeApp(capabilityFetch, auth)).get(`/api/mining/cross-run-trends?${query}`),
+      request(makeApp(trendFetch, auth)).get(`/api/mining/cross-run-trends?${query}`),
+    ]);
+    expect(responses.map((response) => response.status)).toEqual([504, 504, 504]);
+    expect(Date.now() - started).toBeLessThan(10_500);
+    expect(authFetch).not.toHaveBeenCalled();
+    expect(authAborted).toHaveBeenCalledTimes(1);
+    expect(capabilityFetch).toHaveBeenCalledTimes(1);
+    expect(trendFetch).toHaveBeenCalledTimes(2);
+    expect(trendFetch.mock.calls[0][1]?.signal).toBe(trendFetch.mock.calls[1][1]?.signal);
+    expect(capabilityCancelled).toHaveBeenCalledTimes(1);
+    expect(trendCancelled).toHaveBeenCalledTimes(1);
+  }, 13_000);
+  it.each(["capability", "trend"])(
+    "aborts the %s request when the browser disconnects",
+    async (stage) => {
+      let notifyStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        notifyStarted = resolve;
+      });
+      let activeSignal: AbortSignal | undefined;
+      let finishLate: (() => void) | undefined;
+      const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (url, init) => {
+        if (stage === "trend" && String(url).includes("/context?"))
+          return new Response(
+            JSON.stringify({ mode: "continuous", capabilities: { trends: true } }),
+          );
+        activeSignal = init?.signal ?? undefined;
+        notifyStarted();
+        if (stage === "capability") {
+          return new Promise<Response>((resolve) => {
+            finishLate = () =>
+              resolve(
+                new Response(
+                  JSON.stringify({ mode: "continuous", capabilities: { trends: true } }),
+                ),
+              );
+          });
+        }
+        return new Promise<Response>((_resolve, reject) => {
+          activeSignal?.addEventListener("abort", () => reject(new Error("cancelled")), {
+            once: true,
+          });
+        });
+      });
+      const app = express();
+      app.use(
+        "/api/mining",
+        createMiningRouter(
+          {
+            streamingBackendBaseUrl: "https://internal.example",
+            fetchImpl,
+            buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+          },
+          false,
+          true,
+          true,
+        ),
+      );
+      const query =
+        "start=2026-01-01T00:00:00.000Z&end=2026-01-01T01:00:00.000Z&binMinutes=5&metric=feed";
+      const client = request(app).get(`/api/mining/cross-run-trends?${query}`);
+      client.end(() => {});
+      await started;
+      const aborted = new Promise<void>((resolve) =>
+        activeSignal?.addEventListener("abort", () => resolve(), { once: true }),
+      );
+      client.abort();
+      await aborted;
+      finishLate?.();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(activeSignal?.aborted).toBe(true);
+      expect(fetchImpl).toHaveBeenCalledTimes(stage === "trend" ? 2 : 1);
+    },
+  );
   it.each([
     { mode: "continuous", capabilities: { trends: false } },
     { mode: "continuous", capabilities: {} },

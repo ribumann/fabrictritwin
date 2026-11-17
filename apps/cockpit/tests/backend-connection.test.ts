@@ -5,7 +5,7 @@ import request from "supertest";
 import { WebSocket, WebSocketServer } from "ws";
 import { resolveBackendConnection } from "../src/api/backend-connection.js";
 import { attachCockpitStreamRelay } from "../src/api/stream-relay.js";
-import { resetServiceTokenCacheForTests } from "../src/api/service-auth.js";
+import { getServiceAccessToken, resetServiceTokenCacheForTests } from "../src/api/service-auth.js";
 
 const auth = vi.hoisted(() => ({ constructed: vi.fn(), getToken: vi.fn() }));
 vi.mock("@azure/identity", () => ({
@@ -43,6 +43,22 @@ async function listen(server: Server): Promise<string> {
 }
 
 describe("synthetic backend topology", () => {
+  it("passes the caller's cancellation signal to the service credential", async () => {
+    const controller = new AbortController();
+    auth.getToken.mockImplementation(
+      async (_scope: string, options: { abortSignal: AbortSignal }) => {
+        expect(options.abortSignal).toBe(controller.signal);
+        return new Promise((_resolve, reject) =>
+          options.abortSignal.addEventListener("abort", () => reject(new Error("cancelled")), {
+            once: true,
+          }),
+        );
+      },
+    );
+    const token = getServiceAccessToken({ scope: "scope", abortSignal: controller.signal });
+    controller.abort();
+    await expect(token).rejects.toThrow("cancelled");
+  });
   it.each(["http://localhost:3000", "http://127.0.0.1:3000", "http://[::1]:3000"])(
     "keeps %s credential-free even if a cloud scope exists",
     (url) => {
