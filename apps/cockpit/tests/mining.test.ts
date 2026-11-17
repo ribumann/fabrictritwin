@@ -20,6 +20,32 @@ function harness(fetchImpl = vi.fn<typeof fetch>()) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("isolated mining BFF", () => {
+  it("proxies only a bounded, run-free cross-run request to the authenticated demo service", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    const app = express();
+    app.use(
+      "/api/mining",
+      createMiningRouter(
+        {
+          streamingBackendBaseUrl: "https://internal.example",
+          fetchImpl,
+          buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+        },
+        false,
+        true,
+        true,
+      ),
+    );
+    const query =
+      "start=2026-01-01T00:00:00.000Z&end=2026-01-02T00:00:00.000Z&binMinutes=5&metric=feed";
+    expect((await request(app).get(`/api/mining/cross-run-trends?${query}`)).status).toBe(200);
+    expect(String(fetchImpl.mock.calls[0][0])).toContain("/api/mining/demo/cross-run-trends?");
+    expect(String(fetchImpl.mock.calls[0][0])).not.toContain("runId");
+    expect(
+      (await request(app).get(`/api/mining/cross-run-trends?${query}&runId=other`)).status,
+    ).toBe(400);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
   it("forwards only bounded same-origin demo questions, never visitor auth or chosen scope", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
     const app = express();

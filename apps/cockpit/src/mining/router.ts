@@ -17,7 +17,15 @@ const fields = new Set([
   "maxRows",
 ]);
 const metrics = new Set(["feed", "density", "vibration", "water-energy"]);
-const routes = ["context", "overview", "trends", "incidents", "compare-lines", "runs/status"];
+const routes = [
+  "context",
+  "overview",
+  "trends",
+  "incidents",
+  "compare-lines",
+  "cross-run-trends",
+  "runs/status",
+];
 const identifier = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 
@@ -204,6 +212,13 @@ export function createMiningRouter(
         query.set(key, value);
       }
       const invalid =
+        (route === "cross-run-trends" &&
+          (!demoEnabled ||
+            !demoReadEnabled ||
+            [...query.keys()].some(
+              (key) => !["plantId", "start", "end", "metric", "binMinutes"].includes(key),
+            ) ||
+            ["start", "end", "metric", "binMinutes"].some((key) => !query.has(key)))) ||
         (["trends", "compare-lines"].includes(route) &&
           ["start", "end", "binMinutes", "maxRows", "metric"].some((key) => !query.has(key))) ||
         (route === "trends" && !query.has("moduleId")) ||

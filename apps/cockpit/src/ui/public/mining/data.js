@@ -155,15 +155,138 @@ export function validSeries(data, params, catalogVersion, catalog) {
   });
 }
 
-export function moduleStatus(overview, moduleId, mode = overview?.mode, catalog = null, now = Date.now()) {
+export function crossRunChartData(data, params, catalogVersion, catalog, owner, now = Date.now()) {
+  const start = Date.parse(params.start);
+  const end = Date.parse(params.end);
+  const asOf = Date.parse(data?.asOf);
+  const binMs = Number(params.binMinutes) * 60_000;
+  const statuses = new Set([
+    "OBSERVED",
+    "PARTIAL",
+    "NON_GOOD",
+    "CONFLICT",
+    "CADENCE_CONFLICT",
+    "AMBIGUOUS_OWNER",
+    "COVERAGE_UNKNOWN",
+    "GAP",
+  ]);
+  if (
+    !owner ||
+    data?.owner?.runId !== owner.runId ||
+    data.owner.generation !== owner.generation ||
+    !(Date.parse(data.owner.authorityUntil) > now) ||
+    data.catalogVersion !== catalogVersion ||
+    data.profileVersion !== "d01-publish-profile-v1" ||
+    data.metric !== params.metric ||
+    data.binMinutes !== Number(params.binMinutes) ||
+    ![60_000, 300_000].includes(binMs) ||
+    !Number.isFinite(start) ||
+    !(end > start) ||
+    end - start > 86_400_000 ||
+    Date.parse(data.start) !== start ||
+    Date.parse(data.end) !== end ||
+    !Number.isFinite(asOf) ||
+    asOf < end ||
+    asOf > now ||
+    now - asOf > 90_000 ||
+    !Array.isArray(data.points) ||
+    data.points.length > 1000
+  )
+    return null;
+  const seen = new Set();
+  for (const point of data.points) {
+    const tag = catalog.telemetry_tags.find((item) => item.id === point?.seriesId);
+    const time = Date.parse(point?.binStart);
+    const samples = point?.sampleTimes;
+    const family =
+      params.metric === "feed"
+        ? tag?.metric === "ore_flow" && tag.module_id.endsWith(".crusher")
+        : params.metric === "density"
+          ? tag?.metric === "medium_density"
+          : params.metric === "vibration"
+            ? tag?.metric === "vibration_rms" && tag.module_id.endsWith(".crusher")
+            : params.metric === "water-energy" &&
+              [
+                "D01.shared.water.level",
+                "D01.shared.water.water_flow",
+                "D01.shared.control.power",
+              ].includes(tag?.id);
+    const key = `${point?.runId}:${point?.seriesId}:${time}`;
+    if (
+      !tag ||
+      !family ||
+      tag.unit !== point.unit ||
+      tag.module_id !== point.moduleId ||
+      tag.equipment_id !== point.equipmentId ||
+      tag.metric !== point.metric ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+        point.runId,
+      ) ||
+      seen.has(key) ||
+      !Number.isFinite(time) ||
+      time < start ||
+      time >= end ||
+      (time - start) % binMs !== 0 ||
+      !statuses.has(point.status) ||
+      !Array.isArray(samples) ||
+      !samples.length ||
+      samples.length !== point.sampleCount ||
+      samples.some(
+        (sample, index) =>
+          !Number.isFinite(Date.parse(sample)) ||
+          Date.parse(sample) < time ||
+          Date.parse(sample) >= Math.min(time + binMs, end) ||
+          (index > 0 && Date.parse(sample) <= Date.parse(samples[index - 1])),
+      ) ||
+      Date.parse(point.firstSampleTime) !== Date.parse(samples[0]) ||
+      Date.parse(point.lastSampleTime) !== Date.parse(samples.at(-1)) ||
+      !Number.isFinite(Date.parse(point.firstReceivedAt)) ||
+      !Number.isFinite(Date.parse(point.lastReceivedAt)) ||
+      Date.parse(point.firstReceivedAt) > Date.parse(point.lastReceivedAt) ||
+      Date.parse(point.lastReceivedAt) > asOf ||
+      (point.coverage !== null &&
+        (!Number.isFinite(point.coverage) || point.coverage < 0 || point.coverage > 1)) ||
+      (point.status === "OBSERVED"
+        ? point.quality !== "good" ||
+          !Number.isFinite(point.value) ||
+          point.coverage !== 1 ||
+          !point.coverageComplete ||
+          point.ambiguousOwner ||
+          point.cadenceConflict ||
+          typeof point.segmentId !== "string" ||
+          !point.segmentId.startsWith(`${point.runId}:${point.seriesId}:`)
+        : point.value !== null || point.segmentId !== null)
+    )
+      return null;
+    seen.add(key);
+  }
+  return {
+    crossRun: true,
+    binMinutes: data.binMinutes,
+    windowStart: data.start,
+    windowEnd: data.end,
+    rows: data.points.map((point) => ({ ...point, timestamp: point.binStart })),
+  };
+}
+
+export function moduleStatus(
+  overview,
+  moduleId,
+  mode = overview?.mode,
+  catalog = null,
+  now = Date.now(),
+) {
   if (mode === "continuous") {
-    if (!overview?.detail || !Array.isArray(catalog?.telemetry_tags)) return "not directly reported";
+    if (!overview?.detail || !Array.isArray(catalog?.telemetry_tags))
+      return "not directly reported";
     const tags = catalog.telemetry_tags.filter((tag) => tag.module_id === moduleId);
     if (!tags.length) return overview?.detail ? "no direct sensor tags" : "not directly reported";
     const readings = tags.map((tag) => continuousTagReading(overview, tag.id, now));
     if (readings.some((reading) => reading?.quality === "bad")) return "sensor evidence flagged";
     if (readings.some((reading) => reading?.quality === "stale")) return "sensor evidence stale";
-    if (readings.every((reading) => reading?.quality === "good" && Number.isFinite(reading.value))) {
+    if (
+      readings.every((reading) => reading?.quality === "good" && Number.isFinite(reading.value))
+    ) {
       return "sensor evidence current";
     }
     return "sensor evidence incomplete";
@@ -265,8 +388,10 @@ function validContinuousSummary(data) {
         reading.windowStart !== window.windowStart ||
         reading.windowEnd !== window.windowEnd ||
         !["good", "uncertain", "bad", "missing", "unavailable"].includes(reading.quality) ||
-        !(reading.coverage === null ||
-          (Number.isFinite(reading.coverage) && reading.coverage >= 0 && reading.coverage <= 1)) ||
+        !(
+          reading.coverage === null ||
+          (Number.isFinite(reading.coverage) && reading.coverage >= 0 && reading.coverage <= 1)
+        ) ||
         (reading.quality === "good"
           ? !Number.isFinite(reading.value) ||
             reading.value < 0 ||
@@ -537,14 +662,12 @@ export function continuousSummaryFresh(data, now = Date.now()) {
     Number.isFinite(watermark) &&
     watermark <= request &&
     now - watermark <= 105_000 &&
-    [
-      ...continuousFeedTags,
-      "D01.shared.water.water_flow",
-      "D01.shared.control.power",
-    ].every((tagId) => {
-      const reading = continuousTagReading(data, tagId, now);
-      return reading?.quality === "good" && Number.isFinite(reading.value);
-    })
+    [...continuousFeedTags, "D01.shared.water.water_flow", "D01.shared.control.power"].every(
+      (tagId) => {
+        const reading = continuousTagReading(data, tagId, now);
+        return reading?.quality === "good" && Number.isFinite(reading.value);
+      },
+    )
   );
 }
 
@@ -553,12 +676,10 @@ export function continuousSummaryMetric(data, windowId, metric, now = Date.now()
   const value = data.continuousSummary.windows.find((window) => window.window === windowId)?.[
     metric
   ];
-  return (
-    value?.quality === "good" &&
+  return value?.quality === "good" &&
     Number.isFinite(value.value) &&
     value.coverage >= 0.9 &&
     value.coverage <= 1
-  )
     ? value
     : null;
 }

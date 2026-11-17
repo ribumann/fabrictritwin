@@ -76,6 +76,32 @@ function fixture(result: unknown = frames(), targetUri = uri) {
 }
 
 describe("bounded mining query transport", () => {
+  it("uses the fixed parameterized cross-run query without a run filter", async () => {
+    const f = fixture();
+    await f.query({
+      kind: "cross-run-trend",
+      maxRows: 1000,
+      start: input.start,
+      end: input.end,
+      asOf: input.end,
+      metric: "feed",
+      binMinutes: 5,
+    });
+    const body = JSON.parse(String(f.request.mock.calls[2][1]?.body));
+    expect(body.csl).toContain("mining_ValidatedTelemetry");
+    expect(body.csl).toContain("| take 1001");
+    expect(body.properties.Parameters.run).toBeUndefined();
+    expect(body.properties.Parameters).toMatchObject({
+      plant: "'D01'",
+      start: `datetime(${input.start})`,
+      end: `datetime(${input.end})`,
+      asof: `datetime(${input.end})`,
+      metric: "'feed'",
+      bin_minutes: "5",
+    });
+    expect(body.properties.Options.truncationmaxrecords).toBe(1001);
+    expect(f.request.mock.calls[2][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
   it("bounds continuous work independently of run age without changing finite latest queries", async () => {
     const f = fixture();
     await f.query({
