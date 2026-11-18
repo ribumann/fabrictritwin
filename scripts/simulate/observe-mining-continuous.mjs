@@ -92,7 +92,7 @@ function assertContext(data, expected, now) {
   requireValue(data.catalogVersion === EXPECTED_CATALOG, "catalog_mismatch");
   requireValue(data.readAvailable === true, "continuous_read_disabled");
   requireValue(
-    data.capabilities?.incidents === false && data.capabilities?.trends === false,
+    data.capabilities?.incidents === true && data.capabilities?.trends === true,
     "unsupported_capability_contract",
   );
   assertSource(data.source);
@@ -118,10 +118,6 @@ function assertOverview(data, expected, observedAt) {
     "overview_scope_mismatch",
   );
   assertSource(data.source);
-  requireValue(
-    data.capabilities?.incidents === false && data.capabilities?.trends === false,
-    "unsupported_capability_contract",
-  );
   const authorityUntil = assertAuthority(data.run, expected, observedAt);
   const asOf = parseUtc(data.asOf);
   const watermark = parseUtc(data.watermark);
