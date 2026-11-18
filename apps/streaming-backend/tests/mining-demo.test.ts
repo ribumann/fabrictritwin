@@ -306,6 +306,22 @@ describe("public mining demo service boundary", () => {
     });
     expect(answer.mock.calls[0][3]).toBeGreaterThan(0);
     expect(answer.mock.calls[0][3]).toBeLessThanOrEqual(8_000);
+    answer.mockImplementationOnce(async () => {
+      const plant = store.read("plants/D01.json");
+      const current = await plant;
+      if (!current) throw new Error("Missing current owner record");
+      const record = current.value as Record<string, unknown>;
+      await store.write("plants/D01.json", {
+        ...record,
+        startedAt: new Date(Date.parse(record.startedAt as string) - 1_000).toISOString(),
+      });
+      return "This answer must be withdrawn.";
+    });
+    const changedOwner = await request(app)
+      .post("/demo/assistant")
+      .send({ plantId: "D01", question: "Can you still confirm this owner?" });
+    expect(changedOwner.status).toBe(503);
+    expect(changedOwner.body).not.toHaveProperty("answer");
     await admission.owner.finish("failed");
   });
   it("withdraws continuous advisory evidence when the generation is held during the read", async () => {
@@ -322,7 +338,14 @@ describe("public mining demo service boundary", () => {
         advisories: [],
       };
     });
-    const { app, store } = setup(continuousEnv, undefined, undefined, undefined, undefined, advisories);
+    const { app, store } = setup(
+      continuousEnv,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      advisories,
+    );
     coordinator = new MiningRunCoordinator(store);
     const admission = await coordinator.startContinuous({
       plantId: "D01",

@@ -706,6 +706,7 @@ export function createMiningDemoRouter(options: Options): Router {
       let runId: string;
       let evidence: unknown;
       let groundedOn: string[];
+      let continuousOwner: ContinuousIncidentOwner | undefined;
       if (continuousMode) {
         if (env.MINING_CONTINUOUS_READ_ENABLED !== "true" || !continuousIncidentProvider) {
           error(
@@ -728,6 +729,7 @@ export function createMiningDemoRouter(options: Options): Router {
           );
           return;
         }
+        continuousOwner = owner;
         const asOf = new Date().toISOString();
         const [overviewData, snapshot] = await Promise.all([
           continuous(owner, asOf, requestSignal),
@@ -839,8 +841,13 @@ export function createMiningDemoRouter(options: Options): Router {
       }
       const text = await answer(body.question.trim(), evidenceText, requestSignal, answerBudget);
       if (continuousMode) {
-        const status = await currentContinuousStatus(requestSignal);
-        if (!status?.run || !isContinuousMiningRun(status.run) || status.run.runId !== runId) {
+        const status = await currentContinuousStatus(requestSignal, continuousOwner);
+        if (
+          !continuousOwner ||
+          !status?.run ||
+          !isContinuousMiningRun(status.run) ||
+          status.run.runId !== runId
+        ) {
           throw new Error("The continuous owner changed while answering; ask again.");
         }
       }
