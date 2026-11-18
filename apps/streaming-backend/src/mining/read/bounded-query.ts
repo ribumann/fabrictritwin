@@ -383,7 +383,10 @@ async function prepare(
     const start = canonicalUtc(input.start, now);
     const end = canonicalUtc(input.end, now);
     if (Date.parse(end) - Date.parse(start) !== 300_000) {
-      throw new MiningQueryError("invalid", "Continuous incident partitions must span five minutes.");
+      throw new MiningQueryError(
+        "invalid",
+        "Continuous incident partitions must span five minutes.",
+      );
     }
     properties.setParameter("start", `datetime(${start})`);
     properties.setParameter("end", `datetime(${end})`);

@@ -31,9 +31,7 @@ import {
   type MiningCrossRunMetric,
 } from "../mining/read/cross-run-trend-query.js";
 import { createBoundedMiningQuery, MiningQueryError } from "../mining/read/bounded-query.js";
-import {
-  createContinuousIncidentProvider,
-} from "../mining-incidents/continuous-provider.js";
+import { createContinuousIncidentProvider } from "../mining-incidents/continuous-provider.js";
 import type { ContinuousIncidentOwner } from "../mining-incidents/continuous-snapshot-service.js";
 import { assertD01RunContract } from "../mining-incidents/catalog.js";
 import { mapContinuousAdvisories } from "../mining/read/continuous-advisory-dto.js";
@@ -199,8 +197,7 @@ export function createMiningDemoRouter(options: Options): Router {
               query: (input, signal) =>
                 query({ ...input, kind: "continuous-incident-partition" }, signal),
             },
-            async (owner, signal) =>
-              Boolean(await currentContinuousStatus(signal, owner)),
+            async (owner, signal) => Boolean(await currentContinuousStatus(signal, owner)),
           );
         })()
       : undefined);
@@ -445,8 +442,7 @@ export function createMiningDemoRouter(options: Options): Router {
               readAvailable: env.MINING_CONTINUOUS_READ_ENABLED === "true",
               assistant: {
                 available:
-                  env.MINING_CONTINUOUS_READ_ENABLED === "true" &&
-                  miningAssistantConfigured(env),
+                  env.MINING_CONTINUOUS_READ_ENABLED === "true" && miningAssistantConfigured(env),
                 kind: "bounded-fabric-evidence",
               },
               capabilities: {
@@ -480,7 +476,9 @@ export function createMiningDemoRouter(options: Options): Router {
           }
           const ownerStatus = await currentContinuousStatus(signal);
           const ownerRun =
-            ownerStatus?.run && isContinuousMiningRun(ownerStatus.run) ? ownerStatus.run : undefined;
+            ownerStatus?.run && isContinuousMiningRun(ownerStatus.run)
+              ? ownerStatus.run
+              : undefined;
           if (!ownerRun || !ownerStatus) {
             error(
               res,
@@ -709,10 +707,7 @@ export function createMiningDemoRouter(options: Options): Router {
       let evidence: unknown;
       let groundedOn: string[];
       if (continuousMode) {
-        if (
-          env.MINING_CONTINUOUS_READ_ENABLED !== "true" ||
-          !continuousIncidentProvider
-        ) {
+        if (env.MINING_CONTINUOUS_READ_ENABLED !== "true" || !continuousIncidentProvider) {
           error(
             res,
             503,
@@ -842,19 +837,10 @@ export function createMiningDemoRouter(options: Options): Router {
       if (answerBudget <= 0) {
         throw new Error("The evidence read left no bounded time for an assistant answer.");
       }
-      const text = await answer(
-        body.question.trim(),
-        evidenceText,
-        requestSignal,
-        answerBudget,
-      );
+      const text = await answer(body.question.trim(), evidenceText, requestSignal, answerBudget);
       if (continuousMode) {
         const status = await currentContinuousStatus(requestSignal);
-        if (
-          !status?.run ||
-          !isContinuousMiningRun(status.run) ||
-          status.run.runId !== runId
-        ) {
+        if (!status?.run || !isContinuousMiningRun(status.run) || status.run.runId !== runId) {
           throw new Error("The continuous owner changed while answering; ask again.");
         }
       }

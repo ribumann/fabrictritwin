@@ -353,7 +353,7 @@ export function validContinuousOverview(
     data.source?.workspace === "triatwin-dev-fabric" &&
     data.source.database === "mining-d01-realtime" &&
     typeof data.capabilities?.incidents === "boolean" &&
-    data.capabilities?.trends === false;
+    typeof data.capabilities?.trends === "boolean";
   if (!continuousScopeValid) return false;
   if (Object.hasOwn(data, "continuousSummary") && !validContinuousSummary(data)) return false;
   if (!Object.hasOwn(data, "detail")) return true;

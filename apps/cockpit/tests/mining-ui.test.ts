@@ -233,6 +233,15 @@ describe("continuous throughput presentation", () => {
     const data = fixture();
     expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now)).toBe(true);
     expect(validContinuousOverview(data, data.runId, "catalog", "release-2", now)).toBe(false);
+    expect(
+      validContinuousOverview(
+        { ...data, capabilities: { incidents: true, trends: true } },
+        data.runId,
+        "catalog",
+        "release-1",
+        now,
+      ),
+    ).toBe(true);
     expect(continuousThroughputUsable(data, now)).toBe(true);
     expect(validOverview(data, data.runId, "catalog", data.asOf, false, now)).toBe(false);
   });
