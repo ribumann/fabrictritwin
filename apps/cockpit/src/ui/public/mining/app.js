@@ -20,6 +20,7 @@ import {
   seriesQuery,
   verifiedRunIngestion,
   validContinuousOverview,
+  validContinuousAdvisories,
   continuousThroughputUsable,
   continuousTagReading,
   continuousRunningLines,
@@ -69,6 +70,7 @@ let catalog,
 let incidents = [];
 let incidentAsOf = null;
 let incidentAssessment = null;
+let continuousAdvisoryData = null;
 let mode = "live";
 let replayTime = null;
 let appearanceMode = "clean";
@@ -638,6 +640,33 @@ function drawIncidents(emptyMessage = "Unknown - incident assessment unavailable
     container.append(item);
   }
 }
+function drawContinuousAdvisories(message) {
+  const container = $("continuous-advisories");
+  container.replaceChildren();
+  if (!continuousAdvisoryData) {
+    text("continuous-advisory-status", message);
+    return;
+  }
+  const data = continuousAdvisoryData;
+  text(
+    "continuous-advisory-status",
+    `${data.advisories.length} retrospective ${data.advisories.length === 1 ? "advisory" : "advisories"} from ${timestamp(data.windowStart)} to ${timestamp(data.asOf)} · source captured ${timestamp(data.sourceObservedAt)}. Empty results are not proof of health or completeness.`,
+  );
+  for (const advisory of data.advisories) {
+    const ages = advisory.evidence.map(
+      (row) =>
+        `${row.tagId}: ${row.value} ${row.unit} at ${timestamp(row.sampleTime)} · ${Math.max(0, Math.floor((Date.parse(data.sourceObservedAt) - Date.parse(row.sampleTime)) / 1000))}s old`,
+    );
+    const states = advisory.stateEvidence.map(
+      (row) => `${row.scopeId} ${row.state} at ${timestamp(row.sampleTime)}`,
+    );
+    const item = node(
+      "li",
+      `${advisory.severity.toUpperCase()} · ${advisory.ruleId} · ${advisory.scopeId} · ${advisory.verification} · event window ${timestamp(advisory.evidenceWindow.start)}–${timestamp(advisory.evidenceWindow.end)}${ages.length ? ` · ${ages.join("; ")}` : ""}${states.length ? ` · ${states.join("; ")}` : ""}`,
+    );
+    container.append(item);
+  }
+}
 function chart(container, data) {
   container.replaceChildren();
   if (!data || !Array.isArray(data.rows) || data.rows.length > 1000 || !data.rows.length) {
@@ -796,6 +825,7 @@ function chart(container, data) {
 function clearReadState(message) {
   overview = null;
   continuousOverview = null;
+  continuousAdvisoryData = null;
   incidents = [];
   incidentAsOf = null;
   incidentAssessment = null;
@@ -804,6 +834,7 @@ function clearReadState(message) {
   text("connection", message);
   text("incident-status", "Unknown — incident source unavailable.");
   $("incidents").replaceChildren();
+  drawContinuousAdvisories("Unknown — bounded rolling advisory evidence is unavailable.");
   chart($("feed-chart"), null);
   chart($("diagnostic-chart"), null);
 }
@@ -836,8 +867,41 @@ async function refresh(scope = "all") {
       continuousOverview = data;
       overview = null;
       drawOverview();
-      text("incident-status", "Unavailable: live incident processing is not supported.");
+      text("incident-status", "Continuous mode has no durable active-incident history.");
       $("incidents").replaceChildren();
+      if (scope === "all" || scope === "detail") {
+        if (context.capabilities?.incidents !== true) {
+          continuousAdvisoryData = null;
+          drawContinuousAdvisories(
+            "Unavailable — rolling advisory evidence is not enabled for this owner.",
+          );
+        } else {
+          try {
+            const advisory = await reads.read("incidents", { plantId: "D01", runId });
+            if (!current()) return;
+            if (
+              !validContinuousAdvisories(
+                advisory,
+                runId,
+                catalogVersion,
+                generation,
+                Date.now(),
+                catalog,
+              )
+            ) {
+              throw new Error("Rolling advisory evidence is invalid, stale or from another owner.");
+            }
+            continuousAdvisoryData = advisory;
+            drawContinuousAdvisories();
+          } catch (error) {
+            if (!current()) return;
+            continuousAdvisoryData = null;
+            drawContinuousAdvisories(
+              `Unavailable — ${error.message} No health or completeness conclusion is implied.`,
+            );
+          }
+        }
+      }
     } catch (error) {
       if (current()) clearReadState(error.message);
       return;
@@ -896,6 +960,10 @@ async function refresh(scope = "all") {
       "Incident assessments are current-only; historical assessments are unavailable in replay.",
     );
     drawDrawer();
+  }
+  if (context?.mode !== "continuous") {
+    continuousAdvisoryData = null;
+    drawContinuousAdvisories("Not applicable to finite-run incident assessments.");
   }
   if (document.hidden || !context?.readAvailable || !context?.approvedRun) return;
   const epoch = requestEpoch;
@@ -1189,21 +1257,45 @@ $("mining-ask").addEventListener("submit", async (event) => {
       controller.signal.aborted
     )
       return;
+    const evidenceValid =
+      context.mode === "continuous"
+        ? data.evidence?.mode === "continuous" &&
+          data.evidence.owner?.runId === runId &&
+          data.evidence.owner?.generation === context.approvedRun.generation &&
+          validContinuousOverview(
+            data.evidence.overview,
+            runId,
+            catalogVersion,
+            context.approvedRun.generation,
+            Date.now(),
+            catalog,
+          ) &&
+          validContinuousAdvisories(
+            data.evidence.advisories,
+            runId,
+            catalogVersion,
+            context.approvedRun.generation,
+            Date.now(),
+            catalog,
+          )
+        : sameScope(data.evidence, runId, catalogVersion) &&
+          validAsOf(data.evidence.asOf, new Date().toISOString(), false);
     if (
       !sameScope(data, runId, catalogVersion) ||
-      !sameScope(data.evidence, runId, catalogVersion) ||
       data.kind !== "bounded-fabric-evidence" ||
       data.nativeDataAgentInvoked !== false ||
       typeof data.answer !== "string" ||
       !data.answer.trim() ||
       data.answer.length > 12_000 ||
-      !validAsOf(data.evidence.asOf, new Date().toISOString(), false)
+      !evidenceValid
     )
       throw new Error("The answer did not match the current run. Refresh and ask again.");
     text("mining-answer", data.answer);
     text(
       "mining-answer-status",
-      `Generated interpretation for run ${runId}. Evidence cutoff ${timestamp(data.evidence.asOf)}; evidence quality ${data.evidence.quality}. Not a native Data Agent answer.`,
+      context.mode === "continuous"
+        ? `Generated interpretation for run ${runId}. Rolling event-time evidence ${timestamp(data.evidence.advisories.asOf)}; source captured ${timestamp(data.evidence.advisories.sourceObservedAt)}. Empty advisories are not proof of health or completeness. Not a native Data Agent answer.`
+        : `Generated interpretation for run ${runId}. Evidence cutoff ${timestamp(data.evidence.asOf)}; evidence quality ${data.evidence.quality}. Not a native Data Agent answer.`,
     );
     text("mining-answer-source", JSON.stringify(data.evidence, null, 2));
     $("mining-answer-evidence").hidden = false;

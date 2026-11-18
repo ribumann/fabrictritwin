@@ -158,6 +158,45 @@ describe("bounded mining query transport", () => {
     ).rejects.toThrow("exactly three rows");
     expect(f.request).toHaveBeenCalledTimes(3);
   });
+  it("uses a fixed parameterized five-minute incident partition with normal transport bounds", async () => {
+    const f = fixture();
+    await f.query({
+      kind: "continuous-incident-partition",
+      runId: input.runId,
+      start: "2026-01-01T11:55:00.000Z",
+      end: input.end,
+      includeEnd: true,
+      maxRows: 1000,
+    });
+    const body = JSON.parse(String(f.request.mock.calls[2][1]?.body));
+    expect(body.csl).toContain("mining_DeduplicatedTelemetry(plant, run, start, end)");
+    expect(body.csl).toContain("mining_ValidatedState");
+    expect(body.csl).toContain("join kind=leftsemi (candidates | distinct event_id)");
+    expect(body.csl).toContain("array_length(identities) != 1");
+    expect(body.csl).not.toContain(input.runId);
+    expect(body.properties.Parameters).toMatchObject({
+      plant: "'D01'",
+      run: `'${input.runId}'`,
+      start: "datetime(2026-01-01T11:55:00.000Z)",
+      end: "datetime(2026-01-01T12:00:00.000Z)",
+      include_end: "true",
+    });
+    expect(body.properties.Options).toMatchObject({
+      truncationmaxrecords: 1001,
+      truncationmaxsize: 1_048_576,
+    });
+    await expect(
+      f.query({
+        kind: "continuous-incident-partition",
+        runId: input.runId,
+        start: "2026-01-01T11:54:00.000Z",
+        end: input.end,
+        includeEnd: true,
+        maxRows: 1000,
+      }),
+    ).rejects.toThrow("five minutes");
+    expect(f.request).toHaveBeenCalledTimes(3);
+  });
   it("reconciles only the exact run through the fixed nonfuture ingestion query", async () => {
     const f = fixture();
     const scope = { runId: input.runId, maxRows: 5, kind: "ingestion" as const };

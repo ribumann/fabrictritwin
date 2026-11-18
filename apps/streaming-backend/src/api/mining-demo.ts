@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { Router, type Request, type Response } from "express";
 import type { JWTPayload } from "jose";
 import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulator/mining";
@@ -29,7 +30,11 @@ import {
   prepareMiningCrossRunTrendQuery,
   type MiningCrossRunMetric,
 } from "../mining/read/cross-run-trend-query.js";
-import { MiningQueryError } from "../mining/read/bounded-query.js";
+import { createBoundedMiningQuery, MiningQueryError } from "../mining/read/bounded-query.js";
+import { createContinuousIncidentProvider } from "../mining-incidents/continuous-provider.js";
+import type { ContinuousIncidentOwner } from "../mining-incidents/continuous-snapshot-service.js";
+import { assertD01RunContract } from "../mining-incidents/catalog.js";
+import { mapContinuousAdvisories } from "../mining/read/continuous-advisory-dto.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -47,6 +52,7 @@ interface Options {
   incidents?: Pick<MiningDemoIncidentProcessor, "start">;
   answer?: MiningAnswer;
   continuous?: ReturnType<typeof createMiningContinuousProvider>;
+  continuousAdvisories?: ReturnType<typeof createContinuousIncidentProvider>;
   crossRunTrends?: ReturnType<typeof createMiningCrossRunTrendProvider>;
 }
 
@@ -173,6 +179,78 @@ export function createMiningDemoRouter(options: Options): Router {
     } else {
       error(res, 503, unavailableCode, "The mining demo is unavailable; check status.");
     }
+  };
+  const continuousIncidentProvider =
+    options.continuousAdvisories ??
+    (continuousMode && env.MINING_CONTINUOUS_READ_ENABLED === "true"
+      ? (() => {
+          const query = createBoundedMiningQuery({
+            ...env,
+            EVENTHOUSE_QUERY_URI: env.MINING_EVENTHOUSE_QUERY_URI,
+            EVENTHOUSE_DATABASE_NAME: env.MINING_EVENTHOUSE_DATABASE_NAME,
+          });
+          return createContinuousIncidentProvider(
+            {
+              now: Date.now,
+              readiness: (runId, signal) =>
+                query({ kind: "source-readiness", runId, maxRows: 1 }, signal),
+              query: (input, signal) =>
+                query({ ...input, kind: "continuous-incident-partition" }, signal),
+            },
+            async (owner, signal) => Boolean(await currentContinuousStatus(signal, owner)),
+          );
+        })()
+      : undefined);
+
+  const currentContinuousStatus = async (
+    signal: AbortSignal,
+    expected?: ContinuousIncidentOwner,
+  ) => {
+    const { coordinator } = dependencies();
+    const status = await coordinator.currentStatus(signal);
+    if (
+      status?.admission !== "accepted" ||
+      status.phase !== "running" ||
+      status.stopRequested ||
+      !status.run ||
+      !isContinuousMiningRun(status.run) ||
+      status.run.runId !== status.runId ||
+      status.run.phase !== "running" ||
+      status.run.lifetime.generation !== env.MINING_CONTINUOUS_GENERATION
+    ) {
+      return undefined;
+    }
+    const run = status.run;
+    const now = Date.now();
+    const started = Date.parse(run.startedAt);
+    const authorityUntil = Date.parse(run.authorityUntil);
+    try {
+      assertD01RunContract(run.contract);
+    } catch {
+      return undefined;
+    }
+    if (
+      !Number.isFinite(now) ||
+      !Number.isFinite(started) ||
+      new Date(started).toISOString() !== run.startedAt ||
+      started > now ||
+      !Number.isFinite(authorityUntil) ||
+      authorityUntil <= now ||
+      (expected &&
+        (expected.runId !== run.runId ||
+          expected.startedAt !== run.startedAt ||
+          expected.lifetime.generation !== run.lifetime.generation ||
+          expected.contract.catalogVersion !== run.contract.catalogVersion ||
+          expected.contract.profileVersion !== run.contract.profileVersion ||
+          expected.contract.evaluatorReplayVersion !== run.contract.evaluatorReplayVersion))
+    ) {
+      return undefined;
+    }
+    if (await coordinator.continuousGenerationHeld(run.lifetime.generation, signal)) {
+      return undefined;
+    }
+    signal.throwIfAborted();
+    return status;
   };
 
   router.get("/runs/status", async (req, res) => {
@@ -362,28 +440,46 @@ export function createMiningDemoRouter(options: Options): Router {
               source,
               catalogVersion: D01_CATALOG_VERSION,
               readAvailable: env.MINING_CONTINUOUS_READ_ENABLED === "true",
-              assistant: { available: false, kind: "bounded-fabric-evidence" },
+              assistant: {
+                available:
+                  env.MINING_CONTINUOUS_READ_ENABLED === "true" && miningAssistantConfigured(env),
+                kind: "bounded-fabric-evidence",
+              },
               capabilities: {
-                incidents: false,
+                incidents:
+                  env.MINING_CONTINUOUS_READ_ENABLED === "true" &&
+                  Boolean(continuousIncidentProvider),
                 trends: env.MINING_CONTINUOUS_READ_ENABLED === "true",
                 replay: false,
-                assistant: false,
+                assistant:
+                  env.MINING_CONTINUOUS_READ_ENABLED === "true" &&
+                  Boolean(continuousIncidentProvider) &&
+                  miningAssistantConfigured(env),
               },
               unavailableReason:
-                "Managed continuous source; waiting for a healthy owner and rolling-window coverage.",
+                "Managed continuous source; empty rolling advisories do not prove health or complete source coverage.",
             });
             return;
           }
-          if (route !== "overview" || req.query.asOf) {
+          if (
+            (route !== "overview" && route !== "incidents") ||
+            (route === "overview" && req.query.asOf) ||
+            (route === "incidents" && req.query.asOf)
+          ) {
             error(
               res,
               503,
               "mining_continuous_capability_unavailable",
-              "Continuous mode supports only current throughput/freshness; other views are unavailable.",
+              "Continuous mode supports current overview and rolling event-time advisories only.",
             );
             return;
           }
-          if (!current || demo!.phase !== "running" || demo!.stopRequested) {
+          const ownerStatus = await currentContinuousStatus(signal);
+          const ownerRun =
+            ownerStatus?.run && isContinuousMiningRun(ownerStatus.run)
+              ? ownerStatus.run
+              : undefined;
+          if (!ownerRun || !ownerStatus) {
             error(
               res,
               503,
@@ -392,18 +488,48 @@ export function createMiningDemoRouter(options: Options): Router {
             );
             return;
           }
+          if (!current || ownerRun.runId !== current.runId) {
+            error(res, 503, "mining_continuous_unavailable", "The continuous publisher changed.");
+            return;
+          }
+          if (route === "incidents") {
+            if (!continuousIncidentProvider) {
+              error(
+                res,
+                503,
+                "mining_continuous_advisories_unavailable",
+                "Rolling advisory evidence is unavailable.",
+              );
+              return;
+            }
+            const snapshot = await continuousIncidentProvider(ownerRun, signal);
+            if (!snapshot) {
+              error(
+                res,
+                503,
+                "mining_continuous_advisories_unavailable",
+                "Rolling advisory evidence is unavailable.",
+              );
+              return;
+            }
+            if (!(await currentContinuousStatus(signal, ownerRun))) {
+              throw new MiningCoordinationError(
+                "prerequisite",
+                "Continuous authority changed during the advisory read.",
+              );
+            }
+            if (!res.headersSent && !res.destroyed) {
+              res.json({
+                ...mapContinuousAdvisories(snapshot),
+                generation: ownerRun.lifetime.generation,
+              });
+            }
+            return;
+          }
           const asOf = new Date().toISOString();
-          const data = await continuous(current, asOf, signal);
-          const latest = await coordinator.currentStatus(signal);
-          if (
-            latest?.admission !== "accepted" ||
-            latest.runId !== current.runId ||
-            latest.phase !== "running" ||
-            latest.stopRequested ||
-            !latest.run ||
-            !isContinuousMiningRun(latest.run) ||
-            latest.run.lifetime.generation !== current.lifetime.generation
-          ) {
+          const data = await continuous(ownerRun, asOf, signal);
+          const latest = await currentContinuousStatus(signal, ownerRun);
+          if (!latest?.run || !isContinuousMiningRun(latest.run)) {
             throw new MiningCoordinationError(
               "prerequisite",
               "Continuous authority changed during the read.",
@@ -413,7 +539,11 @@ export function createMiningDemoRouter(options: Options): Router {
           res.json({
             ...data,
             source,
-            run: { ...publicRun, authorityUntil: latest.run.authorityUntil },
+            run: {
+              ...publicRun,
+              generation: latest.run.lifetime.generation,
+              authorityUntil: latest.run.authorityUntil,
+            },
           });
           return;
         }
@@ -526,15 +656,6 @@ export function createMiningDemoRouter(options: Options): Router {
     });
   }
   router.post("/assistant", async (req, res) => {
-    if (continuousMode) {
-      error(
-        res,
-        503,
-        "mining_assistant_unavailable",
-        "Continuous assistant evidence is not implemented.",
-      );
-      return;
-    }
     if (env.MINING_PUBLIC_DEMO_READ_ENABLED !== "true" || !miningAssistantConfigured(env)) {
       error(res, 503, "mining_assistant_unavailable", "The mining evidence assistant is disabled.");
       return;
@@ -577,43 +698,174 @@ export function createMiningDemoRouter(options: Options): Router {
     answering = true;
     try {
       assertMiningDemoQueryConfiguration(env);
-      const { store, coordinator } = dependencies();
-      const signal: AbortSignal = res.locals.miningDemoSignal;
-      const status = await coordinator.currentStatus(signal);
-      if (
-        status?.admission !== "accepted" ||
-        !status.run?.contract ||
-        !(await isDemoRun(store, status.runId, signal))
-      ) {
-        error(res, 404, "mining_demo_run_not_found", "Start a public demo run before asking.");
-        return;
+      const requestStarted = performance.now();
+      const requestSignal = AbortSignal.any([
+        res.locals.miningDemoSignal as AbortSignal,
+        AbortSignal.timeout(9_000),
+      ]);
+      let runId: string;
+      let evidence: unknown;
+      let groundedOn: string[];
+      let continuousOwner: ContinuousIncidentOwner | undefined;
+      if (continuousMode) {
+        if (env.MINING_CONTINUOUS_READ_ENABLED !== "true" || !continuousIncidentProvider) {
+          error(
+            res,
+            503,
+            "mining_assistant_unavailable",
+            "Current bounded continuous assistant evidence is unavailable.",
+          );
+          return;
+        }
+        const ownerStatus = await currentContinuousStatus(requestSignal);
+        const owner =
+          ownerStatus?.run && isContinuousMiningRun(ownerStatus.run) ? ownerStatus.run : undefined;
+        if (!owner || !ownerStatus) {
+          error(
+            res,
+            503,
+            "mining_assistant_unavailable",
+            "A current accepted continuous owner is unavailable.",
+          );
+          return;
+        }
+        continuousOwner = owner;
+        const asOf = new Date().toISOString();
+        const [overviewData, snapshot] = await Promise.all([
+          continuous(owner, asOf, requestSignal),
+          continuousIncidentProvider(owner, requestSignal),
+        ]);
+        if (!snapshot || !(await currentContinuousStatus(requestSignal, owner))) {
+          throw new Error("Continuous ownership changed during evidence collection.");
+        }
+        const advisories = {
+          ...mapContinuousAdvisories(snapshot),
+          generation: owner.lifetime.generation,
+        };
+        const overview = {
+          ...overviewData,
+          source: {
+            workspace: "triatwin-dev-fabric",
+            database: env.MINING_EVENTHOUSE_DATABASE_NAME,
+          },
+          run: {
+            plantId: "D01",
+            runId: owner.runId,
+            catalogVersion: D01_CATALOG_VERSION,
+            publisherStatus: "running",
+            ingestionStatus: "unknown",
+            generation: owner.lifetime.generation,
+            authorityUntil: owner.authorityUntil,
+            stopRequested: false,
+          },
+        };
+        const capturedAt = Date.now();
+        const age = (value: string) => {
+          const parsed = Date.parse(value);
+          const ageSeconds = (capturedAt - parsed) / 1000;
+          if (!Number.isFinite(parsed) || !Number.isFinite(ageSeconds) || ageSeconds < 0) {
+            throw new Error("Continuous assistant evidence contains an invalid or future sample.");
+          }
+          return ageSeconds;
+        };
+        evidence = {
+          mode: "continuous",
+          owner: {
+            runId: owner.runId,
+            generation: owner.lifetime.generation,
+            startedAt: owner.startedAt,
+          },
+          overview,
+          advisories: {
+            ...advisories,
+            sourceAgeSeconds: age(advisories.sourceObservedAt),
+            completeness:
+              "Only bounded retained records were checked; this is not proof of source completeness.",
+            advisories: advisories.advisories.map((item) => ({
+              ...item,
+              evidence: item.evidence.map((row) => ({
+                ...row,
+                ageSeconds: age(row.sampleTime),
+              })),
+              stateEvidence: item.stateEvidence.map((row) => ({
+                ...row,
+                ageSeconds: age(row.sampleTime),
+              })),
+            })),
+          },
+        };
+        runId = owner.runId;
+        groundedOn = [
+          "bounded current-run Fabric readings with sample ages",
+          "retrospective rolling event-time advisories with explicit evidence ages",
+        ];
+      } else {
+        const { store, coordinator } = dependencies();
+        const status = await coordinator.currentStatus(requestSignal);
+        if (
+          status?.admission !== "accepted" ||
+          !status.run?.contract ||
+          !(await isDemoRun(store, status.runId, requestSignal))
+        ) {
+          error(res, 404, "mining_demo_run_not_found", "Start a public demo run before asking.");
+          return;
+        }
+        const asOf = new Date(now).toISOString();
+        const overview = await curated({ kind: "overview", run: status.run, asOf }, requestSignal);
+        if (!overview || !("latest" in overview)) {
+          throw new Error("Mining assistant evidence is unavailable.");
+        }
+        evidence = overview;
+        runId = status.runId;
+        groundedOn = [
+          "validated latest readings",
+          "five-minute summary",
+          "event-ID reconciliation",
+        ];
+        const latest = await coordinator.currentStatus(requestSignal);
+        if (latest?.runId !== status.runId || latest.stopRequested !== status.stopRequested) {
+          throw new Error("The public run changed while reading evidence; ask again.");
+        }
       }
-      const asOf = new Date(now).toISOString();
-      const overview = await curated({ kind: "overview", run: status.run, asOf }, signal);
-      const evidence = JSON.stringify(overview);
-      if (!overview || !("latest" in overview) || Buffer.byteLength(evidence) > 65_536) {
-        throw new Error("Mining assistant evidence is unavailable or exceeds its bound.");
+      const evidenceText = JSON.stringify(evidence);
+      if (Buffer.byteLength(evidenceText) > 65_536) {
+        throw new Error("Mining assistant evidence exceeds its bound.");
       }
-      const text = await answer(body.question.trim(), evidence, signal);
-      const latest = await coordinator.currentStatus(signal);
-      if (latest?.runId !== status.runId || latest.stopRequested !== status.stopRequested) {
-        throw new Error("The public run changed while answering; ask again.");
+      requestSignal.throwIfAborted();
+      const answerBudget = Math.min(
+        8_000,
+        Math.floor(9_000 - (performance.now() - requestStarted) - 500),
+      );
+      if (answerBudget <= 0) {
+        throw new Error("The evidence read left no bounded time for an assistant answer.");
       }
-      signal.throwIfAborted();
+      const text = await answer(body.question.trim(), evidenceText, requestSignal, answerBudget);
+      if (continuousMode) {
+        const status = await currentContinuousStatus(requestSignal, continuousOwner);
+        if (
+          !continuousOwner ||
+          !status?.run ||
+          !isContinuousMiningRun(status.run) ||
+          status.run.runId !== runId
+        ) {
+          throw new Error("The continuous owner changed while answering; ask again.");
+        }
+      }
+      requestSignal.throwIfAborted();
+      if (performance.now() - requestStarted > 9_000) {
+        throw new Error("The bounded Mining assistant deadline expired.");
+      }
+      requestSignal.throwIfAborted();
       if (!res.headersSent && !res.destroyed) {
         res.json({
           plantId: "D01",
-          runId: status.runId,
+          runId,
           catalogVersion: D01_CATALOG_VERSION,
           answer: text,
           kind: "bounded-fabric-evidence",
           nativeDataAgentInvoked: false,
-          groundedOn: [
-            "validated latest readings",
-            "five-minute summary",
-            "event-ID reconciliation",
-          ],
-          evidence: overview,
+          groundedOn,
+          evidence,
           refreshedAt: new Date().toISOString(),
         });
       }

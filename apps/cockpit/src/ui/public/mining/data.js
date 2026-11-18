@@ -352,12 +352,102 @@ export function validContinuousOverview(
     ) &&
     data.source?.workspace === "triatwin-dev-fabric" &&
     data.source.database === "mining-d01-realtime" &&
-    data.capabilities?.incidents === false &&
-    data.capabilities?.trends === false;
+    typeof data.capabilities?.incidents === "boolean" &&
+    typeof data.capabilities?.trends === "boolean";
   if (!continuousScopeValid) return false;
   if (Object.hasOwn(data, "continuousSummary") && !validContinuousSummary(data)) return false;
   if (!Object.hasOwn(data, "detail")) return true;
   return validContinuousDetail(data, catalogVersion, catalog);
+}
+
+export function validContinuousAdvisories(
+  data,
+  runId,
+  catalogVersion,
+  generation,
+  now = Date.now(),
+  catalog = null,
+) {
+  const timestamp = (value) => {
+    const parsed = typeof value === "string" ? Date.parse(value) : NaN;
+    return Number.isFinite(parsed) && new Date(parsed).toISOString() === value ? parsed : null;
+  };
+  const start = timestamp(data?.windowStart);
+  const asOf = timestamp(data?.asOf);
+  const observed = timestamp(data?.sourceObservedAt);
+  if (
+    data?.assessmentKind !== "rolling-event-time-advisory" ||
+    data?.plantId !== "D01" ||
+    data?.catalogVersion !== catalogVersion ||
+    data?.runId !== runId ||
+    data?.generation !== generation ||
+    start === null ||
+    asOf === null ||
+    observed === null ||
+    asOf - start !== 20 * 60_000 ||
+    asOf > observed ||
+    observed > now + 15_000 ||
+    now - asOf > 180_000 ||
+    !Number.isSafeInteger(data.totalAdvisories) ||
+    data.totalAdvisories < 0 ||
+    !Array.isArray(data.advisories) ||
+    data.advisories.length !== Math.min(data.totalAdvisories, 20)
+  )
+    return false;
+  const scopes = new Set(["A", "B", "C", "shared"]);
+  return data.advisories.every((item) => {
+    const evidenceStart = timestamp(item?.evidenceWindow?.start);
+    const evidenceEnd = timestamp(item?.evidenceWindow?.end);
+    if (
+      !item ||
+      typeof item !== "object" ||
+      ["incidentId", "raisedAt", "clearedAt", "acknowledgedAt"].some((key) =>
+        Object.hasOwn(item, key),
+      ) ||
+      typeof item.ruleId !== "string" ||
+      !scopes.has(item.scopeId) ||
+      !["warning", "high"].includes(item.severity) ||
+      !["verified", "unverified"].includes(item.verification) ||
+      evidenceStart === null ||
+      evidenceEnd === null ||
+      evidenceStart < start ||
+      evidenceEnd > asOf ||
+      evidenceStart > evidenceEnd ||
+      !Array.isArray(item.evidence) ||
+      item.evidence.length > 56 ||
+      !Array.isArray(item.stateEvidence) ||
+      item.stateEvidence.length > 4
+    )
+      return false;
+    return (
+      item.evidence.every((row) => {
+        const tag = catalog?.telemetry_tags?.find((candidate) => candidate.id === row?.tagId);
+        const sample = timestamp(row?.sampleTime);
+        return (
+          tag &&
+          row.unit === tag.unit &&
+          typeof row.value === "number" &&
+          Number.isFinite(row.value) &&
+          ["good", "uncertain", "bad"].includes(row.quality) &&
+          sample !== null &&
+          sample >= start &&
+          sample <= asOf
+        );
+      }) &&
+      item.stateEvidence.every((row) => {
+        const sample = timestamp(row?.sampleTime);
+        return (
+          row &&
+          scopes.has(row.scopeId) &&
+          ["starting", "running", "idle", "stopped", "fault"].includes(row.state) &&
+          typeof row.scheduledRunning === "boolean" &&
+          sample !== null &&
+          sample >= start &&
+          sample <= asOf
+        );
+      })
+    );
+  });
 }
 
 function validContinuousSummary(data) {
