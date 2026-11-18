@@ -29,8 +29,9 @@ catalog bytes without newline conversion or semantic JSON canonicalization.
 
 Exact response types are in `src/mining/contract.ts`; the backend must return them
 and independently enforce plant/run authorization and all resource limits.
-All JSON uses camelCase. The public demo exposes only its approved run, not
-foreign-run browsing. Athlete IDs and athlete permissions are not mining grants.
+All JSON uses camelCase. Finite-run reads expose only the approved run. Continuous
+cross-run trends expose bounded historical evidence, not arbitrary run browsing.
+Athlete IDs and athlete permissions are not mining grants.
 
 | GET `/api/mining/` path | Backend contract                                  | Inputs                                                                             |
 | ----------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------- |
@@ -39,6 +40,7 @@ foreign-run browsing. Athlete IDs and athlete permissions are not mining grants.
 | `trends`                | `MiningSeries` (`AssetTrend`)                     | plant/run, canonical `moduleId`, `metric`, `start`, `end`, `binMinutes`, `maxRows` |
 | `incidents`             | `MiningIncidents` (`ActiveIncidents`)             | plant/run; current assessment only                                                |
 | `compare-lines`         | `MiningSeries` (`CompareLines`)                   | plant/run, `metric`, `start`, `end`, `binMinutes`, `maxRows`                       |
+| `cross-run-trends`      | Continuous cross-run trend evidence               | `plantId=D01`, `metric`, `start`, `end`, `binMinutes`; no run filter               |
 | `runs/status`           | `MiningRun`                                       | plant/run                                                                          |
 
 Metric families are `feed`, `density`, `vibration`, `water-energy`. Bins are 1 or
@@ -62,8 +64,15 @@ applies startup/feed denominator rules. Its summary window defaults to 15 minute
 reading, KPI, status, or chart sample; unsupported quality is not treated as good.
 Replay freshness is evaluated at `asOf`; latest provenance timestamps are UTC.
 `normalBand` is a demo normal band, never the catalog's broad simulation envelope.
-Every run-scoped response includes `plantId`, `runId` and `catalogVersion`;
-cross-run/catalog responses are rejected, including late arrivals after a switch.
+Every finite run-scoped response includes `plantId`, `runId` and `catalogVersion`;
+foreign-run/catalog responses are rejected, including late arrivals after a switch.
+Continuous trend points retain their historical run IDs and are accepted only
+under the current authorized publisher owner and generation.
+For continuous evidence the browser allows the service timestamp up to 15 seconds
+ahead of its clock, but evaluates leases and freshness at browser time plus 15
+seconds. This conservative bound can withdraw evidence early; it never extends
+authority or sample freshness within the assumed clock skew. Continuous chart
+windows end at least 15 seconds behind the browser clock before rounding.
 The Cockpit's pinned catalog version is an approved expected scope, not verified
 publisher provenance; a matching response does not prove which catalog the
 publisher actually used.

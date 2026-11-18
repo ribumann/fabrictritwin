@@ -25,6 +25,7 @@ import {
   validIncidentAssessment,
   incidentAssessmentLabel,
   validSeries,
+  crossRunChartData,
   seriesQuery,
   verifiedRunIngestion,
   validContinuousOverview,
@@ -33,6 +34,7 @@ import {
   continuousRunningLines,
   continuousSummaryFresh,
   continuousSummaryMetric,
+  continuousClockSkewMs,
 } from "../src/ui/public/mining/data.js";
 import {
   connections,
@@ -232,6 +234,67 @@ describe("continuous throughput presentation", () => {
     expect(continuousThroughputUsable(data, now)).toBe(true);
     expect(validOverview(data, data.runId, "catalog", data.asOf, false, now)).toBe(false);
   });
+  it("allows bounded client-behind skew without extending owner or evidence freshness", () => {
+    const { data: detail, catalog } = withDetail(fixture());
+    const data = withSummary(detail);
+    const tagId = "D01.A.crusher.ore_flow";
+    const valuesAvailable = (clientNow: number) => ({
+      overview: validContinuousOverview(
+        data,
+        data.runId,
+        "catalog",
+        "release-1",
+        clientNow,
+        catalog,
+      ),
+      throughput: continuousThroughputUsable(data, clientNow),
+      reading: continuousTagReading(data, tagId, clientNow)?.quality,
+      lines: continuousRunningLines(data, clientNow),
+      summary: continuousSummaryFresh(data, clientNow),
+    });
+    expect(valuesAvailable(now - 1_400)).toEqual({
+      overview: true,
+      throughput: true,
+      reading: "good",
+      lines: 3,
+      summary: true,
+    });
+    expect(valuesAvailable(now - 15_001)).toEqual({
+      overview: false,
+      throughput: false,
+      reading: "unavailable",
+      lines: null,
+      summary: false,
+    });
+    expect(valuesAvailable(now + 10_000)).toEqual({
+      overview: true,
+      throughput: true,
+      reading: "good",
+      lines: 3,
+      summary: true,
+    });
+    data.run.authorityUntil = new Date(now + 14_999).toISOString();
+    expect(valuesAvailable(now)).toMatchObject({
+      throughput: false,
+      reading: "unavailable",
+      lines: null,
+      summary: false,
+    });
+    data.run.authorityUntil = new Date(now + 200_000).toISOString();
+    expect(valuesAvailable(now + 30_001)).toMatchObject({ throughput: false, summary: false });
+    expect(valuesAvailable(now + 75_001)).toMatchObject({
+      overview: false,
+      throughput: false,
+      reading: "unavailable",
+      lines: null,
+      summary: false,
+    });
+    data.detail.lineStates[0].sampleTime = new Date(now - 180_001).toISOString();
+    expect(continuousRunningLines(data, now)).toBeNull();
+    const reading = data.readings.find((item) => item.tagId === tagId)!;
+    reading.latestSampleTime = new Date(now - 90_001).toISOString();
+    expect(continuousTagReading(data, tagId, now)).toMatchObject({ quality: "stale", value: null });
+  });
   it("accepts a complete pinned detail bundle and exposes only direct readings and reported line state", () => {
     const { data, catalog } = withDetail(fixture());
     expect(data.detail.readings).toHaveLength(53);
@@ -341,9 +404,9 @@ describe("continuous throughput presentation", () => {
       coverage: 0.991667,
     });
     expect(continuousSummaryMetric(summarized, "24h", "energyIntensity", now)).toBeNull();
-    expect(
-      validContinuousOverview(data, data.runId, "catalog", "release-1", now, catalog),
-    ).toBe(true);
+    expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now, catalog)).toBe(
+      true,
+    );
   });
   it("rejects malformed, foreign, low-coverage and stale continuous summary evidence", () => {
     const { data, catalog } = withDetail(fixture());
@@ -375,10 +438,14 @@ describe("continuous throughput presentation", () => {
         validContinuousOverview(invalid, data.runId, "catalog", "release-1", now, catalog),
       ).toBe(false);
     }
-    const expired = withSummary({ ...data, run: { ...data.run, authorityUntil: "2026-01-01T12:05:00Z" } });
+    const expired = withSummary({
+      ...data,
+      run: { ...data.run, authorityUntil: "2026-01-01T12:05:00Z" },
+    });
     expect(continuousSummaryFresh(expired, now + 50_000)).toBe(false);
-    expect(continuousSummaryMetric(expired, "30m", "grossProcessWaterIntensity", now + 50_000))
-      .toBeNull();
+    expect(
+      continuousSummaryMetric(expired, "30m", "grossProcessWaterIntensity", now + 50_000),
+    ).toBeNull();
   });
   it("labels module sensor evidence without inferring equipment health or line schedule", () => {
     const { data, catalog } = withDetail(fixture());
@@ -493,7 +560,165 @@ describe("continuous throughput presentation", () => {
     expect(validContinuousOverview(data, data.runId, "catalog", "release-1", now)).toBe(false);
   });
 });
+describe("cross-run chart validation", () => {
+  it("accepts observed evidence and fails closed on foreign ownership, samples and statuses", () => {
+    const catalog = readCatalog();
+    const tag = catalog.telemetry_tags.find((item) => item.id === "D01.A.crusher.ore_flow")!;
+    const runId = "11111111-1111-4111-8111-111111111111";
+    const owner = { runId, generation: "release-1" };
+    const start = "2026-01-01T12:00:00.000Z";
+    const end = "2026-01-01T12:01:00.000Z";
+    const params = { start, end, metric: "feed", binMinutes: "1" };
+    const point = {
+      runId,
+      seriesId: tag.id,
+      moduleId: tag.module_id,
+      equipmentId: tag.equipment_id,
+      metric: tag.metric,
+      unit: tag.unit,
+      binStart: start,
+      firstSampleTime: start,
+      lastSampleTime: "2026-01-01T12:00:30.000Z",
+      firstReceivedAt: "2026-01-01T12:00:01.000Z",
+      lastReceivedAt: "2026-01-01T12:00:31.000Z",
+      sampleTimes: [start, "2026-01-01T12:00:30.000Z"],
+      sampleCount: 2,
+      coverage: 1,
+      quality: "good",
+      status: "OBSERVED",
+      value: 42,
+      coverageComplete: true,
+      ambiguousOwner: false,
+      cadenceConflict: false,
+      segmentId: `${runId}:${tag.id}:${start}`,
+    };
+    const data = {
+      ...params,
+      binMinutes: 1,
+      asOf: "2026-01-01T12:01:01.000Z",
+      catalogVersion: "catalog",
+      profileVersion: "d01-publish-profile-v1",
+      owner: { ...owner, authorityUntil: "2026-01-01T12:02:00.000Z" },
+      points: [point],
+    };
+    const now = Date.parse("2026-01-01T12:01:02.000Z");
+    const validate = (candidate: typeof data) =>
+      crossRunChartData(candidate, params, "catalog", catalog, owner, now);
+    expect(validate(data)?.rows[0]).toMatchObject({ runId, timestamp: start, value: 42 });
+    expect(validate({ ...data, owner: { ...data.owner, generation: "other" } })).toBeNull();
+    expect(validate({ ...data, points: [point, point] })).toBeNull();
+    expect(validate({ ...data, points: [{ ...point, status: "AMBIGUOUS_OWNER" }] })).toBeNull();
+    expect(validate({ ...data, points: [{ ...point, sampleTimes: [start] }] })).toBeNull();
+    expect(validate({ ...data, points: [{ ...point, unit: "kg/m3" }] })).toBeNull();
+    expect(validate({ ...data, points: [] })?.rows).toEqual([]);
+    expect(
+      crossRunChartData(data, params, "catalog", catalog, owner, Date.parse(data.asOf) - 1_400),
+    ).not.toBeNull();
+    expect(
+      crossRunChartData(data, params, "catalog", catalog, owner, Date.parse(data.asOf) - 15_001),
+    ).toBeNull();
+    expect(
+      crossRunChartData(data, params, "catalog", catalog, owner, Date.parse(data.asOf) + 10_000),
+    ).not.toBeNull();
+    expect(
+      crossRunChartData(data, params, "catalog", catalog, owner, Date.parse(data.asOf) + 75_001),
+    ).toBeNull();
+    expect(
+      validate({
+        ...data,
+        owner: { ...data.owner, authorityUntil: new Date(now + 15_000).toISOString() },
+      }),
+    ).toBeNull();
+  });
+});
 describe("mining chart legends", () => {
+  it("breaks cross-run charts on ownership, gaps and non-observed bins and marks singletons", () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const chart = tree.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "chart",
+    );
+    if (!chart) throw new Error("Missing mining chart function");
+    class Element {
+      children: Element[] = [];
+      attributes: Record<string, string> = {};
+      className = "";
+      namespaceURI = "http://www.w3.org/2000/svg";
+      constructor(
+        public tag: string,
+        public content = "",
+      ) {}
+      replaceChildren() {
+        this.children = [];
+      }
+      append(...children: Element[]) {
+        this.children.push(...children);
+      }
+      prepend(child: Element) {
+        this.children.unshift(child);
+      }
+      setAttribute(name: string, value: string) {
+        this.attributes[name] = value;
+      }
+    }
+    const run1 = "run-one";
+    const run2 = "run-two";
+    const entries = [
+      [0, run1, "segment-a", "OBSERVED", 10],
+      [1, run1, "segment-a", "OBSERVED", 11],
+      [2, run2, "segment-b", "OBSERVED", 12],
+      [3, run2, null, "AMBIGUOUS_OWNER", null],
+      [4, run2, "segment-c", "OBSERVED", 14],
+      [6, run2, "segment-c", "OBSERVED", 16],
+    ];
+    const rows = entries.map(([minute, runId, segmentId, status, value]) => ({
+      timestamp: `2026-11-15T20:0${minute}:00.000Z`,
+      firstSampleTime: `2026-11-15T20:0${minute}:05.000Z`,
+      lastSampleTime: `2026-11-15T20:0${minute}:35.000Z`,
+      seriesId: "A",
+      unit: "t/h",
+      quality: "good",
+      coverage: 1,
+      runId,
+      segmentId,
+      status,
+      value,
+    }));
+    const context = {
+      catalog: { telemetry_tags: [{ id: "A", unit: "t/h" }] },
+      usable,
+      number: String,
+      timestamp: formatTimestamp,
+      coverage: String,
+      node: (tag: string, content?: string) => new Element(tag, content),
+      document: { createElementNS: (_namespace: string, tag: string) => new Element(tag) },
+      chart: undefined as undefined | ((container: Element, data: object) => void),
+    };
+    runInNewContext(`${chart.getText(tree)}; this.chart = chart;`, context);
+    const container = new Element("div");
+    context.chart!(container, {
+      crossRun: true,
+      binMinutes: 1,
+      windowStart: "2026-11-15T20:00:00.000Z",
+      windowEnd: "2026-11-15T20:07:00.000Z",
+      rows,
+    });
+    const shapes = container.children[0].children;
+    expect(shapes.map((shape) => shape.tag)).toEqual(["polyline", "circle", "circle", "circle"]);
+    expect(shapes[0].attributes.points.split(" ")).toHaveLength(2);
+    const table = container.children.find((child) => child.tag === "details")!;
+    const contents = JSON.stringify(table);
+    expect(contents).toContain("run-two");
+    expect(contents).toContain("AMBIGUOUS_OWNER");
+    expect(contents).toContain("2026-11-15T20:02:05.000Z");
+    expect(JSON.stringify(container)).toContain("missing rows mean no bin was returned");
+  });
   it("shows each series range while preserving the shared axis and quality gaps", () => {
     const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
     const tree = ts.createSourceFile(
@@ -581,9 +806,181 @@ describe("mining chart legends", () => {
     expect(curves[1].attributes.points).toBe(`400,${165 - (10 / 210) * 120}`);
     expect(curves[3].attributes.points).toBe(`40,${165 - (190 / 210) * 120} 220,45`);
     expect(JSON.stringify(data)).toBe(original);
+    const gapContainer = new Element("div");
+    context.chart(gapContainer, {
+      ...data,
+      rows: rows.filter((row) => row.seriesId === "A" && row.quality === "good"),
+    });
+    expect(gapContainer.children[0].children).toHaveLength(2);
   });
 });
 describe("mining request lifecycle", () => {
+  it("keeps continuous chart windows behind the server under bounded client-ahead skew", () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const query = tree.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "query",
+    );
+    if (!query) throw new Error("Missing query function");
+    const serverNow = Date.parse("2026-01-01T12:00:07.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(serverNow + continuousClockSkewMs);
+    const sandbox = {
+      Date,
+      mode: "live",
+      context: { mode: "continuous", approvedRun: { runId: "owner" } },
+      continuousClockSkewMs,
+      $: () => ({ value: "30" }),
+      query: undefined as undefined | (() => { end: string }),
+    };
+    runInNewContext(`${query.getText(tree)}; this.query = query;`, sandbox);
+    expect(Date.parse(sandbox.query!().end)).toBeLessThanOrEqual(serverNow);
+    sandbox.context.mode = "bounded";
+    expect(Date.parse(sandbox.query!().end)).toBe(
+      Math.floor((serverNow + continuousClockSkewMs) / 15_000) * 15_000,
+    );
+  });
+  it.each(["status failure", "generation change"])(
+    "withdraws trends and invalidates pending reads on %s",
+    async (scenario) => {
+      const source = readFileSync(
+        new URL("../src/ui/public/mining/app.js", import.meta.url),
+        "utf8",
+      );
+      const tree = ts.createSourceFile(
+        "app.js",
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.JS,
+      );
+      const update = tree.statements.find(
+        (statement) =>
+          ts.isFunctionDeclaration(statement) && statement.name?.text === "updateDemoStatus",
+      );
+      if (!update) throw new Error("Missing demo status function");
+      const runId = "44444444-4444-4444-8444-444444444444";
+      const clearReadState = vi.fn();
+      const invalidate = vi.fn();
+      const reset = vi.fn();
+      const context = {
+        demoBusy: false,
+        demoStatusEpoch: 0,
+        document: { hidden: false },
+        demoRun: null,
+        context: { mode: "continuous", approvedRun: { runId, generation: "g1" } },
+        continuousOverview: { runId },
+        catalog: {},
+        demoRequest:
+          scenario === "status failure"
+            ? vi.fn().mockRejectedValue(new Error("offline"))
+            : vi.fn().mockResolvedValue({
+                plantId: "D01",
+                mode: "continuous",
+                run: { runId, generation: "g2", publisherStatus: "running", stopRequested: false },
+              }),
+        $: () => ({}),
+        text: vi.fn(),
+        clearReadState,
+        invalidate,
+        reads: { reset },
+        drawOverview: vi.fn(),
+        drawDemoRunStatus: vi.fn(),
+        loadContext: vi.fn(),
+        updateDemoStatus: undefined as undefined | (() => Promise<void>),
+      };
+      runInNewContext(
+        `${update.getText(tree)}; this.updateDemoStatus = updateDemoStatus;`,
+        context,
+      );
+      await context.updateDemoStatus!();
+      expect(invalidate).toHaveBeenCalled();
+      expect(reset).toHaveBeenCalled();
+      expect(clearReadState).toHaveBeenCalledWith(expect.stringContaining("withdrawn"));
+    },
+  );
+  it("loads continuous chart requests without a run filter and retains separate owner validation", async () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const refresh = tree.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "refresh",
+    );
+    if (!refresh) throw new Error("Missing mining refresh function");
+    const params = {
+      start: "2026-11-15T18:37:00.000Z",
+      end: "2026-11-15T19:07:00.000Z",
+      binMinutes: "1",
+    };
+    const read = vi.fn(async (path: string) =>
+      path === "overview" ? { evidence: true } : { path },
+    );
+    const chart = vi.fn();
+    const adapt = vi.fn((data) => ({ data, rows: [] }));
+    const context = {
+      context: {
+        mode: "continuous",
+        readAvailable: true,
+        approvedRun: { runId: "owner", generation: "g1" },
+        capabilities: { trends: true },
+      },
+      requestEpoch: 0,
+      document: { hidden: false },
+      reads: { read },
+      catalog: {},
+      catalogVersion: "catalog",
+      continuousOverview: null,
+      overview: null,
+      incidents: [],
+      query: () => params,
+      validContinuousOverview: () => true,
+      crossRunChartData: adapt,
+      drawOverview: vi.fn(),
+      text: vi.fn(),
+      chart,
+      $: (id: string) =>
+        id === "diagnostic"
+          ? { value: "density" }
+          : id === "incidents"
+            ? { replaceChildren: vi.fn() }
+            : id,
+      refresh: undefined as undefined | ((scope: string) => Promise<void>),
+    };
+    runInNewContext(`${refresh.getText(tree)}; this.refresh = refresh;`, context);
+    await context.refresh!("all");
+    const trendCalls = read.mock.calls.filter(([path]) => path === "cross-run-trends");
+    expect(trendCalls).toHaveLength(2);
+    expect(trendCalls.map(([, query]) => query)).toEqual([
+      { plantId: "D01", ...params, metric: "feed" },
+      { plantId: "D01", ...params, metric: "density" },
+    ]);
+    expect(adapt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "catalog",
+      context.catalog,
+      { runId: "owner", generation: "g1" },
+    );
+    expect(chart).toHaveBeenCalledTimes(2);
+    read.mockClear();
+    chart.mockClear();
+    context.context.capabilities.trends = false;
+    await context.refresh!("all");
+    expect(read.mock.calls.map(([path]) => path)).toEqual(["overview"]);
+    expect(chart).toHaveBeenCalledWith("feed-chart", null);
+    expect(chart).toHaveBeenCalledWith("diagnostic-chart", null);
+  });
   it.each([
     { mode: "replay", scope: "all" },
     { mode: "replay", scope: "detail" },
@@ -702,19 +1099,41 @@ describe("mining request lifecycle", () => {
     const requested = "2026-01-01T12:00:00.000Z";
     const received = Date.parse("2026-01-01T12:00:25.000Z");
     const data = {
-      plantId: "D01", runId: "approved", catalogVersion: "pinned",
+      plantId: "D01",
+      runId: "approved",
+      catalogVersion: "pinned",
       run: { plantId: "D01", runId: "approved", catalogVersion: "pinned" },
       asOf: "2026-01-01T12:00:20.000Z",
       latest: { modules: Array(24).fill({}), readings: Array(56).fill({}) },
     };
     expect(validOverview(data, "approved", "pinned", requested, false, received)).toBe(true);
     expect(validOverview(data, "approved", "pinned", requested, true, received)).toBe(false);
-    expect(validOverview({
-      ...data, asOf: "2026-01-01T11:58:54.000Z",
-    }, "approved", "pinned", requested, false, received)).toBe(false);
-    expect(validOverview({
-      ...data, asOf: "2026-01-01T12:00:41.000Z",
-    }, "approved", "pinned", requested, false, received)).toBe(false);
+    expect(
+      validOverview(
+        {
+          ...data,
+          asOf: "2026-01-01T11:58:54.000Z",
+        },
+        "approved",
+        "pinned",
+        requested,
+        false,
+        received,
+      ),
+    ).toBe(false);
+    expect(
+      validOverview(
+        {
+          ...data,
+          asOf: "2026-01-01T12:00:41.000Z",
+        },
+        "approved",
+        "pinned",
+        requested,
+        false,
+        received,
+      ),
+    ).toBe(false);
   });
   it("shows timestamped ingestion evidence only for the same run and verified provenance", () => {
     const run = { runId: "approved" };
@@ -920,16 +1339,10 @@ describe("unknown and catalog selection semantics", () => {
   it("allows only canonical module associations and does not invent a metric for state-only incidents", () => {
     const catalog = { modules: [{ id: "D01.A.crusher" }] };
     expect(
-      validIncidentAssociation(
-        { moduleId: null, metric: null, affectedModuleIds: [] },
-        catalog,
-      ),
+      validIncidentAssociation({ moduleId: null, metric: null, affectedModuleIds: [] }, catalog),
     ).toBe(true);
     expect(
-      validIncidentAssociation(
-        { moduleId: null, metric: "feed", affectedModuleIds: [] },
-        catalog,
-      ),
+      validIncidentAssociation({ moduleId: null, metric: "feed", affectedModuleIds: [] }, catalog),
     ).toBe(false);
     expect(
       validIncidentAssociation(
@@ -1194,7 +1607,9 @@ describe("pinned reconstructed appearance", () => {
       setClearColor() {}
       setSize() {}
       setAnimationLoop() {}
-      render(scene: THREE.Scene, camera: THREE.Camera) { renders.push({ scene, camera }); }
+      render(scene: THREE.Scene, camera: THREE.Camera) {
+        renders.push({ scene, camera });
+      }
       dispose() {}
     }
     class Controls {
@@ -1212,7 +1627,9 @@ describe("pinned reconstructed appearance", () => {
     class SplatMesh extends THREE.Group {
       initialized = Promise.resolve();
       splats = {};
-      dispose() { disposeSplat(); }
+      dispose() {
+        disposeSplat();
+      }
     }
     class SparkRenderer extends THREE.Group {
       dispose() {}
@@ -1231,7 +1648,7 @@ describe("pinned reconstructed appearance", () => {
       );
     });
     vi.doMock("three", async () => ({
-      ...await vi.importActual<typeof import("three")>("three"),
+      ...(await vi.importActual<typeof import("three")>("three")),
       WebGLRenderer: Renderer,
     }));
     vi.doMock("three/addons/loaders/GLTFLoader.js", () => ({ GLTFLoader: Loader }));
@@ -1247,9 +1664,9 @@ describe("pinned reconstructed appearance", () => {
       const lines = new Set(["A", "B", "C", "shared"]);
       viewer.update(lines, false, "D01.A.dms");
       const camera = renders.at(-1)?.camera;
-      const selectedBox = renders.at(-1)?.scene.children.find(
-        (child) => child instanceof THREE.BoxHelper && child.visible,
-      );
+      const selectedBox = renders
+        .at(-1)
+        ?.scene.children.find((child) => child instanceof THREE.BoxHelper && child.visible);
       expect(selectedBox).toBeDefined();
       await viewer.setVisualMode("reconstructed", bundle, false);
       expect(viewer.renderedModuleCount).toBe(20);
@@ -1332,26 +1749,26 @@ describe("pinned reconstructed appearance", () => {
       ? invalidMetadata.appearance_assets
       : Object.values(invalidMetadata.appearance_assets);
     (invalidAssets[0] as { uri: string }).uri = "/api/assets/plant/splats/../object-000.ply";
-    expect(() =>
-      validateAppearanceBundle(catalog, invalidMetadata, scene, files, quality),
-    ).toThrow(/outside the pinned plant path/);
+    expect(() => validateAppearanceBundle(catalog, invalidMetadata, scene, files, quality)).toThrow(
+      /outside the pinned plant path/,
+    );
     expect(source.sha256).toMatch(/^[a-f0-9]{64}$/);
 
     const invalidQuality = structuredClone(quality);
     invalidQuality.assets[source.sha256].render_bounds.max[0] =
       invalidQuality.assets[source.sha256].render_bounds.min[0];
-    expect(() =>
-      validateAppearanceBundle(catalog, metadata, scene, files, invalidQuality),
-    ).toThrow(/quality record/);
+    expect(() => validateAppearanceBundle(catalog, metadata, scene, files, invalidQuality)).toThrow(
+      /quality record/,
+    );
   });
 
   it("bounds response reads and requires review-only display for screened assets", async () => {
     await expect(readBoundedBytes(new Response(new Uint8Array(5)), 4)).rejects.toThrow(
       /size limit/,
     );
-    await expect(
-      readBoundedBytes(new Response(new Uint8Array([1, 2, 3])), 3),
-    ).resolves.toEqual(new Uint8Array([1, 2, 3]));
+    await expect(readBoundedBytes(new Response(new Uint8Array([1, 2, 3])), 3)).resolves.toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
     const distorted = {
       quality: {
         status: "accepted",
@@ -1367,10 +1784,7 @@ describe("pinned reconstructed appearance", () => {
       rotation: [0, 0, 0],
       size: [4, 2, 6],
     };
-    const clean = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 2, 3),
-      new THREE.MeshBasicMaterial(),
-    );
+    const clean = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 3), new THREE.MeshBasicMaterial());
     const fittedClean = fitModelToNode(THREE, clean, module);
     const cleanSize = new THREE.Box3().setFromObject(fittedClean).getSize(new THREE.Vector3());
     expect(cleanSize.x).toBeCloseTo(module.size[0]);

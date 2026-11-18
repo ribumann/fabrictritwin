@@ -1,5 +1,6 @@
 import { ClientRequestProperties } from "azure-kusto-data";
 import { continuousThroughputQuery } from "./continuous-query.js";
+import type { MiningCrossRunTrendRequest } from "./cross-run-trend-query.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
@@ -16,6 +17,7 @@ interface Scope {
   maxRows: number;
 }
 type Query =
+  | (MiningCrossRunTrendRequest & { kind: "cross-run-trend"; maxRows: 1000 })
   | (Scope & { kind: "latest"; asOf: string })
   | (Scope & { kind: "continuous-throughput"; asOf: string })
   | (Scope & { kind: "continuous-summary-windows"; end: string })
@@ -345,6 +347,17 @@ async function prepare(
   properties: ClientRequestProperties,
   now: number,
 ): Promise<string> {
+  if (input.kind === "cross-run-trend") {
+    if (input.maxRows !== MAX_ROWS) {
+      throw new MiningQueryError("invalid", "Cross-run Mining trends require the 1000-row limit.");
+    }
+    const { prepareMiningCrossRunTrendQuery } = await import("./cross-run-trend-query.js");
+    const prepared = prepareMiningCrossRunTrendQuery(input, () => now);
+    for (const [key, value] of Object.entries(prepared.parameters)) {
+      properties.setParameter(key, value);
+    }
+    return prepared.csl;
+  }
   if (
     !uuid.test(input.runId) ||
     !Number.isInteger(input.maxRows) ||

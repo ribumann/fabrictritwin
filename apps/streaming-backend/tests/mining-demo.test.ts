@@ -8,6 +8,8 @@ import type { MiningStore, StoredDocument } from "../src/mining/store.js";
 import type { MiningAnswer } from "../src/mining/assistant.js";
 import type { MiningCuratedProvider } from "../src/mining/read/curated-provider.js";
 import type { createMiningContinuousProvider } from "../src/mining/read/continuous-provider.js";
+import type { createMiningCrossRunTrendProvider } from "../src/mining/read/cross-run-trend-provider.js";
+import type { MiningCrossRunTrendRequest } from "../src/mining/read/cross-run-trend-query.js";
 
 const principal = "11111111-1111-4111-8111-111111111111";
 const tenant = "22222222-2222-4222-8222-222222222222";
@@ -31,6 +33,7 @@ function setup(
   incidents?: { start(runId: string): Promise<void> },
   assistant?: { answer: MiningAnswer; curated: MiningCuratedProvider },
   continuous?: ReturnType<typeof createMiningContinuousProvider>,
+  crossRunTrends?: ReturnType<typeof createMiningCrossRunTrendProvider>,
 ) {
   const documents = new Map<string, StoredDocument>();
   const leases = new Set<string>();
@@ -90,6 +93,7 @@ function setup(
       incidents,
       ...assistant,
       continuous,
+      crossRunTrends,
     }),
   );
   return { app, start, verifyClaims, documents, store };
@@ -101,6 +105,71 @@ describe("public mining demo service boundary", () => {
     MINING_CONTINUOUS_READ_ENABLED: "true",
     MINING_CONTINUOUS_GENERATION: "release-1",
   };
+  it("serves bounded cross-run trends only while the same continuous owner remains active", async () => {
+    const crossRunTrends = vi.fn(async (input: MiningCrossRunTrendRequest) => ({
+      ...input,
+      catalogVersion: "catalog",
+      profileVersion: "profile",
+      points: [],
+    }));
+    const { app, store } = setup(continuousEnv, undefined, undefined, undefined, crossRunTrends);
+    const coordinator = new MiningRunCoordinator(store);
+    const admission = await coordinator.startContinuous({
+      plantId: "D01",
+      requestId: "44444444-4444-4444-8444-444444444444",
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner");
+    const end = new Date(Date.now() - 60_000).toISOString();
+    const start = new Date(Date.parse(end) - 30 * 60_000).toISOString();
+    const query = { plantId: "D01", start, end, metric: "feed", binMinutes: "1" };
+    const response = await request(app).get("/demo/cross-run-trends").query(query);
+    expect(response.status).toBe(200);
+    expect(response.body.owner).toMatchObject({
+      runId: admission.run.runId,
+      generation: "release-1",
+    });
+    expect(crossRunTrends).toHaveBeenCalledWith(
+      expect.objectContaining({ start, end, metric: "feed", binMinutes: 1 }),
+      expect.any(AbortSignal),
+    );
+    expect(crossRunTrends.mock.calls[0][0]).not.toHaveProperty("runId");
+    expect(
+      (
+        await request(app)
+          .get("/demo/cross-run-trends")
+          .query({ ...query, runId: admission.run.runId })
+      ).status,
+    ).toBe(400);
+    await coordinator.requestContinuousStop("release-1");
+    expect((await request(app).get("/demo/cross-run-trends").query(query)).status).toBe(503);
+    expect(crossRunTrends).toHaveBeenCalledTimes(1);
+  });
+  it("withdraws cross-run results if the generation is held during the read", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const crossRunTrends = vi.fn(async (input: MiningCrossRunTrendRequest) => {
+      await coordinator.requestContinuousStop("release-1");
+      return { ...input, catalogVersion: "catalog", profileVersion: "profile", points: [] };
+    });
+    const { app, store } = setup(continuousEnv, undefined, undefined, undefined, crossRunTrends);
+    const coordinator = new MiningRunCoordinator(store);
+    const admission = await coordinator.startContinuous({
+      plantId: "D01",
+      requestId: "44444444-4444-4444-8444-444444444444",
+      generation: "release-1",
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner");
+    const end = new Date(Date.now() - 60_000).toISOString();
+    const start = new Date(Date.parse(end) - 30 * 60_000).toISOString();
+    expect(
+      (
+        await request(app)
+          .get("/demo/cross-run-trends")
+          .query({ plantId: "D01", start, end, metric: "feed", binMinutes: "1" })
+      ).status,
+    ).toBe(503);
+    expect(crossRunTrends).toHaveBeenCalledTimes(1);
+  });
   it("serves only the configured continuous owner without a public marker and refuses public controls/unsupported views", async () => {
     const detail = {
       readings: [{ tagId: "D01.shared.lab.product_mass", value: 123 }],

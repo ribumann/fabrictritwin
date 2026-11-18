@@ -1,9 +1,11 @@
 import { Router } from "express";
 import {
+  awaitWithAbort,
   proxyStreamingBackendGet,
   proxyStreamingBackendPost,
   type StreamingBackendProxyOptions,
 } from "../api/proxy.js";
+import { buildServiceAuthHeaders } from "../api/service-auth.js";
 
 const fields = new Set([
   "plantId",
@@ -17,9 +19,65 @@ const fields = new Set([
   "maxRows",
 ]);
 const metrics = new Set(["feed", "density", "vibration", "water-energy"]);
-const routes = ["context", "overview", "trends", "incidents", "compare-lines", "runs/status"];
+const routes = [
+  "context",
+  "overview",
+  "trends",
+  "incidents",
+  "compare-lines",
+  "cross-run-trends",
+  "runs/status",
+];
 const identifier = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
+async function crossRunTrendsAvailable(
+  options: StreamingBackendProxyOptions,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+): Promise<boolean> {
+  signal.throwIfAborted();
+  const url = new URL("/api/mining/demo/context?plantId=D01", options.streamingBackendBaseUrl);
+  const response = await awaitWithAbort(
+    (options.fetchImpl ?? fetch)(url, {
+      method: "GET",
+      headers,
+      signal,
+    }),
+    signal,
+  );
+  if (!response.ok || !response.body) throw new Error("Mining context is unavailable.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await awaitWithAbort(reader.read(), signal);
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > 16_384) {
+        await awaitWithAbort(reader.cancel(), signal);
+        throw new Error("Mining context exceeds the permitted byte limit.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    if (signal.aborted) void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+  const context: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  return (
+    typeof context === "object" &&
+    context !== null &&
+    "mode" in context &&
+    context.mode === "continuous" &&
+    "capabilities" in context &&
+    typeof context.capabilities === "object" &&
+    context.capabilities !== null &&
+    "trends" in context.capabilities &&
+    context.capabilities.trends === true
+  );
+}
 
 export function createMiningRouter(
   options: StreamingBackendProxyOptions,
@@ -204,6 +262,13 @@ export function createMiningRouter(
         query.set(key, value);
       }
       const invalid =
+        (route === "cross-run-trends" &&
+          (!demoEnabled ||
+            !demoReadEnabled ||
+            [...query.keys()].some(
+              (key) => !["plantId", "start", "end", "metric", "binMinutes"].includes(key),
+            ) ||
+            ["start", "end", "metric", "binMinutes"].some((key) => !query.has(key)))) ||
         (["trends", "compare-lines"].includes(route) &&
           ["start", "end", "binMinutes", "maxRows", "metric"].some((key) => !query.has(key))) ||
         (route === "trends" && !query.has("moduleId")) ||
@@ -231,6 +296,69 @@ export function createMiningRouter(
         return;
       }
       query.set("plantId", "D01");
+      if (route === "cross-run-trends") {
+        const controller = new AbortController();
+        const timeout = setTimeout(
+          () => controller.abort(new Error("Mining trend deadline exceeded.")),
+          9_000,
+        );
+        const disconnect = () => {
+          if (!res.writableEnded) controller.abort(new Error("Mining trend client disconnected."));
+        };
+        req.once("aborted", disconnect);
+        res.once("close", disconnect);
+        try {
+          const headers = await awaitWithAbort(
+            options.buildAuthHeaders
+              ? options.buildAuthHeaders(controller.signal)
+              : buildServiceAuthHeaders({ abortSignal: controller.signal }),
+            controller.signal,
+          );
+          if (!(await crossRunTrendsAvailable(options, headers, controller.signal))) {
+            res.status(503).json({
+              error: {
+                code: "mining_trend_unavailable",
+                message: "Continuous trends are unavailable.",
+              },
+            });
+            return;
+          }
+          controller.signal.throwIfAborted();
+          await proxyStreamingBackendGet(
+            req,
+            res,
+            {
+              ...options,
+              maxResponseBytes: 1_048_576,
+              signal: controller.signal,
+              buildAuthHeaders: async () => headers,
+            },
+            () => {
+              const url = new URL(
+                "/api/mining/demo/cross-run-trends",
+                options.streamingBackendBaseUrl,
+              );
+              url.search = query.toString();
+              return url;
+            },
+            "mining_backend_unavailable",
+          );
+        } catch (error) {
+          if (res.destroyed || res.headersSent) return;
+          console.error("[mining] Unable to check continuous trend capability", error);
+          res.status(controller.signal.aborted ? 504 : 503).json({
+            error: {
+              code: "mining_trend_unavailable",
+              message: "Continuous trend capability is unavailable.",
+            },
+          });
+        } finally {
+          clearTimeout(timeout);
+          req.removeListener("aborted", disconnect);
+          res.removeListener("close", disconnect);
+        }
+        return;
+      }
       await proxyStreamingBackendGet(
         req,
         res,
