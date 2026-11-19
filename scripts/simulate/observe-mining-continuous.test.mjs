@@ -48,7 +48,7 @@ function context(wall, overrides = {}) {
     catalogVersion: EXPECTED_CATALOG,
     readAvailable: true,
     assistant: { available: false, kind: "bounded-fabric-evidence" },
-    capabilities: { incidents: false, trends: false, replay: false, assistant: false },
+    capabilities: { incidents: true, trends: true, replay: false, assistant: false },
     ...overrides,
   };
 }
@@ -257,6 +257,19 @@ describe("read-only public Mining continuous-flow observer", () => {
   });
 
   it("fails closed when the public route is misbound or the current owner changed", async () => {
+    const unsupportedCapabilities = harness({
+      mutateContext: (body) => ({
+        ...body,
+        capabilities: { ...body.capabilities, incidents: false },
+      }),
+    });
+    const unsupportedCapabilitiesResult = await observeContinuousFlow(
+      validInput,
+      unsupportedCapabilities,
+    );
+    assert.equal(unsupportedCapabilitiesResult.failureCode, "unsupported_capability_contract");
+    assert.equal(unsupportedCapabilitiesResult.samplesObserved, 0);
+
     const wrongMode = harness({
       mutateContext: (body) => ({ ...body, mode: undefined }),
     });
