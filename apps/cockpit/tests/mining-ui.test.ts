@@ -36,6 +36,7 @@ import {
   continuousSummaryFresh,
   continuousSummaryMetric,
   continuousClockSkewMs,
+  simulationTiming,
 } from "../src/ui/public/mining/data.js";
 import {
   connections,
@@ -73,6 +74,58 @@ const loadAppearanceBundle = () =>
   );
 
 afterEach(() => vi.useRealTimers());
+describe("simulation arrival timing", () => {
+  const start = "2026-11-19T12:00:00Z";
+  const run = {
+    runId: "current",
+    startedAt: start,
+    stopAt: "2026-11-19T12:10:00Z",
+    publisherStatus: "running",
+    stopRequested: false,
+  };
+  const now = Date.parse(start) + 90_000;
+  const data = {
+    runId: "current",
+    latest: {
+      readings: [
+        {
+          sampleTime: "2026-11-19T12:00:30Z",
+          ingestionTime: "2026-11-19T12:01:05Z",
+        },
+      ],
+    },
+  };
+  it("separates remaining simulation time, source age and measured ingestion delay", () => {
+    expect(simulationTiming(run, data, now)).toMatchObject({
+      active: true,
+      remainingSeconds: 510,
+      elapsedSeconds: 90,
+      lagSeconds: 35,
+      sampleAgeSeconds: 60,
+      receiptAgeSeconds: 25,
+    });
+    expect(simulationTiming(run, null, now).lagSeconds).toBeNull();
+    expect(simulationTiming(run, { ...data, runId: "previous" }, now).lagSeconds).toBeNull();
+  });
+  it("rejects impossible receipts and does not invent remaining time for stopped runs", () => {
+    for (const receipt of ["invalid", "2026-11-19T12:00:10Z", "2026-11-19T12:02:00Z"]) {
+      expect(
+        simulationTiming(
+          run,
+          {
+            runId: "current",
+            readings: [{ sampleTime: data.latest.readings[0].sampleTime, receivedAt: receipt }],
+          },
+          now,
+        ).lagSeconds,
+      ).toBeNull();
+    }
+    expect(
+      simulationTiming({ ...run, stopRequested: true }, data, now).remainingSeconds,
+    ).toBeNull();
+    expect(simulationTiming(run, data, now + 600_000).remainingSeconds).toBe(0);
+  });
+});
 describe("continuous throughput presentation", () => {
   function fixture() {
     const runId = "11111111-1111-4111-8111-111111111111";
@@ -797,7 +850,9 @@ describe("mining chart legends", () => {
       windowEnd: "2026-11-15T20:07:00.000Z",
       rows,
     });
-    const shapes = container.children[0].children;
+    const shapes = container.children[0].children.filter((shape) =>
+      ["polyline", "circle"].includes(shape.tag),
+    );
     expect(shapes.map((shape) => shape.tag)).toEqual(["polyline", "circle", "circle", "circle"]);
     expect(shapes[0].attributes.points.split(" ")).toHaveLength(2);
     const table = container.children.find((child) => child.tag === "details")!;
@@ -888,7 +943,7 @@ describe("mining chart legends", () => {
       "B (t/h): 100 – 120 · dashed line",
       "C (t/h): 200 – 220 · dotted line",
     ]);
-    const curves = container.children[0].children;
+    const curves = container.children[0].children.filter((shape) => shape.tag === "polyline");
     expect(curves).toHaveLength(4);
     expect(curves[0].attributes.points).toBe("40,165");
     expect(curves[1].attributes.points).toBe(`400,${165 - (10 / 210) * 120}`);
@@ -899,7 +954,9 @@ describe("mining chart legends", () => {
       ...data,
       rows: rows.filter((row) => row.seriesId === "A" && row.quality === "good"),
     });
-    expect(gapContainer.children[0].children).toHaveLength(2);
+    expect(
+      gapContainer.children[0].children.filter((shape) => shape.tag === "polyline"),
+    ).toHaveLength(2);
   });
 });
 describe("mining request lifecycle", () => {
@@ -1721,6 +1778,10 @@ describe("pinned reconstructed appearance", () => {
     class Controls {
       target = new THREE.Vector3();
       enabled = true;
+      constructor(private readonly camera: THREE.Camera) {}
+      update() {
+        this.camera.lookAt(this.target);
+      }
       addEventListener() {}
       removeEventListener() {}
       dispose() {}
@@ -1770,6 +1831,31 @@ describe("pinned reconstructed appearance", () => {
       const lines = new Set(["A", "B", "C", "shared"]);
       viewer.update(lines, false, "D01.A.dms");
       const camera = renders.at(-1)?.camera;
+      if (!camera) throw new Error("Missing rendered camera");
+      camera.position.set(200, 200, 200);
+      viewer.fit();
+      camera.updateMatrixWorld(true);
+      const projected = catalog.modules.flatMap((module) =>
+        [-1, 1].flatMap((x) =>
+          [-1, 1].flatMap((y) =>
+            [-1, 1].map((z) =>
+              new THREE.Vector3(
+                (x * module.size[0]) / 2,
+                (y * module.size[1]) / 2,
+                (z * module.size[2]) / 2,
+              )
+                .applyEuler(new THREE.Euler(...module.rotation))
+                .add(new THREE.Vector3(...module.position))
+                .project(camera),
+            ),
+          ),
+        ),
+      );
+      expect(projected.every((point) => Math.abs(point.x) < 1 && Math.abs(point.y) < 1)).toBe(true);
+      const span = (axis: "x" | "y") =>
+        Math.max(...projected.map((point) => point[axis])) -
+        Math.min(...projected.map((point) => point[axis]));
+      expect(Math.max(span("x"), span("y"))).toBeGreaterThan(1.2);
       const selectedBox = renders
         .at(-1)
         ?.scene.children.find((child) => child instanceof THREE.BoxHelper && child.visible);

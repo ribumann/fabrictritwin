@@ -107,14 +107,9 @@ export async function createPlant3D(container, catalog, select) {
   const THREE = await import("three");
   const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
   const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
-  const {
-    fitModelToNode,
-    fitSplatToNode,
-    readBoundedBytes,
-    sha256Hex,
-    splatFit,
-  } = await import("./appearance.js");
-  const renderer = new THREE.WebGLRenderer({ antialias: false });
+  const { fitModelToNode, fitSplatToNode, readBoundedBytes, sha256Hex, splatFit } =
+    await import("./appearance.js");
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0xeef1f9);
   container.replaceChildren(renderer.domElement);
@@ -122,6 +117,9 @@ export async function createPlant3D(container, catalog, select) {
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
   camera.position.set(85, 100, 110);
   const controls = new OrbitControls(camera, renderer.domElement);
+  controls.minDistance = 20;
+  controls.maxDistance = 250;
+  controls.maxPolarAngle = Math.PI / 2.05;
   controls.target.set(0, 0, 0);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x64748b, 2.4));
   const light = new THREE.DirectionalLight(0xffffff, 2);
@@ -137,7 +135,12 @@ export async function createPlant3D(container, catalog, select) {
   for (const module of catalog.modules) {
     const target = new THREE.Mesh(
       new THREE.BoxGeometry(...module.size),
-      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true, opacity: 0 }),
+      new THREE.MeshBasicMaterial({
+        colorWrite: false,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0,
+      }),
     );
     target.rotation.set(...module.rotation);
     target.position.set(...module.position);
@@ -200,6 +203,35 @@ export async function createPlant3D(container, catalog, select) {
     renderer.setAnimationLoop(enabled && activeMode === "reconstructed" ? render : null);
     if (enabled && activeMode !== "reconstructed") render();
   };
+  let framed = false;
+  const fit = () => {
+    const bounds = new THREE.Box3();
+    const boxes = [...targets.values()].map((target) => new THREE.Box3().setFromObject(target));
+    for (const box of boxes) bounds.union(box);
+    const center = bounds.getCenter(new THREE.Vector3());
+    const direction = new THREE.Vector3(0.85, 1, 1.1).normalize();
+    camera.position.copy(center).add(direction);
+    camera.lookAt(center);
+    const inverse = camera.quaternion.clone().invert();
+    const vertical = Math.tan((camera.fov * Math.PI) / 360);
+    const horizontal = vertical * camera.aspect;
+    let distance = 0;
+    for (const box of boxes)
+      for (const x of [box.min.x, box.max.x])
+        for (const y of [box.min.y, box.max.y])
+          for (const z of [box.min.z, box.max.z]) {
+            const point = new THREE.Vector3(x, y, z).sub(center).applyQuaternion(inverse);
+            distance = Math.max(
+              distance,
+              Math.abs(point.x) / horizontal + point.z,
+              Math.abs(point.y) / vertical + point.z,
+            );
+          }
+    camera.position.copy(center).addScaledVector(direction, distance * 1.12);
+    controls.target.copy(center);
+    controls.update();
+    render();
+  };
   const resize = () => {
     const width = container.clientWidth,
       height = container.clientHeight;
@@ -207,6 +239,10 @@ export async function createPlant3D(container, catalog, select) {
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    if (!framed) {
+      framed = true;
+      fit();
+    }
     render();
   };
   const observer = new ResizeObserver(resize);
@@ -294,7 +330,8 @@ export async function createPlant3D(container, catalog, select) {
     scene.add(sparkRenderer);
     for (const asset of bundle.assetsById.values()) {
       const placements = [...bundle.moduleBindings.values()].filter(
-        ({ module, asset: binding }) => binding.id === asset.id && splatFit(asset, module, showScreenedOut),
+        ({ module, asset: binding }) =>
+          binding.id === asset.id && splatFit(asset, module, showScreenedOut),
       );
       if (!placements.length) continue;
       const expectedPath = `/mining/plant/reconstructed/splats/${asset.localPath.split("/").at(-1)}`;
@@ -308,14 +345,15 @@ export async function createPlant3D(container, catalog, select) {
       });
       if (!response.ok) throw new Error(`Reconstructed asset request failed (${response.status}).`);
       const bytes = await readBoundedBytes(response, 8 * 1_048_576, signal);
-      if (await sha256Hex(bytes) !== asset.sha256)
+      if ((await sha256Hex(bytes)) !== asset.sha256)
         throw new Error(`Reconstructed asset integrity check failed for ${asset.id}.`);
       let source;
       for (const [index, { module }] of placements.entries()) {
         assertCurrent(generation, signal);
-        const mesh = index === 0
-          ? new SplatMesh({ fileBytes: bytes, fileName: expectedPath })
-          : new SplatMesh({ splats: source.splats });
+        const mesh =
+          index === 0
+            ? new SplatMesh({ fileBytes: bytes, fileName: expectedPath })
+            : new SplatMesh({ splats: source.splats });
         splatMeshes.add(mesh);
         if (index === 0) {
           source = mesh;
@@ -349,11 +387,11 @@ export async function createPlant3D(container, catalog, select) {
         warning: 0xb45309,
         high: 0xdc2626,
         stopped: 0x5b6479,
-        "sensor evidence current": 0x2563eb,
         "sensor evidence stale": 0xb45309,
         "sensor evidence flagged": 0x7c3aed,
       };
-      box.visible = visible && (!!colors[status] || topology.has(module.id) || selectedModuleId === module.id);
+      box.visible =
+        visible && (!!colors[status] || topology.has(module.id) || selectedModuleId === module.id);
       box.material.color.setHex(
         topology.has(module.id)
           ? 0x2563eb
@@ -376,6 +414,7 @@ export async function createPlant3D(container, catalog, select) {
 
   resize();
   const viewer = {
+    fit,
     get renderedModuleCount() {
       return models.size;
     },

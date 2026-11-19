@@ -1,3 +1,34 @@
+export function simulationTiming(run, data, now = Date.now()) {
+  const start = Date.parse(run?.startedAt);
+  const stop = Date.parse(run?.stopAt);
+  const active = run?.publisherStatus === "running" && !run.stopRequested;
+  const sameRun = run?.runId && (data?.runId ?? data?.run?.runId) === run.runId;
+  const readings = sameRun ? (data?.latest?.readings ?? data?.readings ?? []) : [];
+  const latest = readings
+    .map((reading) => ({
+      sample: Date.parse(reading.latestSampleTime ?? reading.sampleTime),
+      receipt: Date.parse(reading.latestReceivedAt ?? reading.receivedAt ?? reading.ingestionTime),
+    }))
+    .filter(
+      ({ sample, receipt }) =>
+        Number.isFinite(sample) &&
+        Number.isFinite(receipt) &&
+        sample <= receipt &&
+        receipt <= now &&
+        (!Number.isFinite(start) || sample >= start),
+    )
+    .sort((a, b) => b.sample - a.sample || b.receipt - a.receipt)[0];
+  return {
+    active,
+    elapsedSeconds: Number.isFinite(start) && start <= now ? (now - start) / 1000 : null,
+    remainingSeconds:
+      active && Number.isFinite(stop) ? Math.max(0, Math.ceil((stop - now) / 1000)) : null,
+    lagSeconds: latest ? (latest.receipt - latest.sample) / 1000 : null,
+    sampleAgeSeconds: latest ? (now - latest.sample) / 1000 : null,
+    receiptAgeSeconds: latest ? (now - latest.receipt) / 1000 : null,
+  };
+}
+
 export function usable(reading) {
   return (
     reading?.quality === "good" &&

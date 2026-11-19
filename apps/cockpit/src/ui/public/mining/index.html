@@ -45,12 +45,40 @@
       </div>
     </header>
     <main class="mining-main">
-      <section class="mining-state" aria-label="Run and freshness">
-        <strong id="mode-label">LIVE</strong><span>Plant D01</span
-        ><span id="run">Approved run: unavailable</span>
-        <span id="catalog-scope">APPROVED EXPECTED catalog scope: unavailable</span>
-        <span id="freshness">Last refresh: unknown</span><span id="quality">Quality: unknown</span>
+      <section class="mining-session" aria-labelledby="simulation-heading">
+        <div>
+          <h2 id="simulation-heading">Run the plant. Follow the data.</h2>
+          <p id="run-control-help">
+            A shared ten-minute simulation sends synthetic plant data through Fabric. Reopening this
+            page never starts a run.
+          </p>
+          <div class="mining-actions">
+            <button id="run-start" disabled>Start 10-minute simulation</button>
+            <button id="run-cancel" class="secondary" disabled>Stop simulation</button>
+          </div>
+          <p id="run-control-status" role="status">Checking demo availability…</p>
+        </div>
+        <div class="mining-arrival" aria-label="Simulation and data arrival">
+          <div><span>Simulation</span><strong id="simulation-clock">Not running</strong></div>
+          <div><span>Data arrival</span><strong id="arrival-status">Checking source</strong></div>
+          <div>
+            <span>Sample → Eventhouse</span><strong id="arrival-lag">Not measured yet</strong>
+          </div>
+          <p id="arrival-detail">
+            Waiting for confirmed source timestamps, not a countdown estimate.
+          </p>
+        </div>
       </section>
+      <details class="mining-provenance">
+        <summary>Run identity &amp; source evidence</summary>
+        <div class="mining-state" aria-label="Run and freshness">
+          <strong id="mode-label">LIVE</strong><span>Plant D01</span
+          ><span id="run">Approved run: unavailable</span>
+          <span id="catalog-scope">APPROVED EXPECTED catalog scope: unavailable</span>
+          <span id="freshness">Last refresh: unknown</span
+          ><span id="quality">Quality: unknown</span>
+        </div>
+      </details>
       <p id="connection" class="callout" role="status">
         Connecting to the authorized mining backend. No telemetry is assumed.
       </p>
@@ -76,8 +104,10 @@
           <p id="meta-energyIntensity">kWh/t · window / coverage unknown</p>
         </article>
       </section>
-      <section id="continuous-evidence" class="card" hidden aria-labelledby="continuous-heading">
-        <h2 id="continuous-heading">Continuous source evidence</h2>
+      <details id="continuous-evidence" class="card" hidden>
+        <summary id="continuous-heading">
+          Continuous source evidence &amp; rolling advisories
+        </summary>
         <p id="continuous-source"></p>
         <p id="continuous-window"></p>
         <ul id="throughput-readings"></ul>
@@ -88,9 +118,7 @@
         </p>
         <ul id="line-state-readings"></ul>
         <h3 id="continuous-advisory-heading">Retrospective rolling event-time advisories</h3>
-        <p id="continuous-advisory-status">
-          Unknown — bounded advisory evidence is not connected.
-        </p>
+        <p id="continuous-advisory-status">Unknown — bounded advisory evidence is not connected.</p>
         <ol id="continuous-advisories" class="stack"></ol>
         <p>
           Water and energy use fixed 30-minute, 2-hour and 24-hour summaries for this publisher run;
@@ -101,7 +129,7 @@
           durable incident history; an empty list is not proof of health or completeness. Static
           ontology instances do not prove a native live telemetry binding.
         </p>
-      </section>
+      </details>
       <div class="mining-workspace">
         <section class="card mining-plant" aria-labelledby="plant-heading">
           <div class="card-header">
@@ -113,20 +141,24 @@
                 <option value="list">Object list</option>
               </select></label
             >
+            <button id="plant-fit" class="secondary" type="button">Fit plant</button>
           </div>
-          <fieldset class="mining-appearance">
-            <legend>Visual appearance</legend>
-            <label
-              >Appearance<select id="appearance-mode" disabled>
-                <option value="clean" selected>Clean</option>
-                <option value="reconstructed">Reconstructed</option>
-              </select></label
-            >
-            <label
-              ><input id="include-screened" type="checkbox" disabled />Show screened assets (review
-              only)</label
-            >
-          </fieldset>
+          <details class="mining-render-options">
+            <summary>Rendering &amp; layer options</summary>
+            <fieldset class="mining-appearance">
+              <legend>Visual appearance</legend>
+              <label
+                >Appearance<select id="appearance-mode" disabled>
+                  <option value="clean" selected>Clean</option>
+                  <option value="reconstructed">Reconstructed</option>
+                </select></label
+              >
+              <label
+                ><input id="include-screened" type="checkbox" disabled />Show screened assets
+                (review only)</label
+              >
+            </fieldset>
+          </details>
           <fieldset class="mining-toggles">
             <legend>Visible topology</legend>
             <label><input type="checkbox" name="line" value="A" checked />Line A</label>
@@ -147,39 +179,42 @@
             aria-label="North-up authored site plan in metres"
             hidden
           ></svg>
-          <ul id="object-list" class="mining-objects" aria-label="Plant object selection"></ul>
+          <details id="object-disclosure">
+            <summary>Browse plant equipment</summary>
+            <ul id="object-list" class="mining-objects" aria-label="Plant object selection"></ul>
+          </details>
           <p class="muted">
             Authored parametric meshes; dimensions are demo assumptions, not engineering truth.
             Arrows are authored flow direction, not measured motion. Drag to orbit; scroll to zoom.
             Keyboard selection is available in the object list.
           </p>
         </section>
-        <aside class="card" aria-labelledby="incident-heading">
-          <h2 id="incident-heading">Priority incidents</h2>
-          <p id="incident-status">Unknown — incident source not connected.</p>
-          <ol id="incidents" class="stack"></ol>
+        <aside class="card mining-drawer" aria-labelledby="asset-heading">
+          <h2 id="asset-heading">Equipment detail</h2>
+          <p id="asset-id">Select a module in the plant or object list.</p>
+          <p id="asset-status">Status: unknown</p>
+          <p id="incident-evidence"></p>
+          <div id="readings" class="mining-readings"></div>
+          <div class="mining-links">
+            <div>
+              <h3>Upstream</h3>
+              <div id="upstream"></div>
+            </div>
+            <div>
+              <h3>Downstream</h3>
+              <div id="downstream"></div>
+            </div>
+          </div>
+          <p class="muted">
+            Connectivity is context, not proof of cause. Logical equipment children have no
+            independent geometry.
+          </p>
         </aside>
       </div>
-      <section class="card mining-drawer" aria-labelledby="asset-heading">
-        <h2 id="asset-heading">Equipment detail</h2>
-        <p id="asset-id">Select a module in the plant or object list.</p>
-        <p id="asset-status">Status: unknown</p>
-        <p id="incident-evidence"></p>
-        <div id="readings" class="mining-readings"></div>
-        <div class="mining-links">
-          <div>
-            <h3>Upstream</h3>
-            <div id="upstream"></div>
-          </div>
-          <div>
-            <h3>Downstream</h3>
-            <div id="downstream"></div>
-          </div>
-        </div>
-        <p class="muted">
-          Connectivity is context, not proof of cause. Logical equipment children have no
-          independent geometry.
-        </p>
+      <section class="card mining-incidents" aria-labelledby="incident-heading">
+        <h2 id="incident-heading">Priority incidents</h2>
+        <p id="incident-status">Unknown — incident source not connected.</p>
+        <ol id="incidents" class="stack"></ol>
       </section>
       <section class="mining-charts" aria-label="Two focused comparisons">
         <article class="card">
@@ -209,7 +244,7 @@
           <button id="mining-ask-submit" type="submit" disabled>Ask about this run</button>
         </form>
         <p id="mining-answer-status" role="status"></p>
-        <p id="mining-answer"></p>
+        <div id="mining-answer"></div>
         <details id="mining-answer-evidence" hidden>
           <summary>Inspect the exact Fabric evidence supplied to the model</summary>
           <pre id="mining-answer-source"></pre>
@@ -232,16 +267,6 @@
           <summary>Inspect saved queries</summary>
           <div id="queries">No approved saved queries are configured.</div>
         </details>
-      </section>
-      <section class="card">
-        <h2>Run control</h2>
-        <p id="run-control-help">
-          Finite and continuous publisher lifetimes differ by mode. Reopening this view never starts
-          a run; publisher completion is not Fabric ingestion completion.
-        </p>
-        <p id="run-control-status" role="status">Checking demo availability…</p>
-        <button id="run-start" disabled>Start demo run</button>
-        <button id="run-cancel" disabled>Cancel demo run</button>
       </section>
     </main>
     <script type="module" src="/mining/app.js"></script>
