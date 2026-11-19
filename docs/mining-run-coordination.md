@@ -108,7 +108,7 @@ only that identity. The cockpit accepts only same-origin JSON actions; it never
 forwards browser credentials. Synthetic mode never enables the demo.
 
 The server generates each run ID, always uses D01 and the normal scenario, and
-limits a run to five minutes. Durable coordination permits one active writer and
+limits a run to ten minutes. Durable coordination permits one active writer and
 enforces a ten-minute minimum interval between start times across replicas;
 the cockpit also limits action requests per replica. These controls limit
 accidental load but are not a distributed denial-of-service defense. Demo
@@ -119,6 +119,23 @@ requires the dedicated Eventstream connection and durable store; configure
 Neither run status nor publisher completion proves Fabric ingestion. The
 public reads, completed-run incident assessment, and evidence assistant are
 separately gated.
+
+For visitor-triggered runs, keep `MINING_CONTINUOUS_ENABLED=false` and
+`MINING_CONTINUOUS_READ_ENABLED=false` on the backend. Before switching a live
+continuous deployment, persist its authenticated generation stop and verify
+publisher settlement; never admit a competing finite sender. Retain the stop
+hold. Returning to continuous operation requires a new explicitly reviewed
+generation, not deleting the old hold. These mode flags select the existing
+bounded read path; they do not make Fabric public or change its permissions.
+
+The cockpit shows the server's `startedAt`/`stopAt` as a remaining-time display,
+elapsed waiting for the current run's first observed receipt, and actual
+sample-to-Eventhouse delay from source timestamps. Receipt age and sample age
+are distinct; neither is an estimated service-level promise. A first-visible
+timer applies only to a run started in that tab and includes polling/network
+latency. Missing or foreign-run timestamps remain unknown. Live reads refresh
+every 30 seconds (run status every 15 seconds); stopped simulations naturally
+become stale, and replay remains explicitly historical.
 
 For the separately opt-in public read path, set
 `MINING_PUBLIC_DEMO_READ_ENABLED=true` on both apps and configure
@@ -150,8 +167,8 @@ The demo controls accept only these shapes:
 
 | Request | Contract |
 | --- | --- |
-| `GET /api/mining/demo/runs/status` | No query parameters. Returns only the current marked public D01 run, if any; it reports admission, publisher status, stop intent, and `ingestionStatus: "unknown"`. |
-| `POST /api/mining/demo/runs/start` | Same-origin JSON body exactly `{"plantId":"D01"}`. The server chooses a run ID, normal scenario, and fixed 300-second duration. A 202 means durable admission only. |
+| `GET /api/mining/demo/runs/status` | No query parameters. Returns only the current marked public D01 run, if any; it reports admission, publisher status, stop intent, server `startedAt`/`stopAt`, and `ingestionStatus: "unknown"`. |
+| `POST /api/mining/demo/runs/start` | Same-origin JSON body exactly `{"plantId":"D01"}`. The server chooses a run ID, normal scenario, and fixed 600-second duration. A 202 means durable admission only. |
 | `POST /api/mining/demo/runs/cancel` | Same-origin JSON body exactly `{"plantId":"D01","runId":"<current-demo-uuid>"}`. A 202 confirms stop intent, not that the publisher stopped or ingestion completed. |
 | `POST /api/mining/demo/assistant` | Same-origin JSON exactly `{"plantId":"D01","question":"..."}` with a 1 to 1000-character question. The backend selects the current run and bounded overview; no run, endpoint, or query can be selected by the visitor. |
 

@@ -39,7 +39,7 @@ import { mapContinuousAdvisories } from "../mining/read/continuous-advisory-dto.
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const marker = (id: string) => `public-demo/${id}.json`;
-const durationSeconds = 300;
+const durationSeconds = 600;
 const minimumStartIntervalMs = 600_000;
 
 interface Options {
@@ -275,6 +275,10 @@ export function createMiningDemoRouter(options: Options): Router {
               publisherStatus: visible.phase,
               stopRequested: visible.stopRequested,
               ingestionStatus: "unknown",
+              startedAt: visible.run?.startedAt,
+              ...(!continuousMode && visible.run && !isContinuousMiningRun(visible.run)
+                ? { stopAt: visible.run.stopAt }
+                : {}),
               ...(continuousMode
                 ? {
                     generation: env.MINING_CONTINUOUS_GENERATION,

@@ -524,7 +524,7 @@ describe("public mining demo service boundary", () => {
     expect(unauthorized.start).not.toHaveBeenCalled();
   });
 
-  it("creates its own ID and starts only a five-minute D01 run", async () => {
+  it("creates its own ID and starts only a ten-minute D01 run", async () => {
     const { app, start, documents } = setup();
     for (const body of [{ plantId: "D01", durationSeconds: 1800 }, { plantId: "other" }, {}]) {
       expect((await request(app).post("/demo/runs/start").send(body)).status).toBe(400);
@@ -534,7 +534,7 @@ describe("public mining demo service boundary", () => {
     expect(result.status).toBe(202);
     expect(result.body.runId).toMatch(/^[0-9a-f-]{36}$/);
     expect(start).toHaveBeenCalledWith(
-      { plantId: "D01", requestId: result.body.runId, durationSeconds: 300 },
+      { plantId: "D01", requestId: result.body.runId, durationSeconds: 600 },
       expect.any(AbortSignal),
     );
     expect(documents.has(`public-demo/${result.body.runId}.json`)).toBe(true);
@@ -585,6 +585,9 @@ describe("public mining demo service boundary", () => {
     expect(incidents.status).toBe(503);
     expect(incidents.body.error.code).toBe("mining_incidents_unavailable");
     const status = await request(app).get("/demo/runs/status");
+    expect(Date.parse(status.body.run.stopAt) - Date.parse(status.body.run.startedAt)).toBe(
+      600_000,
+    );
     expect(status.body.run).toMatchObject({
       runId: started.body.runId,
       publisherStatus: "running",

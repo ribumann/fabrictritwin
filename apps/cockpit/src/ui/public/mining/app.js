@@ -27,6 +27,7 @@ import {
   continuousSummaryFresh,
   continuousSummaryMetric,
   continuousClockSkewMs,
+  simulationTiming,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
 import {
@@ -718,6 +719,32 @@ function chart(container, data) {
     const range = unitRanges.get(row.unit) ?? [row.value, row.value];
     unitRanges.set(row.unit, [Math.min(range[0], row.value), Math.max(range[1], row.value)]);
   }
+  const axisText = (x, y, value, anchor = "middle") => {
+    const label = document.createElementNS(svg.namespaceURI, "text");
+    label.setAttribute("x", x);
+    label.setAttribute("y", y);
+    label.setAttribute("text-anchor", anchor);
+    label.setAttribute("class", "chart-tick");
+    label.textContent = value;
+    svg.append(label);
+  };
+  for (const fraction of [0, 0.5, 1]) {
+    axisText(
+      40 + fraction * 540,
+      200,
+      new Date(start + (end - start) * fraction).toISOString().slice(11, 16),
+    );
+    if (unitRanges.size === 1) {
+      const [low, high] = [...unitRanges.values()][0];
+      const y = 165 - fraction * 120;
+      const grid = document.createElementNS(svg.namespaceURI, "line");
+      for (const [key, value] of Object.entries({ x1: 40, x2: 580, y1: y, y2: y }))
+        grid.setAttribute(key, value);
+      grid.setAttribute("class", "chart-axis");
+      svg.append(grid);
+      axisText(36, y + 4, number(low + (high - low) * fraction), "end");
+    }
+  }
   groups.forEach((group, index) => {
     const items = rows
       .filter((row) => `${row.seriesId} (${row.unit})` === group)
@@ -1290,7 +1317,7 @@ $("mining-ask").addEventListener("submit", async (event) => {
       !evidenceValid
     )
       throw new Error("The answer did not match the current run. Refresh and ask again.");
-    text("mining-answer", data.answer);
+    renderAnswer(data.answer);
     text(
       "mining-answer-status",
       context.mode === "continuous"
@@ -1318,6 +1345,76 @@ $("mining-ask").addEventListener("submit", async (event) => {
 let demoRun = null;
 let demoBusy = false;
 let demoStatusEpoch = 0;
+let requestedSimulation = null;
+function renderAnswer(answer) {
+  const container = $("mining-answer");
+  container.replaceChildren();
+  for (const paragraph of answer.split(/\n\s*\n/)) {
+    const block = node("p");
+    for (const [index, line] of paragraph.split("\n").entries()) {
+      if (index) block.append(node("br"));
+      for (const part of line.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g)) {
+        block.append(
+          part.startsWith("**") && part.endsWith("**")
+            ? node("strong", part.slice(2, -2))
+            : part.startsWith("`") && part.endsWith("`")
+              ? node("code", part.slice(1, -1))
+              : node("span", part),
+        );
+      }
+    }
+    container.append(block);
+  }
+}
+function drawArrival() {
+  if (document.hidden) return;
+  const data = mode === "live" ? (continuousOverview ?? overview) : null;
+  const timing = simulationTiming(demoRun, data);
+  const seconds = (value) => `${Math.round(value)}s`;
+  const remaining = timing.remainingSeconds;
+  text(
+    "simulation-clock",
+    remaining !== null
+      ? remaining > 0
+        ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")} left`
+        : "Finishing"
+      : timing.active
+        ? "Continuous"
+        : demoRun?.publisherStatus === "publisher_complete"
+          ? "Complete"
+          : demoRun?.publisherStatus === "stopping" || demoRun?.stopRequested
+            ? "Stopping / stopped"
+            : "Ready to start",
+  );
+  const hasReceipt = timing.lagSeconds !== null;
+  if (hasReceipt && requestedSimulation?.runId === demoRun?.runId) {
+    requestedSimulation.firstVisibleSeconds ??= (Date.now() - requestedSimulation.at) / 1000;
+  }
+  text(
+    "arrival-status",
+    mode === "replay"
+      ? "Historical replay"
+      : hasReceipt
+        ? `Receipt ${seconds(timing.receiptAgeSeconds)} ago`
+        : timing.active
+          ? `Waiting ${seconds(timing.elapsedSeconds ?? 0)}`
+          : "No live receipt",
+  );
+  text("arrival-lag", hasReceipt ? seconds(timing.lagSeconds) : "Not measured yet");
+  const first =
+    requestedSimulation?.runId === demoRun?.runId &&
+    requestedSimulation.firstVisibleSeconds !== undefined
+      ? ` First visible in this tab after ${seconds(requestedSimulation.firstVisibleSeconds)}.`
+      : "";
+  text(
+    "arrival-detail",
+    hasReceipt
+      ? `Latest observed sample is ${seconds(timing.sampleAgeSeconds)} old. Delay measures its sample-to-Eventhouse receipt, not browser refresh time.${first}`
+      : timing.active
+        ? "Publishing does not prove ingestion. Waiting for this run's confirmed Fabric receipts; readings refresh every 30 seconds."
+        : "Start a simulation to measure real data-arrival delay. Missing data is never shown as zero.",
+  );
+}
 function drawDemoRunStatus(notice = "") {
   if (context?.mode === "continuous") {
     text(
@@ -1332,11 +1429,11 @@ function drawDemoRunStatus(notice = "") {
   }
   text(
     "run-control-help",
-    "Finite public D01 demo runs last up to five minutes. A shared cooldown limits repeated starts. Reopening this view never starts a run. Publisher completion is not Fabric ingestion completion; stop requested is not stopped.",
+    "A shared ten-minute simulation sends synthetic D01 data through Fabric. One run at a time; reopening this page never starts another. Publisher completion is not ingestion completion.",
   );
   const status = demoRun
-    ? `Run ${demoRun.runId}: ${demoRun.publisherStatus}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion ${verifiedRunIngestion(overview, demoRun)}.`
-    : "No active public demo run.";
+    ? `Publisher: ${demoRun.publisherStatus.replaceAll("_", " ")}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion: ${verifiedRunIngestion(overview, demoRun)}. Shared by all visitors.`
+    : "Ready when you are. A shared cooldown prevents repeated starts.";
   text("run-control-status", `${notice}${status}`);
 }
 async function demoRequest(path, body) {
@@ -1423,6 +1520,7 @@ async function demoAction(action) {
     const body =
       action === "cancel" ? { plantId: "D01", runId: demoRun.runId } : { plantId: "D01" };
     const result = await demoRequest(action, body);
+    if (action === "start") requestedSimulation = { runId: result.runId, at: Date.now() };
     text(
       "run-control-status",
       `${action === "start" ? "Started" : "Stop requested"}: ${result.runId}. Fabric ingestion is not yet confirmed.`,
@@ -1438,6 +1536,7 @@ $("run-start").addEventListener("click", () => void demoAction("start"));
 $("run-cancel").addEventListener("click", () => void demoAction("cancel"));
 void updateDemoStatus();
 const demoStatusTimer = setInterval(() => void updateDemoStatus(), 15_000);
+const arrivalTimer = setInterval(drawArrival, 1_000);
 $("refresh").addEventListener("click", async () => {
   invalidate();
   await loadContext();
@@ -1479,8 +1578,10 @@ $("diagnostic").addEventListener("change", () => {
 $("view").addEventListener("change", () => {
   $("plant-top").toggleAttribute("hidden", $("view").value !== "top");
   $("plant-3d").hidden = $("view").value !== "3d";
+  if ($("view").value === "list") $("object-disclosure").open = true;
   configurePolling();
 });
+$("plant-fit").addEventListener("click", () => plant3d?.fit());
 $("appearance-mode").addEventListener("change", () => {
   appearanceMode = $("appearance-mode").value;
   $("include-screened").disabled = appearanceMode !== "reconstructed";
@@ -1510,6 +1611,7 @@ document.addEventListener("visibilitychange", () => {
 addEventListener("pagehide", () => {
   invalidate();
   clearInterval(demoStatusTimer);
+  clearInterval(arrivalTimer);
   appearanceGeneration++;
   appearanceController?.abort();
   plant3d?.dispose();
