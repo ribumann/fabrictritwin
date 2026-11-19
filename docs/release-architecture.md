@@ -315,6 +315,50 @@ an authorization denial nor the destination Warning's cause was established.
 
 ### Controlled recovery observations
 
+#### Continuous live-path acceptance: 19 November 2026
+
+Both Mining derived routes were Paused although the custom source, default
+stream, destinations and continuous publisher reported Running. Raw receipts
+had stopped on 17 November at approximately 23:36 UTC. The existing guarded
+Mining recovery validated the exact target and Active capacity, then resumed
+both routes using `WhenLastStopped`. No definitions, secrets, permissions,
+capacity schedule or publisher configuration changed; no second sender started.
+Current-run receipts subsequently advanced in both raw tables.
+
+For continuous run `8cfba13f-d67a-411b-80c4-6fe727089970`, a closed five-minute
+event-time window contained **505 distinct accepted telemetry events and 20
+distinct accepted state events**, with zero duplicate copies, conflicting IDs
+or rejected rows. This is a bounded classification check, not a reconstruction
+of data missing during the earlier interruption.
+
+The unchanged 15-minute public-flow gate passed in
+[GitHub Actions run 44580743105](https://github.com/ribumann/fabrictritwin/actions/runs/44580743105)
+at source revision `a132072d4010bef89ee7b7d3e271bed267c80a47`.
+From 17:46:37 to 18:01:40 UTC, 31 observations retained the exact run/generation;
+all three feed tags advanced measurements and receipts by approximately 15
+minutes, each with 31 distinct event IDs. The common watermark advanced from
+17:45:48.597 to 18:00:48.597 UTC. An earlier local attempt failed on a request
+timeout after two observations; the later pass does not erase that failure or
+prove uninterrupted availability.
+
+The public browser separately rendered fresh throughput, 3/3 simulator-reported
+running lines, 30-minute water/energy summaries, all three feed trends and
+diagnostic trends. Selecting the B-line DMS module exposed its own current
+density/pressure evidence. The embedded Foundry assistant returned a current-run
+ore-flow comparison grounded in the supplied Fabric readings and timestamps.
+Rolling advisories returned a bounded empty result, not a health conclusion.
+Two-hour/24-hour summaries correctly stayed unavailable where common coverage
+was insufficient.
+
+This proves the observed publisher-to-Eventhouse-to-public-cockpit path, not
+automatic recovery after another capacity cycle, full-stream completeness,
+native live ontology binding, native Operations-agent activation or notification
+delivery. The native-agent caveats above still apply. The
+[continuous recovery procedure](../scripts/fabric/README.md#mining-recovery-on-an-already-active-capacity)
+records how to recover and re-prove the path without weakening freshness gates.
+
+#### Earlier bounded-run and capacity-cycle observations
+
 The already-Running-source baseline `2465db77-26c5-40c2-8d45-ac1d00406710`
 completed with 505 telemetry and 32 state events. Independent native reconciliation
 at 19:09:28.476 UTC verified the complete raw/validated event-ID hashes, with

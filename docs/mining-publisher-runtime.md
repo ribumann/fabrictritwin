@@ -75,8 +75,12 @@ simultaneous snapshot. The running-lines count is available only when all three
 line-state observations are valid and no older than 195 seconds; it counts only
 explicit `running` states with `scheduled_running=true`. No module operating
 state is inferred from a line schedule or direct sensor value. The UI shows
-direct tag readings and line evidence; unsupported indicators, trends, live
-incidents, replay and assistant evidence remain unavailable, not healthy empty.
+direct tag readings and line evidence. Subsequent releases add cross-run sensor
+trends, covered water/energy summaries, retrospective rolling
+[advisories](mining-incidents.md) and a bounded [assistant](mining-assistant.md).
+These do not establish durable active-incident history or a native live ontology
+binding. Unsupported or insufficiently covered results remain unavailable, not
+healthy empty.
 Public starts/cancellation are disabled even while the worker is waiting or
 held. Bounded/replay behavior remains unchanged when continuous read/worker
 mode is disabled.
@@ -112,7 +116,15 @@ through both `MINING_PUBLIC_DEMO_ENABLED` and
 `MINING_PUBLIC_DEMO_READ_ENABLED`; the backend continuous read gate must also
 be enabled. The observer verifies the returned continuous mode, shared source,
 catalog, run, generation and live authority, so a misrouted legacy reader fails
-closed rather than counting as evidence.
+closed rather than counting as evidence. Incidents/trends capability checks use
+the context contract, not the overview DTO's legacy capability flags.
+
+If publishing is running but receipts have stopped, check the exact Eventstream
+derived routes before changing transport, secrets or permissions. Source and
+destination nodes can remain Running while both derived routes are Paused.
+Follow the guarded [routing recovery and live acceptance procedure](../scripts/fabric/README.md#mining-recovery-on-an-already-active-capacity);
+the observer never resumes routes, and resumed routes alone do not prove fresh
+ingestion.
 
 The remote runner samples at about 30-second cadence and fails on a gap over
 60 seconds, stale request UTC/watermark, invalid five-minute rolling window,

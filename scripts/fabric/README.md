@@ -155,6 +155,38 @@ quarantined records. `Running`, `WhenLastStopped`, accepted publishes, and a
 partial terminal batch are not proof that buffered events were recovered. Stop
 and investigate missing IDs instead of claiming catch-up or starting another run.
 
+For an already-running **continuous** publisher, do not start a second sender.
+Use the current UUID and generation from the public context, then verify the
+path in order:
+
+1. Require advancing `ingestion_time()` in **both** raw tables for that UUID,
+   not merely old buffered receipts. Check a closed event-time window through
+   the existing classifiers for rejected rows, duplicate IDs and conflicts.
+2. Allow the five-minute overview window to refill. Require `quality=good`,
+   fresh A/B/C measurements and receipts, and at least 90% usable coverage.
+   Publisher `running` alone is not evidence that Eventhouse is receiving data.
+3. Run the existing credentialless 15-minute observer from `main`:
+
+   ```powershell
+   $context = Invoke-RestMethod 'https://ontologydemo.liberatetheinnerchild.net/api/mining/context'
+   gh workflow run mining-continuous-flow-observer.yml `
+     --repo ribumann/fabrictritwin --ref main `
+     -f "run_id=$($context.approvedRun.runId)" `
+     -f "generation=$($context.approvedRun.generation)" `
+     -f duration_minutes=15
+   ```
+
+4. Separately open the public Mining cockpit. Check the three feed trends,
+   selected asset readings, simulator line states, rolling advisories and a
+   grounded assistant answer. Longer summary windows remain unavailable until
+   their common coverage is sufficient; do not replace missing history with zero.
+
+The observer does not perform recovery or prove full-stream completeness.
+Preserve failed attempts, including request timeouts; a later successful run
+does not erase an intermittent failure. See the
+[observer contract](../../docs/mining-publisher-runtime.md#remote-public-flow-observer)
+for its fixed freshness, scope and advancement checks.
+
 The documented topology and resume APIs support service principals, but a
 GitHub OIDC login alone does not prove Fabric workspace/item access: topology
 needs Eventstream read and resume needs read/write. The existing Mining
