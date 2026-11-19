@@ -504,8 +504,10 @@ describe("isolated mining BFF", () => {
     expect(mining.status).toBe(200);
     expect(mining.text).toContain("/mining/app.js");
     expect(mining.text).not.toContain('src="/app.js"');
+    expect(mining.text).toContain('<a href="/">Triathlon dashboard</a>');
     expect(triathlon.status).toBe(200);
     expect(triathlon.text).toContain("Triathlon Training Twin");
+    expect(triathlon.text).toContain('<a href="/mining/">Mining dashboard</a>');
     expect(triathlon.text).toContain('id="simulation-form"');
     expect(triathlon.text).toContain('class="alerts-summary"');
     expect(triathlon.text).not.toContain("/mining/app.js");
