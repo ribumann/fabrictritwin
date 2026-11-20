@@ -7,7 +7,11 @@ import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulato
 import { verifyMcpCallerClaimsWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningPublisherHost } from "../mining/publisher-host.js";
-import { createMiningNativeLive, type MiningNativeReceipt } from "../mining/native-live.js";
+import {
+  createMiningDemoSignal,
+  createMiningNativeLive,
+  type MiningNativeReceipt,
+} from "../mining/native-live.js";
 import {
   configuredMiningPublisherRuntime,
   type MiningStartupPreview,
@@ -82,6 +86,9 @@ export function createMiningDemoRouter(options: Options): Router {
   const host = options.host ?? createMiningDemoHost(env);
   let startupPreview: MiningStartupPreview | undefined;
   let simulatorPreview: MiningStartupPreview[] = [];
+  let fabricSignal: Awaited<ReturnType<NonNullable<ReturnType<typeof createMiningDemoSignal>>>>[] =
+    [];
+  const sendDemoSignal = createMiningDemoSignal(env);
   const nativeLive = createMiningNativeLive(env);
   let nativeReceipt: MiningNativeReceipt | undefined;
   const curated = options.curated ?? createMiningDemoProvider(env);
@@ -278,6 +285,7 @@ export function createMiningDemoRouter(options: Options): Router {
         plantId: "D01",
         mode: continuousMode ? "continuous" : "bounded",
         ...(!continuousMode ? { previewCadenceSeconds: 5 } : {}),
+        ...(!continuousMode && sendDemoSignal ? { fabricSignal: true } : {}),
         ...(!continuousMode && nativeLive ? { nativeLive: true } : {}),
         run: visible
           ? {
@@ -301,6 +309,12 @@ export function createMiningDemoRouter(options: Options): Router {
               !visible.stopRequested &&
               simulatorPreview[0]?.runId === visible.runId
                 ? { simulatorPreview }
+                : {}),
+              ...(!continuousMode &&
+              visible.phase === "running" &&
+              !visible.stopRequested &&
+              fabricSignal[0]?.runId === visible.runId
+                ? { fabricSignal }
                 : {}),
               ...(!continuousMode &&
               visible.phase === "running" &&
@@ -969,10 +983,28 @@ export function createMiningDemoRouter(options: Options): Router {
               );
             }
           : undefined,
-        (preview) => {
+        (preview, elapsedSeconds, authority) => {
           if (simulatorPreview[0]?.runId !== preview.runId) simulatorPreview = [];
           simulatorPreview.push(preview);
           if (simulatorPreview.length > durationSeconds / 5) simulatorPreview.shift();
+          if (sendDemoSignal) {
+            return sendDemoSignal(preview, elapsedSeconds, authority).then(
+              (receipt) => {
+                if (authority.aborted) return;
+                if (fabricSignal[0]?.runId !== receipt.runId) fabricSignal = [];
+                fabricSignal.push(receipt);
+                if (fabricSignal.length > durationSeconds / 5) fabricSignal.shift();
+              },
+              () => {
+                if (!authority.aborted)
+                  console.warn(
+                    "[mining-demo-signal] Fabric receipt unavailable",
+                    preview.runId,
+                    preview.sampleTime,
+                  );
+              },
+            );
+          }
         },
       );
       const admission = await execution.admission;

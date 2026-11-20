@@ -47,6 +47,11 @@ export interface MiningStartupPreview {
   sampleTime: string;
   hopperTonnes: number;
 }
+export type MiningPreviewObserver = (
+  preview: MiningStartupPreview,
+  elapsedSeconds: number,
+  signal: AbortSignal,
+) => void | Promise<void>;
 export type MiningBatchObserver = (
   runId: string,
   sampleTime: string,
@@ -92,7 +97,7 @@ export class MiningPublisherRuntime {
     onAdmission?: (admission: MiningPublisherAdmission) => void,
     onStartup?: (preview: MiningStartupPreview) => void,
     onBatch?: MiningBatchObserver,
-    onPreview?: (preview: MiningStartupPreview) => void,
+    onPreview?: MiningPreviewObserver,
   ): Promise<MiningRunStatus> {
     cancellation?.throwIfAborted();
     if (incidents && (input.durationSeconds ?? 1_200) % 60 !== 0) {
@@ -130,7 +135,7 @@ export class MiningPublisherRuntime {
     onAdmission?: (admission: MiningPublisherAdmission) => void,
     onStartup?: (preview: MiningStartupPreview) => void,
     onBatch?: MiningBatchObserver,
-    onPreview?: (preview: MiningStartupPreview) => void,
+    onPreview?: MiningPreviewObserver,
   ): Promise<MiningRunStatus> {
     cancellation?.throwIfAborted();
     const admission = await admit();
@@ -236,6 +241,18 @@ export class MiningPublisherRuntime {
           signal.throwIfAborted();
           checkDeadline();
           simulation.step(new Date(wallDeadline));
+          const previewDelivery =
+            !continuous && !signal.aborted
+              ? onPreview?.(
+                  {
+                    runId: run.runId,
+                    sampleTime: new Date(wallDeadline).toISOString(),
+                    hopperTonnes: simulation.inventory.hopper_tonnes,
+                  },
+                  elapsed / 1_000,
+                  signal,
+                )
+              : undefined;
           const batch = simulation.getPendingBatch();
           if (batch) {
             const emittedAt = new Date().toISOString();
@@ -294,13 +311,7 @@ export class MiningPublisherRuntime {
               onBatch?.(run.runId, batch.timestamp, batch.events, signal);
             }
           }
-          if (!continuous && !signal.aborted) {
-            onPreview?.({
-              runId: run.runId,
-              sampleTime: new Date(wallDeadline).toISOString(),
-              hopperTonnes: simulation.inventory.hopper_tonnes,
-            });
-          }
+          if (elapsed === durationMs) await previewDelivery;
         }
         if (!stopped) signal.throwIfAborted();
         if (

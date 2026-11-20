@@ -3,7 +3,8 @@
 param(
     [Parameter(Mandatory)][guid]$SubscriptionId,
     [Parameter(Mandatory)][uri]$KustoEndpoint,
-    [Parameter(Mandatory)][ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9 _-]{0,127}$')][string]$Database
+    [Parameter(Mandatory)][ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9 _-]{0,127}$')][string]$Database,
+    [switch]$DemoSignalOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,6 +25,33 @@ function Invoke-Kusto($Route, $Query) {
 $ready = Invoke-Kusto query 'mining_SourceReadiness() | project status'
 if ($ready.Tables[0].Rows.Count -ne 1 -or $ready.Tables[0].Rows[0][0] -ne 'READY') {
     throw 'The target database does not have a ready Mining source contract.'
+}
+function Confirm-StreamingSchema($Table) {
+    $cache = Invoke-Kusto mgmt ".clear table $Table cache streamingingestion schema"
+    $index = [Array]::IndexOf(@($cache.Tables[0].Columns.ColumnName), 'Status')
+    if ($index -lt 0 -or !$cache.Tables[0].Rows.Count) { throw 'Schema refresh did not return status.' }
+    foreach ($node in $cache.Tables[0].Rows) {
+        if ($node[$index] -ne 'Succeeded') { throw 'Streaming schema refresh did not succeed on every node.' }
+    }
+}
+if ($DemoSignalOnly) {
+    if (!$PSCmdlet.ShouldProcess($Database, 'Install only the isolated five-second Mining demo signal')) { return }
+    $commands = @(
+        '.create table mining_DemoSignal (run_id:string, sample_time:datetime, elapsed_seconds:long, hopper_tonnes:real)'
+        '.alter table mining_DemoSignal policy streamingingestion ''{"IsEnabled":true}'''
+        '.alter table mining_DemoSignal policy ingestiontime true'
+        '.alter-merge table mining_DemoSignal policy retention softdelete = 1d'
+        '.create-or-alter table mining_DemoSignal ingestion json mapping ''mining_demo_signal_map'' ''[{"column":"run_id","Properties":{"Path":"$.runId"}},{"column":"sample_time","Properties":{"Path":"$.sampleTime"}},{"column":"elapsed_seconds","Properties":{"Path":"$.elapsedSeconds"}},{"column":"hopper_tonnes","Properties":{"Path":"$.hopperTonnes"}}]'''
+        (Get-Content (Join-Path $PSScriptRoot '..\..\infra\fabric\eventhouse\MiningDemoSignal.kql') -Raw)
+    )
+    foreach ($command in $commands) { [void](Invoke-Kusto mgmt $command) }
+    Confirm-StreamingSchema mining_DemoSignal
+    $result = Invoke-Kusto query 'mining_DemoSignalReceipt("00000000-0000-0000-0000-000000000000", datetime(2000-01-01), 60)'
+    if ($result.Tables[0].Rows.Count -ne 1 -or $result.Tables[0].Rows[0][0] -ne 0 -or
+        $null -ne $result.Tables[0].Rows[0][3] -or $null -ne $result.Tables[0].Rows[0][4]) {
+        throw 'Demo signal receipt did not return the expected empty result.'
+    }
+    return
 }
 $source = Get-Content (Join-Path $PSScriptRoot '..\..\infra\fabric\eventhouse\MiningValidation.kql') -Raw
 function Bind-Classifier($Kind, $SourceTable) {
@@ -65,12 +93,7 @@ $commands = @(
     $definition
 )
 foreach ($command in $commands) { [void](Invoke-Kusto mgmt $command) }
-$cache = Invoke-Kusto mgmt '.clear table mining_NativeLiveRaw cache streamingingestion schema'
-$index = [Array]::IndexOf(@($cache.Tables[0].Columns.ColumnName), 'Status')
-if ($index -lt 0 -or !$cache.Tables[0].Rows.Count) { throw 'Schema refresh did not return status.' }
-foreach ($node in $cache.Tables[0].Rows) {
-    if ($node[$index] -ne 'Succeeded') { throw 'Streaming schema refresh did not succeed on every node.' }
-}
+Confirm-StreamingSchema mining_NativeLiveRaw
 $result = Invoke-Kusto query 'mining_NativeLiveReceipt("00000000-0000-0000-0000-000000000000", datetime(2000-01-01))'
 if ($result.Tables[0].Rows.Count -ne 1 -or $result.Tables[0].Rows[0][2] -ne 0) {
     throw 'Native receipt function did not return the expected empty result.'

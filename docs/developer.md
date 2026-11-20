@@ -304,6 +304,15 @@ tab. Its countdown distinguishes a normal 30-second collection window from a
 closed window awaiting a receipt or an overdue batch. The validated 30/60-second
 telemetry windows and event IDs are unchanged.
 
+To stream raw hopper points to Fabric, run `scripts\provision\mining-native-live.ps1`
+with `-DemoSignalOnly`, grant the publisher **Table Ingestor** on `mining_DemoSignal`
+only, and set `MINING_DEMO_SIGNAL_ENABLED=true` on the backend. The public demo
+streams one modeled hopper reading per five-second tick directly to this
+one-day Eventhouse table. Fabric computes the 30- and 60-second hopper averages
+only over complete windows with distinct ticks. Cockpit labels the source and
+never substitutes a simulator-only point for a missing Fabric receipt. This
+demo lane does not change standard Eventstream telemetry or reconciliation.
+
 The two Mining raw input tables use a 10-second queued batching window;
 catalog/profile joins still require queued ingestion. To roll back the
 table overrides and restore database inheritance, run these against the

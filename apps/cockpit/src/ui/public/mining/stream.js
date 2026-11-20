@@ -78,12 +78,13 @@ const readingValid = (batch) =>
   typeof batch.reading?.unit === "string" &&
   Number.isFinite(batch.reading?.value);
 
-export function collectPreview(run) {
+export function collectPreview(run, fabric = false) {
   const start = Date.parse(run?.startedAt);
   const stop = Date.parse(run?.stopAt);
-  if (!Array.isArray(run?.simulatorPreview) || !(stop > start)) return [];
+  const series = fabric ? run?.fabricSignal : run?.simulatorPreview;
+  if (!Array.isArray(series) || !(stop > start)) return [];
   const points = new Map();
-  for (const point of run.simulatorPreview.slice(-120)) {
+  for (const point of series.slice(-120)) {
     const sample = Date.parse(point?.sampleTime);
     const seconds = (sample - start) / 1000;
     if (
@@ -92,14 +93,25 @@ export function collectPreview(run) {
       sample <= stop &&
       seconds % 5 === 0 &&
       Number.isFinite(point.hopperTonnes) &&
-      point.hopperTonnes >= 0
-    )
-      points.set(seconds, { seconds, value: point.hopperTonnes });
+      point.hopperTonnes >= 0 &&
+      (!fabric || Date.parse(point.receivedAt) >= sample)
+    ) {
+      points.set(seconds, {
+        seconds,
+        value: point.hopperTonnes,
+        ...(fabric && seconds % 30 === 0 && Number.isFinite(point.avg30)
+          ? { avg30: point.avg30 }
+          : {}),
+        ...(fabric && seconds % 60 === 0 && Number.isFinite(point.avg60)
+          ? { avg60: point.avg60 }
+          : {}),
+      });
+    }
   }
   return [...points.values()].sort((a, b) => a.seconds - b.seconds);
 }
 
-export function drawStreamCharts(history, preview, element, format) {
+export function drawStreamCharts(history, preview, element, format, fabric = false) {
   const set = (id, value) => (element(id).textContent = value);
   const newest = history.at(-1);
   const horizon = Math.max(newest?.seconds ?? 0, preview.at(-1)?.seconds ?? 0);
@@ -137,6 +149,12 @@ export function drawStreamCharts(history, preview, element, format) {
   );
 
   const latest = preview.at(-1);
+  set(
+    "stream-reading-source",
+    fabric
+      ? "Raw simulator points · confirmed by Fabric every 5-second tick"
+      : "Simulator preview every 5 seconds · not Fabric-validated",
+  );
   const values = preview.map(({ value }) => value);
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
@@ -169,8 +187,17 @@ export function drawStreamCharts(history, preview, element, format) {
     "stream-reading-latest",
     latest
       ? `${format(latest.value)} t at +${latest.seconds}s`
-      : "Waiting for the first 5-second simulator tick",
+      : fabric
+        ? "Waiting for the first confirmed Fabric point"
+        : "Waiting for the first 5-second simulator tick",
   );
+  const averages = [30, 60].map((interval) => {
+    const field = `avg${interval}`;
+    const point = preview.findLast((reading) => Number.isFinite(reading[field]));
+    return `${interval}s avg: ${point ? `${format(point[field])} t at +${point.seconds}s` : "no complete window yet"}`;
+  });
+  element("stream-reading-averages").hidden = !fabric;
+  set("stream-reading-averages", fabric ? `Computed in Fabric · ${averages.join(" · ")}` : "");
   const rows = history.map((batch) => {
     const row = document.createElement("tr");
     const reading = readingValid(batch)

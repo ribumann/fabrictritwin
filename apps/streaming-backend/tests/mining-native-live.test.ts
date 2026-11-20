@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createD01Simulation } from "@triathlon-twin/simulator/mining";
 import { describe, expect, it, vi } from "vitest";
-import { createMiningNativeLive } from "../src/mining/native-live.js";
+import { createMiningDemoSignal, createMiningNativeLive } from "../src/mining/native-live.js";
 
 const uri = "https://example.region.kusto.fabric.microsoft.com";
 const clientId = "11111111-2222-4333-8444-555555555555";
@@ -60,6 +60,33 @@ function fixture(resultHash = hash, ingestStatus = 200) {
 }
 
 describe("Mining native mirror receipts", () => {
+  it("writes a raw demo point to the separate table and exposes only Fabric's completed windows", async () => {
+    const request = fixture();
+    const sampleTime = new Date(+startedAt + 60_000).toISOString();
+    const point = { runId, sampleTime, hopperTonnes: 780 };
+    request.mockReset();
+    const setup = fixture();
+    // Keep the auth and ingestion fixtures identical to the native batch transport.
+    request.mockImplementation((url, opts) =>
+      String(url).endsWith("/query")
+        ? Promise.resolve(Response.json({ Tables: [{ Rows: [[1, 780, sampleTime, 781, 782]] }] }))
+        : setup(url, opts),
+    );
+    const send = createMiningDemoSignal({ ...env, MINING_DEMO_SIGNAL_ENABLED: "true" }, request)!;
+    await expect(send(point, 60, new AbortController().signal)).resolves.toEqual({
+      ...point, receivedAt: sampleTime, avg30: 781, avg60: 782,
+    });
+    expect(request.mock.calls[2][0]).toContain("/mining_DemoSignal?");
+    expect(JSON.parse(String(request.mock.calls[2][1]?.body))).toEqual({ ...point, elapsedSeconds: 60 });
+    const bad = fixture();
+    await expect(
+      createMiningDemoSignal({ ...env, MINING_DEMO_SIGNAL_ENABLED: "true" }, bad)!(
+        point, 60, new AbortController().signal,
+      ),
+    ).rejects.toThrow("receipt did not match");
+    expect(bad).toHaveBeenCalledTimes(4);
+  });
+
   it("writes only the isolated target and confirms the complete classified batch", async () => {
     const request = fixture();
     const send = createMiningNativeLive(env, request)!;
