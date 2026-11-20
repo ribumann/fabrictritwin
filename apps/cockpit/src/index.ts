@@ -38,7 +38,7 @@ app.get(["/mining", "/mining/"], (_req, res) => {
 });
 const generatedPublicDir = path.resolve(publicDir, "../../../dist/ui/public");
 app.get(["/mining/catalog.json", "/mining/catalog-receipt.json"], (req, res) => {
-  res.sendFile(path.join(generatedPublicDir, req.path));
+  res.sendFile(req.path.slice(1), { root: generatedPublicDir });
 });
 app.use("/vendor/three", express.static(path.join(generatedPublicDir, "vendor/three")));
 app.use(express.static(publicDir));

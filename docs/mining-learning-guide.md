@@ -4,6 +4,9 @@ The [public Mining cockpit](https://ontologydemo.liberatetheinnerchild.net/minin
 shows a simulated plant connected to Microsoft Fabric. The measurements and line
 states are generated, not readings from real equipment. Fabric itself requires
 an authorized account; public visitors do not need one to view the cockpit.
+
+See the [supervisor workflow and model limits](mining-supervisor.md) for the ore-flow board,
+diagnostics, and the comparison with real processing plants.
 Start with the [Business user walkthrough](business-user.md#2-mining-start-a-plant-follow-a-measurement)
 for the current public, shared ten-minute simulation, plant interactions and
 arrival-time indicators. The account-free local demo in the [main README](../README.md)

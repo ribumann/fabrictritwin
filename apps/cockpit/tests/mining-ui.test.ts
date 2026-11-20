@@ -646,6 +646,7 @@ describe("continuous throughput presentation", () => {
       kpis: ["throughput", "runningLines", "grossProcessWaterIntensity", "energyIntensity"],
       drawPlant() {},
       drawDrawer() {},
+      drawShift() {},
       drawDemoRunStatus() {},
       drawOverview: undefined as undefined | (() => void),
     };
@@ -1032,6 +1033,7 @@ describe("mining request lifecycle", () => {
       Date,
       mode: "live",
       context: { mode: "continuous", approvedRun: { runId: "owner" } },
+      demoRun: null,
       continuousClockSkewMs,
       $: () => ({ value: "30" }),
       query: undefined as undefined | (() => { end: string }),
@@ -1151,11 +1153,14 @@ describe("mining request lifecycle", () => {
       drawOverview: vi.fn(),
       clearReadState: vi.fn(),
       drawContinuousAdvisories: vi.fn(),
+      drawDiagnosticScope: vi.fn(),
       text: vi.fn(),
       chart,
       $: (id: string) =>
         id === "diagnostic"
           ? { value: "density" }
+          : id === "diagnostic-asset"
+            ? { value: "D01.A.dms" }
           : id === "incidents"
             ? { replaceChildren: vi.fn() }
             : id,
