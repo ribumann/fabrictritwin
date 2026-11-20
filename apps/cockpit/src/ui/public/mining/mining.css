@@ -156,6 +156,15 @@
   font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
+.mining-stream th,
+.mining-stream td {
+  padding: 0.3rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+}
+.mining-stream th {
+  white-space: nowrap;
+}
 .mining-provenance {
   margin-top: 1rem;
   font-size: 0.85rem;
