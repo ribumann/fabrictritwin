@@ -20,6 +20,47 @@ function harness(fetchImpl = vi.fn<typeof fetch>()) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("isolated mining BFF", () => {
+  it("relays a full ten-minute demo signal history but still bounds oversized upstream status", async () => {
+    const runId = "00000000-0000-4000-8000-000000000001";
+    const simulatorPreview = Array.from({ length: 120 }, (_, i) => ({
+      runId,
+      hopperTonnes: 780.1234,
+      sampleTime: new Date(Date.UTC(2026, 0, 1) + (i + 1) * 5_000).toISOString(),
+    }));
+    const fabricSignal = simulatorPreview.map((point, i) => ({
+      ...point,
+      receivedAt: new Date(Date.parse(point.sampleTime) + 230).toISOString(),
+      ...((i + 1) % 6 === 0 ? { avg30: 780.123456 } : {}),
+      ...((i + 1) % 12 === 0 ? { avg60: 780.123456 } : {}),
+    }));
+    const status = {
+      plantId: "D01",
+      mode: "bounded",
+      run: { runId, simulatorPreview, fabricSignal },
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(status))
+      .mockResolvedValueOnce(Response.json({ unexpected: "x".repeat(65_536) }));
+    const app = express();
+    app.use(
+      "/api/mining",
+      createMiningRouter(
+        {
+          streamingBackendBaseUrl: "https://internal.example",
+          fetchImpl,
+          buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+        },
+        false,
+        true,
+      ),
+    );
+
+    const reply = await request(app).get("/api/mining/demo/runs/status").expect(200);
+    expect(reply.body).toEqual(status);
+    await request(app).get("/api/mining/demo/runs/status").expect(502);
+  });
+
   it("proxies only a bounded, run-free cross-run request to the authenticated demo service", async () => {
     const buildAuthHeaders = vi.fn(async () => ({ authorization: "Bearer service" }));
     const fetchImpl = vi

@@ -109,7 +109,8 @@ export function createMiningRouter(
     await proxyStreamingBackendGet(
       req,
       res,
-      { ...options, maxResponseBytes: 16_384 },
+      // The public status includes up to 120 simulator points and 120 Fabric receipts.
+      { ...options, maxResponseBytes: 65_536 },
       () => new URL("/api/mining/demo/runs/status", options.streamingBackendBaseUrl),
       "mining_backend_unavailable",
     );
