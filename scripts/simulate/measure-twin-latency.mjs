@@ -44,6 +44,14 @@ try {
       );
       if (!mining) return;
       new MutationObserver(() => {
+        const receipt = document.querySelector("#run-native-receipt:not([hidden])");
+        if (probe.trigger && receipt?.dataset.runId && receipt.textContent?.trim()) {
+          const receipts = (probe.nativeReceipts ??= {});
+          const stages = (receipts[receipt.dataset.runId] ??= {});
+          const reading = { clock: performance.now(), label: receipt.textContent.trim() };
+          stages.first ??= reading;
+          if (Number(receipt.dataset.telemetryCount) > 0) stages.telemetry ??= reading;
+        }
         const startup = document.querySelector("#run-startup-preview:not([hidden])");
         if (probe.trigger && startup?.dataset.runId && startup.textContent?.trim()) {
           const previews = (probe.previews ??= {});
@@ -162,13 +170,21 @@ try {
       window.latencyProbe.runId = id;
     }, runId);
     await page.waitForFunction(() => !!window.latencyProbe.visible, null, { timeout });
-    const { visible, startup } = await page.evaluate(
+    const { visible, startup, native } = await page.evaluate(
       (id) => ({
         visible: window.latencyProbe.visible,
         startup: window.latencyProbe.previews?.[id],
+        native: window.latencyProbe.nativeReceipts?.[id],
       }),
       runId,
     );
+    for (const [kind, receipt] of Object.entries(native ?? {})) {
+      record(`fabric_native_${kind}_ui`, {
+        runId,
+        clickToVisibleMs: Math.round(receipt.clock - trigger.clock),
+        label: receipt.label,
+      });
+    }
     if (startup) {
       record("simulator_startup_ui", {
         runId,
