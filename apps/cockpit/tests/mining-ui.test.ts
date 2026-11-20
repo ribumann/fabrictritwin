@@ -1035,6 +1035,7 @@ describe("mining request lifecycle", () => {
       const context = {
         demoBusy: false,
         demoStatusEpoch: 0,
+        nativeDemoLive: false,
         document: { hidden: false },
         demoRun: null,
         context: { mode: "continuous", approvedRun: { runId, generation: "g1" } },

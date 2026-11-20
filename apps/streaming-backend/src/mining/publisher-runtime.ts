@@ -5,6 +5,7 @@ import {
   createD01Simulation,
   D01EventstreamPublisher,
   type D01Publisher,
+  type D01TransportBody,
 } from "@triathlon-twin/simulator/mining";
 import { configuredMiningStore } from "./blob-store.js";
 import { MiningCoordinationError } from "./store.js";
@@ -46,6 +47,12 @@ export interface MiningStartupPreview {
   sampleTime: string;
   hopperTonnes: number;
 }
+export type MiningBatchObserver = (
+  runId: string,
+  sampleTime: string,
+  events: readonly D01TransportBody[],
+  signal: AbortSignal,
+) => void;
 
 const systemClock: MiningClock = { now: Date.now, monotonic: () => performance.now() };
 const systemScheduler: MiningScheduler = {
@@ -84,6 +91,7 @@ export class MiningPublisherRuntime {
     incidents?: MiningPublisherIncidents,
     onAdmission?: (admission: MiningPublisherAdmission) => void,
     onStartup?: (preview: MiningStartupPreview) => void,
+    onBatch?: MiningBatchObserver,
   ): Promise<MiningRunStatus> {
     cancellation?.throwIfAborted();
     if (incidents && (input.durationSeconds ?? 1_200) % 60 !== 0) {
@@ -95,6 +103,7 @@ export class MiningPublisherRuntime {
       incidents,
       onAdmission,
       onStartup,
+      onBatch,
     );
   }
 
@@ -118,6 +127,7 @@ export class MiningPublisherRuntime {
     incidents?: MiningPublisherIncidents,
     onAdmission?: (admission: MiningPublisherAdmission) => void,
     onStartup?: (preview: MiningStartupPreview) => void,
+    onBatch?: MiningBatchObserver,
   ): Promise<MiningRunStatus> {
     cancellation?.throwIfAborted();
     const admission = await admit();
@@ -276,6 +286,9 @@ export class MiningPublisherRuntime {
                 sampleTime: batch.timestamp,
                 hopperTonnes: simulation.inventory.hopper_tonnes,
               });
+            }
+            if (!continuous && !signal.aborted) {
+              onBatch?.(run.runId, batch.timestamp, batch.events, signal);
             }
           }
         }

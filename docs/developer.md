@@ -320,6 +320,17 @@ latency and fails if any of the five batches exceeds 3 seconds or if the
 existing catalog and profile checks reject valid events or fail to quarantine
 their negative controls. This does not measure Eventstream, browser delivery,
 or the first aggregation window of the real-time publisher.
+
+The bounded public demo can optionally mirror acknowledged batches into
+native Fabric streaming for the separate **Fabric live** readout. Install
+`scripts\provision\mining-native-live.ps1` against the same Mining database,
+grant the backend Mining identity the **Table Ingestor** role only on
+`mining_NativeLiveRaw`, and set `MINING_NATIVE_LIVE_ENABLED=true` on the
+backend. The flag defaults off; disable it to roll back the mirror without
+touching Eventstream, historical reads, or reconciliation. The mirror retains
+data for one day. It verifies the complete batch's event IDs and runs the same
+catalog checks at read time. It does not change the 30/60-second telemetry
+sampling cadence: the first five-second batch contains plant state.
 `admission` measures the admitted backend handler; `send` records wall-clock
 generation and SDK send boundaries plus monotonic send duration. Correlate
 Triathlon session rows by run ID and sample time and Mining by event ID where

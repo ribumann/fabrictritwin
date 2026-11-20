@@ -7,6 +7,7 @@ import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulato
 import { verifyMcpCallerClaimsWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningPublisherHost } from "../mining/publisher-host.js";
+import { createMiningNativeLive, type MiningNativeReceipt } from "../mining/native-live.js";
 import {
   configuredMiningPublisherRuntime,
   type MiningStartupPreview,
@@ -80,6 +81,8 @@ export function createMiningDemoRouter(options: Options): Router {
     ((req: Request, signal: AbortSignal) => verifyMcpCallerClaimsWithErrors(req, signal, env));
   const host = options.host ?? createMiningDemoHost(env);
   let startupPreview: MiningStartupPreview | undefined;
+  const nativeLive = createMiningNativeLive(env);
+  let nativeReceipt: MiningNativeReceipt | undefined;
   const curated = options.curated ?? createMiningDemoProvider(env);
   const answer = options.answer ?? createMiningAnswer(env);
   const continuous = options.continuous ?? createMiningContinuousProvider(env);
@@ -273,6 +276,7 @@ export function createMiningDemoRouter(options: Options): Router {
       res.json({
         plantId: "D01",
         mode: continuousMode ? "continuous" : "bounded",
+        ...(!continuousMode && nativeLive ? { nativeLive: true } : {}),
         run: visible
           ? {
               runId: visible.runId,
@@ -289,6 +293,12 @@ export function createMiningDemoRouter(options: Options): Router {
               !visible.stopRequested &&
               startupPreview?.runId === visible.runId
                 ? { startupPreview }
+                : {}),
+              ...(!continuousMode &&
+              visible.phase === "running" &&
+              !visible.stopRequested &&
+              nativeReceipt?.runId === visible.runId
+                ? { nativeReceipt }
                 : {}),
               ...(continuousMode
                 ? {
@@ -927,6 +937,32 @@ export function createMiningDemoRouter(options: Options): Router {
         (preview) => {
           startupPreview = preview;
         },
+        ...(nativeLive
+          ? ([
+              ((id, sample, events, authority) => {
+                const started = performance.now();
+                void nativeLive(id, sample, events, authority).then(
+                  (receipt) => {
+                    if (!authority.aborted) {
+                      nativeReceipt = receipt;
+                      console.info(
+                        JSON.stringify({
+                          telemetry: "mining-native-live-v1",
+                          runId: id,
+                          sampleTime: sample,
+                          elapsedMs: Math.round(performance.now() - started),
+                        }),
+                      );
+                    }
+                  },
+                  () => {
+                    if (!authority.aborted)
+                      console.warn("[mining-native-live] Fabric receipt unavailable", id, sample);
+                  },
+                );
+              }) satisfies NonNullable<Parameters<MiningPublisherHost["start"]>[4]>,
+            ] as const)
+          : []),
       );
       const admission = await execution.admission;
       traceTwinAdmission({ scenario: "mining", runId }, requestStartedAt);

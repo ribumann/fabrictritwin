@@ -1348,8 +1348,24 @@ let demoStatusEpoch = 0;
 let requestedSimulation = null;
 let demoStatusTimer;
 let demoStatusClosed = false;
+let nativeDemoLive = false;
 
 function drawStartupPreview() {
+  const receipt = demoRun?.nativeReceipt;
+  const liveElement = $("run-native-receipt");
+  const confirmed =
+    demoRun?.publisherStatus === "running" &&
+    receipt?.runId === demoRun.runId &&
+    Number.isFinite(Date.parse(receipt.receivedAt)) &&
+    Number.isSafeInteger(receipt.stateCount) &&
+    Number.isSafeInteger(receipt.telemetryCount);
+  const reading = receipt?.reading;
+  liveElement.hidden = !confirmed;
+  liveElement.dataset.runId = confirmed ? receipt.runId : "";
+  liveElement.dataset.telemetryCount = confirmed ? String(receipt.telemetryCount) : "0";
+  liveElement.textContent = confirmed
+    ? `Fabric live · ${reading ? `${reading.tagId}: ${number(reading.value)} ${reading.unit}. ` : ""}${receipt.stateCount} state and ${receipt.telemetryCount} telemetry events validated at ${timestamp(receipt.receivedAt)}.`
+    : "";
   const preview = demoRun?.startupPreview;
   const element = $("run-startup-preview");
   const valid =
@@ -1480,6 +1496,7 @@ async function updateDemoStatus(notice = "") {
     if (data.plantId !== "D01" || (data.run && !/^[0-9a-f-]{36}$/.test(data.run.runId)))
       throw new Error("Invalid demo status.");
     demoRun = data.run;
+    nativeDemoLive = data.nativeLive === true && data.mode === "bounded";
     drawStartupPreview();
     const managed = data.mode === "continuous";
     const active = demoRun && ["running", "stopping"].includes(demoRun.publisherStatus);
@@ -1519,6 +1536,7 @@ async function updateDemoStatus(notice = "") {
   } catch (error) {
     if (epoch !== demoStatusEpoch || demoBusy) return;
     demoRun = null;
+    nativeDemoLive = false;
     drawStartupPreview();
     $("run-start").disabled = true;
     $("run-cancel").disabled = true;
@@ -1540,7 +1558,9 @@ function scheduleDemoStatus() {
       (demoRun.publisherStatus === "running" && !demoRun.startupPreview));
   demoStatusTimer = setTimeout(
     () => void updateDemoStatus().finally(scheduleDemoStatus),
-    waitingForStartup ? 2_000 : 15_000,
+    waitingForStartup || (nativeDemoLive && demoRun?.publisherStatus === "running")
+      ? 2_000
+      : 15_000,
   );
 }
 async function demoAction(action) {
