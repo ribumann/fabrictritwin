@@ -74,14 +74,15 @@
         </div>
       </section>
       <nav class="mining-jump" aria-label="Supervisor tools">
-        <a href="#ore-flow">Ore flow</a><a href="#streams">Streams</a>
-        <a href="#diagnostics">Diagnostics</a><a href="#twin">Twin</a>
+        <a href="#twin">Twin</a><a href="#ore-flow">Ore flow</a><a href="#streams">Streams</a>
+        <a href="#diagnostics">Diagnostics</a>
         <a href="#inquiries">Inquiries</a><a href="#assistant">AI assistant</a>
       </nav>
+      <div id="plant-workbench"></div>
       <div class="mining-shift">
         <section id="ore-flow" aria-labelledby="flow-heading">
           <h2 id="flow-heading">Ore flow</h2>
-          <p>Illustrative processing circuit with rates at modeled sensor locations.</p>
+          <p>Use this equipment list for the process order and sensor locations.</p>
           <div class="flow-shared">
             <button type="button" class="secondary" data-flow-asset="D01.shared.hopper">
               Feed hopper
@@ -115,7 +116,7 @@
         <h2 id="stream-heading">Streams</h2>
         <p>
           Hopper ticks arrive every five seconds when the raw lane is enabled. Plant telemetry uses
-          separate 30- and 60-second windows. A gap means no value was observed.
+          separate 30- and 60-second windows, with gaps where observations are missing.
         </p>
         <p id="stream-empty">No live stream evidence is available.</p>
         <div id="stream-panel" hidden>
@@ -228,9 +229,9 @@
         </p>
       </details>
       <div class="mining-workspace">
-        <section id="twin" class="card mining-plant" aria-labelledby="plant-heading">
+        <section id="twin" class="mining-plant" aria-labelledby="plant-heading">
           <div class="card-header">
-            <h2 id="plant-heading">Spatial twin</h2>
+            <h2 id="plant-heading">Plant twin</h2>
             <label
               >View<select id="view">
                 <option value="3d">3D</option>
@@ -239,6 +240,7 @@
               </select></label
             >
             <button id="plant-fit" class="secondary" type="button">Fit plant</button>
+            <label><input id="plant-telemetry" type="checkbox" checked /> Sensor labels</label>
           </div>
           <details class="mining-render-options">
             <summary>Rendering &amp; layer options</summary>
@@ -276,30 +278,39 @@
             aria-label="North-up authored site plan in metres"
             hidden
           ></svg>
+          <div class="plant-legend" aria-label="Plant overlay legend">
+            <span class="legend-route">Process route</span>
+            <span class="legend-water">Water route (enable utility streams)</span>
+            <span class="legend-observed">Positive reading at a linked sensor</span>
+          </div>
           <details id="object-disclosure">
             <summary>Browse plant equipment</summary>
             <ul id="object-list" class="mining-objects" aria-label="Plant object selection"></ul>
           </details>
           <p class="muted">
-            Authored parametric meshes; dimensions are demo assumptions, not engineering truth.
-            Arrows are authored flow direction, not measured motion. Drag to orbit; scroll to zoom.
-            Keyboard selection is available in the object list.
+            Arrows show the modeled route. Sensor labels show the latest usable reading for this
+            view. Drag to orbit, scroll to zoom, or use the equipment list with a keyboard.
           </p>
         </section>
         <aside
           id="asset-detail"
-          class="card mining-drawer"
+          class="mining-drawer"
           aria-labelledby="asset-heading"
           tabindex="-1"
         >
-          <h2 id="asset-heading">Equipment detail</h2>
+          <h2 id="asset-heading">Inspect equipment</h2>
+          <p id="asset-next">Select an asset on the twin to see what to check next.</p>
           <nav class="mining-jump" aria-label="Equipment investigation">
-            <a href="#diagnostics">Diagnostics</a><a href="#twin">Show in twin</a>
+            <a id="asset-diagnostic" href="#diagnostics">Diagnostics</a>
+            <button id="asset-ask" type="button" class="secondary" disabled>Ask about this</button>
           </nav>
           <p id="asset-id">Select a module in the plant or object list.</p>
           <p id="asset-status">Status: unknown</p>
           <p id="incident-evidence"></p>
-          <div id="readings" class="mining-readings"></div>
+          <details>
+            <summary>Sensor readings and provenance</summary>
+            <div id="readings" class="mining-readings"></div>
+          </details>
           <div class="mining-links">
             <div>
               <h3>Upstream</h3>
@@ -352,6 +363,7 @@
           <textarea id="mining-question" rows="3" maxlength="1000" required disabled></textarea>
           <button id="mining-ask-submit" type="submit" disabled>Ask about this run</button>
         </form>
+        <p id="assistant-draft-context" role="status"></p>
         <p id="mining-answer-status" role="status"></p>
         <div id="mining-answer"></div>
         <details id="mining-answer-evidence" hidden>

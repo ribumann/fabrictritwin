@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildupObservation,
   diagnosticAssets,
+  investigationPrompt,
   orePaths,
+  plantEvidence,
   possibleBuildup,
 } from "../src/ui/public/mining/supervisor.js";
 
@@ -25,6 +27,34 @@ const at = (sample: number, level: number, feed: number) =>
   buildupObservation(readings(sample, level, feed), new Date(sample).toISOString());
 
 describe("Mining supervisor evidence", () => {
+  it("emphasizes only instrumented feed routes with positive evidence", () => {
+    const records = new Map([
+      ["D01.A.crusher.ore_flow", { value: 42 }],
+      ["D01.B.crusher.ore_flow", { value: 0 }],
+      ["D01.C.sorter.ore_flow", { value: 7 }],
+    ]);
+    const evidence = plantEvidence(catalog, (id) => records.get(id), String, "D01.B.dms");
+    const active = catalog.streams.filter((route) => evidence.activeRoutes.has(route.id));
+    expect(active.map((route) => route.target.module_id)).toEqual([
+      "D01.A.crusher",
+      "D01.C.sorter",
+    ]);
+    expect(evidence.readings.get("D01.B.crusher")?.label).toContain("0 t/h");
+    expect(evidence.readings.get("D01.C.crusher")?.label).toContain("unknown");
+    expect(evidence.readings.has("D01.A.dms")).toBe(false);
+    expect(evidence.readings.has("D01.B.dms")).toBe(true);
+  });
+
+  it("drafts a bounded investigation from the selected asset and evidence timestamp", () => {
+    const draft = investigationPrompt({
+      moduleId: "D01.B.crusher",
+      incident: { ruleId: "bearing-b-condition", scopeId: "B" },
+      asOf: "2026-03-01T00:02:00Z",
+    });
+    expect(draft).toContain("D01.B.crusher");
+    expect(draft).toContain("bearing-b-condition (B)");
+    expect(draft).toContain("2026-03-01T00:02:00.000Z");
+  });
   it("follows the authored ore circuit and only offers compatible diagnostic modules", () => {
     expect(orePaths(catalog).map(({ modules }) => modules.map(({ kind }) => kind))).toEqual(
       Array.from({ length: 3 }, () => ["crusher", "scrubber", "screen", "dms", "medium", "sorter"]),

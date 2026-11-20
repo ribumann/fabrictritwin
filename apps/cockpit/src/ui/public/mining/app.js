@@ -1,5 +1,12 @@
 import { collectPreview, collectReceipt, drawStreamCharts, streamWindow } from "./stream.js";
-import { buildupObservation, diagnosticAssets, orePaths, possibleBuildup } from "./supervisor.js";
+import {
+  buildupObservation,
+  diagnosticAssets,
+  investigationPrompt,
+  orePaths,
+  plantEvidence,
+  possibleBuildup,
+} from "./supervisor.js";
 import {
   MiningReads,
   MiningPolling,
@@ -41,6 +48,13 @@ import {
 } from "./appearance.js";
 
 const $ = (id) => document.getElementById(id);
+const workbench = $("plant-workbench");
+const workspace = document.querySelector(".mining-workspace");
+const rail = document.createElement("div");
+rail.className = "mining-investigation-rail";
+rail.append(document.querySelector(".mining-incidents"), $("asset-detail"));
+workspace.append(rail);
+workbench.append(document.querySelector(".mining-kpis"), workspace);
 const text = (id, value) => {
   $(id).textContent = value;
 };
@@ -116,6 +130,7 @@ function configurePolling() {
     !answerController;
   $("mining-question").disabled = !canAsk;
   $("mining-ask-submit").disabled = !canAsk;
+  $("asset-ask").disabled = !canAsk || !(selected || selectedIncident);
 }
 function query() {
   const finishedAt =
@@ -161,7 +176,32 @@ function drawPlant() {
     ]),
   );
   const topology = new Set(selectedIncident?.affectedModuleIds ?? []);
-  renderTop($("plant-top"), catalog, lines, utilities, selected, select, statuses, topology);
+  const evidence = $("plant-telemetry").checked
+    ? plantEvidence(
+        catalog,
+        (id) => {
+          const row =
+            context?.mode === "continuous"
+              ? continuousTagReading(continuousOverview, id)
+              : overview?.quality === "good" &&
+                overview.latest.readings.find((reading) => reading.tagId === id);
+          return usable(row) ? row : null;
+        },
+        number,
+        selected,
+      )
+    : undefined;
+  renderTop(
+    $("plant-top"),
+    catalog,
+    lines,
+    utilities,
+    selected,
+    select,
+    statuses,
+    topology,
+    evidence,
+  );
   const list = $("object-list");
   list.replaceChildren();
   for (const module of visibleModules(catalog, lines)) {
@@ -191,7 +231,7 @@ function drawPlant() {
     item.append(button);
     list.append(item);
   }
-  plant3d?.update(lines, utilities, selected, statuses, topology);
+  plant3d?.update(lines, utilities, selected, statuses, topology, evidence);
 }
 async function loadAppearanceBundle() {
   const sourceRoot = "/mining/plant/reconstructed/source/";
@@ -583,7 +623,15 @@ function drawDiagnosticScope() {
 
 function drawDrawer() {
   if (!catalog) return;
+  $("asset-ask").disabled = $("mining-question").disabled || !(selected || selectedIncident);
+  $("asset-diagnostic").hidden = !selected;
   if (!selected) {
+    text(
+      "asset-next",
+      selectedIncident
+        ? "Review the evidence below, then compare the affected lines."
+        : "Select equipment on the twin or use the equipment list.",
+    );
     text("asset-heading", selectedIncident?.title ?? "No module selected");
     text("asset-id", selectedIncident ? `Scope ${selectedIncident.scopeId}` : "No module selected");
     text(
@@ -606,6 +654,26 @@ function drawDrawer() {
     return;
   }
   const module = catalog.modules.find((item) => item.id === selected);
+  const next = {
+    crusher: "Compare feed across lines, then check vibration against operating load.",
+    dms: "Check the density trend with feed pressure before interpreting a change.",
+    water: "Compare tank level and delivered flow, then check whether multiple lines slowed.",
+    hopper: "Compare inventory and line feed before treating a rise as congestion.",
+    sorter:
+      "Compare sorter feed with upstream feed. This is concentrate feed, not diamond recovery.",
+  }[module.kind];
+  text(
+    "asset-next",
+    selectedIncident
+      ? "Start with the assessment evidence below. Use trends to check whether the signal persists."
+      : (next ?? "Check upstream and downstream readings to put this asset in context."),
+  );
+  $("asset-diagnostic").textContent = ["crusher", "dms", "water"].includes(module.kind)
+    ? "Open diagnostic trend"
+    : "Compare line feeds";
+  $("asset-diagnostic").href = ["crusher", "dms", "water"].includes(module.kind)
+    ? "#diagnostics"
+    : "#feed-chart";
   text("asset-heading", module.label);
   text("asset-id", selected);
   const continuous = context?.mode === "continuous";
@@ -1358,9 +1426,57 @@ function invalidate() {
   text("mining-answer-status", "");
   text("mining-answer-source", "");
   $("mining-answer-evidence").hidden = true;
+  if (stripInvestigation($("mining-question"))) {
+    text("assistant-draft-context", "Investigation context removed because the view changed.");
+  }
   reads.abort();
   polling.stop();
 }
+let insertedInvestigation = "";
+function stripInvestigation(field) {
+  if (!insertedInvestigation) return false;
+  if (!field.value.endsWith(insertedInvestigation)) {
+    insertedInvestigation = "";
+    text(
+      "assistant-draft-context",
+      "The view changed. Check the context in your edited draft before sending.",
+    );
+    return false;
+  }
+  field.value = field.value.slice(0, -insertedInvestigation.length).trimEnd();
+  insertedInvestigation = "";
+  return true;
+}
+$("asset-ask").addEventListener("click", () => {
+  const field = $("mining-question");
+  if (field.disabled) return;
+  const prompt = investigationPrompt({
+    moduleId: selected,
+    incident: selectedIncident,
+    asOf: (context?.mode === "continuous" ? continuousOverview : overview)?.asOf,
+  });
+  if (!prompt) return;
+  const existing = (
+    insertedInvestigation && field.value.endsWith(insertedInvestigation)
+      ? field.value.slice(0, -insertedInvestigation.length)
+      : field.value
+  ).trim();
+  const combined = existing ? `${existing}\n\n${prompt}` : prompt;
+  if (combined.length > field.maxLength) {
+    text(
+      "assistant-draft-context",
+      "Shorten your existing draft before adding investigation context.",
+    );
+  } else {
+    field.value = combined;
+    insertedInvestigation = prompt;
+    text(
+      "assistant-draft-context",
+      "Investigation context added. Review the draft before sending.",
+    );
+  }
+  field.focus();
+});
 $("mining-ask").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (
@@ -1857,6 +1973,7 @@ document.querySelectorAll('input[name="line"]').forEach((input) =>
   }),
 );
 $("utilities").addEventListener("change", drawPlant);
+$("plant-telemetry").addEventListener("change", drawPlant);
 document.addEventListener("visibilitychange", () => {
   invalidate();
   configurePolling();
