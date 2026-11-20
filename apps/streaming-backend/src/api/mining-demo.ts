@@ -7,7 +7,10 @@ import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulato
 import { verifyMcpCallerClaimsWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningPublisherHost } from "../mining/publisher-host.js";
-import { configuredMiningPublisherRuntime } from "../mining/publisher-runtime.js";
+import {
+  configuredMiningPublisherRuntime,
+  type MiningStartupPreview,
+} from "../mining/publisher-runtime.js";
 import { MiningRunCoordinator, isContinuousMiningRun } from "../mining/run-coordinator.js";
 import { MiningCoordinationError, type MiningStore } from "../mining/store.js";
 import {
@@ -76,6 +79,7 @@ export function createMiningDemoRouter(options: Options): Router {
     options.verifyClaims ??
     ((req: Request, signal: AbortSignal) => verifyMcpCallerClaimsWithErrors(req, signal, env));
   const host = options.host ?? createMiningDemoHost(env);
+  let startupPreview: MiningStartupPreview | undefined;
   const curated = options.curated ?? createMiningDemoProvider(env);
   const answer = options.answer ?? createMiningAnswer(env);
   const continuous = options.continuous ?? createMiningContinuousProvider(env);
@@ -279,6 +283,12 @@ export function createMiningDemoRouter(options: Options): Router {
               startedAt: visible.run?.startedAt,
               ...(!continuousMode && visible.run && !isContinuousMiningRun(visible.run)
                 ? { stopAt: visible.run.stopAt }
+                : {}),
+              ...(!continuousMode &&
+              visible.phase === "running" &&
+              !visible.stopRequested &&
+              startupPreview?.runId === visible.runId
+                ? { startupPreview }
                 : {}),
               ...(continuousMode
                 ? {
@@ -910,7 +920,14 @@ export function createMiningDemoRouter(options: Options): Router {
         throw new MiningCoordinationError("conflict", "Demo identifier already exists.");
       }
       signal.throwIfAborted();
-      const execution = host.start({ plantId: "D01", requestId: runId, durationSeconds }, signal);
+      const execution = host.start(
+        { plantId: "D01", requestId: runId, durationSeconds },
+        signal,
+        undefined,
+        (preview) => {
+          startupPreview = preview;
+        },
+      );
       const admission = await execution.admission;
       traceTwinAdmission({ scenario: "mining", runId }, requestStartedAt);
       const incidents = options.incidents;

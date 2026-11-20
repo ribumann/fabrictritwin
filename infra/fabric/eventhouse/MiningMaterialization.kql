@@ -3,6 +3,10 @@
 .alter table mining_TelemetryRaw policy streamingingestion '{"IsEnabled":false}'
 .alter table mining_PlantStateEvents policy streamingingestion '{"IsEnabled":false}'
 
+// Low-volume demo inputs: shorten the queue window without changing validation.
+.alter table mining_TelemetryRaw policy ingestionbatching '{"MaximumBatchingTimeSpan":"00:00:10","MaximumNumberOfItems":500,"MaximumRawDataSizeMB":300}'
+.alter table mining_PlantStateEvents policy ingestionbatching '{"MaximumBatchingTimeSpan":"00:00:10","MaximumNumberOfItems":500,"MaximumRawDataSizeMB":300}'
+
 .alter table mining_ValidatedTelemetry policy update @'[{"IsEnabled":true,"Source":"mining_TelemetryRaw","Query":"mining_ClassifyTelemetry() | where disposition == \"ACCEPTED\" | project plant_id,run_id,event_id,sequence,timestamp=event_time,received_at,module_id,equipment_id,tag_id,value,unit,quality,interval_seconds,catalog_version,profile_version,source_contract_version,payload_fingerprint","IsTransactional":false,"PropagateIngestionProperties":false}]'
 .alter table mining_ValidatedState policy update @'[{"IsEnabled":true,"Source":"mining_PlantStateEvents","Query":"mining_ClassifyState() | where disposition == \"ACCEPTED\" | project plant_id,run_id,event_id,sequence,timestamp=event_time,received_at,scope_id,scheduled_running,state,catalog_version,source_contract_version,payload_fingerprint","IsTransactional":false,"PropagateIngestionProperties":false}]'
 .alter table mining_Quarantine policy update @'[{"IsEnabled":true,"Source":"mining_TelemetryRaw","Query":"mining_ClassifyTelemetry() | where disposition == \"QUARANTINED\" | project source_kind,received_at,raw_event,timestamp_raw,plant_id,run_id,event_id,sequence,disposition,reason_codes,source_contract_version","IsTransactional":false,"PropagateIngestionProperties":false},{"IsEnabled":true,"Source":"mining_PlantStateEvents","Query":"mining_ClassifyState() | where disposition == \"QUARANTINED\" | project source_kind,received_at,raw_event,timestamp_raw,plant_id,run_id,event_id,sequence,disposition,reason_codes,source_contract_version","IsTransactional":false,"PropagateIngestionProperties":false}]'

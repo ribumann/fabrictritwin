@@ -3,6 +3,7 @@ import {
   type MiningPublisherAdmission,
   type MiningPublisherIncidents,
   type MiningPublisherRuntime,
+  type MiningStartupPreview,
 } from "./publisher-runtime.js";
 import type {
   MiningRunStatus,
@@ -32,10 +33,11 @@ export class MiningPublisherHost {
     input: StartMiningRun,
     requestSignal?: AbortSignal,
     incidents?: MiningPublisherIncidents,
+    onStartup?: (preview: MiningStartupPreview) => void,
   ): MiningPublisherExecution {
     const snapshot = { ...input };
     return this.launch(
-      (runtime, signal, notify) => runtime.run(snapshot, signal, incidents, notify),
+      (runtime, signal, notify) => runtime.run(snapshot, signal, incidents, notify, onStartup),
       requestSignal,
     );
   }

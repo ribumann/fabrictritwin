@@ -1346,6 +1346,24 @@ let demoRun = null;
 let demoBusy = false;
 let demoStatusEpoch = 0;
 let requestedSimulation = null;
+let demoStatusTimer;
+let demoStatusClosed = false;
+
+function drawStartupPreview() {
+  const preview = demoRun?.startupPreview;
+  const element = $("run-startup-preview");
+  const valid =
+    demoRun?.publisherStatus === "running" &&
+    preview?.runId === demoRun.runId &&
+    Number.isFinite(Date.parse(preview.sampleTime)) &&
+    Number.isFinite(preview.hopperTonnes) &&
+    preview.hopperTonnes >= 0;
+  element.textContent = valid
+    ? `Simulator startup · Hopper: ${number(preview.hopperTonnes)} t at ${timestamp(preview.sampleTime)}. Plant state sent. Hopper preview only; not Fabric-validated.`
+    : "";
+  element.dataset.runId = valid ? preview.runId : "";
+  element.hidden = !valid;
+}
 function renderAnswer(answer) {
   const container = $("mining-answer");
   container.replaceChildren();
@@ -1462,6 +1480,7 @@ async function updateDemoStatus(notice = "") {
     if (data.plantId !== "D01" || (data.run && !/^[0-9a-f-]{36}$/.test(data.run.runId)))
       throw new Error("Invalid demo status.");
     demoRun = data.run;
+    drawStartupPreview();
     const managed = data.mode === "continuous";
     const active = demoRun && ["running", "stopping"].includes(demoRun.publisherStatus);
     $("run-start").disabled = managed || !!active;
@@ -1500,6 +1519,7 @@ async function updateDemoStatus(notice = "") {
   } catch (error) {
     if (epoch !== demoStatusEpoch || demoBusy) return;
     demoRun = null;
+    drawStartupPreview();
     $("run-start").disabled = true;
     $("run-cancel").disabled = true;
     text("run-control-status", error.message);
@@ -1510,8 +1530,22 @@ async function updateDemoStatus(notice = "") {
     }
   }
 }
+function scheduleDemoStatus() {
+  clearTimeout(demoStatusTimer);
+  if (demoStatusClosed) return;
+  const waitingForStartup =
+    requestedSimulation &&
+    Date.now() - requestedSimulation.at < 20_000 &&
+    (demoRun?.runId !== requestedSimulation.runId ||
+      (demoRun.publisherStatus === "running" && !demoRun.startupPreview));
+  demoStatusTimer = setTimeout(
+    () => void updateDemoStatus().finally(scheduleDemoStatus),
+    waitingForStartup ? 2_000 : 15_000,
+  );
+}
 async function demoAction(action) {
   demoBusy = true;
+  clearTimeout(demoStatusTimer);
   demoStatusEpoch++;
   $("run-start").disabled = true;
   $("run-cancel").disabled = true;
@@ -1529,13 +1563,12 @@ async function demoAction(action) {
     notice = `${error.message} Check the run status before retrying. `;
   } finally {
     demoBusy = false;
-    await updateDemoStatus(notice);
+    await updateDemoStatus(notice).finally(scheduleDemoStatus);
   }
 }
 $("run-start").addEventListener("click", () => void demoAction("start"));
 $("run-cancel").addEventListener("click", () => void demoAction("cancel"));
-void updateDemoStatus();
-const demoStatusTimer = setInterval(() => void updateDemoStatus(), 15_000);
+void updateDemoStatus().finally(scheduleDemoStatus);
 const arrivalTimer = setInterval(drawArrival, 1_000);
 $("refresh").addEventListener("click", async () => {
   invalidate();
@@ -1610,7 +1643,8 @@ document.addEventListener("visibilitychange", () => {
 });
 addEventListener("pagehide", () => {
   invalidate();
-  clearInterval(demoStatusTimer);
+  demoStatusClosed = true;
+  clearTimeout(demoStatusTimer);
   clearInterval(arrivalTimer);
   appearanceGeneration++;
   appearanceController?.abort();

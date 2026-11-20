@@ -24,6 +24,8 @@ export interface CreateD01SimulationOptions {
   seed?: number;
   scenario?: D01Scenario;
   durationSeconds?: number;
+  /** Flush the initial state events at the first tick without changing event generation. */
+  flushStartup?: boolean;
   /** Trusted realtime execution only; cannot be combined with a finite duration. */
   continuous?: boolean;
 }
@@ -179,6 +181,7 @@ export class D01PlantSimulator {
   private readonly activeAlerts = new Set<string>();
   private lastDmsTelemetryElapsedSeconds = 0;
   private lastDmsTelemetryTimestamp = "";
+  private readonly flushStartup: boolean;
 
   constructor(
     options: CreateD01SimulationOptions,
@@ -189,6 +192,7 @@ export class D01PlantSimulator {
     this.seed = options.seed ?? 1;
     this.scenario = options.scenario ?? "normal";
     this.startedAt = new Date(options.startedAt.valueOf());
+    this.flushStartup = options.flushStartup === true && !options.continuous;
     this.durationSeconds = options.continuous
       ? null
       : (options.durationSeconds ?? defaultDurationSeconds);
@@ -301,7 +305,11 @@ export class D01PlantSimulator {
     this.pendingAlerts.push(...alertTransitions);
 
     let batch: D01SimulationBatch | null = null;
-    if (this.elapsedSeconds % 30 === 0 || this.elapsedSeconds === this.durationSeconds) {
+    if (
+      this.elapsedSeconds % 30 === 0 ||
+      this.elapsedSeconds === this.durationSeconds ||
+      (this.flushStartup && this.elapsedSeconds === stepSeconds)
+    ) {
       batch = {
         batch_id: createD01BatchId(this.runId, this.elapsedSeconds),
         timestamp,
