@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { setTimeout as sleep } from "node:timers/promises";
+import { traceTwinSend } from "../services/twin-latency.js";
 import {
   createD01Simulation,
   D01EventstreamPublisher,
@@ -209,6 +210,7 @@ export class MiningPublisherRuntime {
           simulation.step(new Date(wallDeadline));
           const batch = simulation.getPendingBatch();
           if (batch) {
+            const emittedAt = new Date().toISOString();
             const send = async (authority: AbortSignal) => {
               checkDeadline();
               const timeout = new AbortController();
@@ -220,7 +222,21 @@ export class MiningPublisherRuntime {
               const sendTick = this.clock.monotonic();
               const sendWall = this.clock.now();
               try {
-                await activeTransport.publish(batch.events, sendSignal);
+                if (continuous) {
+                  await activeTransport.publish(batch.events, sendSignal);
+                } else {
+                  await traceTwinSend(
+                    {
+                      scenario: "mining",
+                      runId: run.runId,
+                      sampleTime: batch.timestamp,
+                      emittedAt,
+                      eventCount: batch.events.length,
+                      eventId: batch.events[0]?.event_id,
+                    },
+                    () => activeTransport.publish(batch.events, sendSignal),
+                  );
+                }
                 sendSignal.throwIfAborted();
                 if (
                   this.clock.monotonic() - sendTick >= SEND_TIMEOUT_MS ||

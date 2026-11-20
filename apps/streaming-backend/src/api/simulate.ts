@@ -245,7 +245,17 @@ async function startLiveSessionSimulation(options: StartLiveSessionOptions): Pro
         sampleCount: LIVE_SESSION_SAMPLE_COUNT,
       })) {
         sessionId = tick.session.sessionId;
-        await publisher.publishSessionMetrics([tick.metric]);
+        const activePublisher = publisher;
+        await traceTwinSend(
+          {
+            scenario: "triathlon-session",
+            runId: options.runId,
+            sampleTime: new Date(tick.metric.timestamp).toISOString(),
+            emittedAt: new Date().toISOString(),
+            eventCount: 1,
+          },
+          () => activePublisher.publishSessionMetrics([tick.metric]),
+        );
         options.streamBroker.publishMetric(options.athleteId, tick.session.sessionId, tick.metric);
 
         if (!tick.isFinal) {
@@ -330,7 +340,18 @@ async function startRaceSimulation(options: StartRaceSimulationOptions): Promise
         splitCount: LIVE_RACE_SPLIT_COUNT,
         seed: Number.parseInt(options.runId.replaceAll("-", "").slice(0, 8), 16),
       })) {
-        await publisher.publishRaceSplits([tick.split]);
+        const activePublisher = publisher;
+        await traceTwinSend(
+          {
+            scenario: "triathlon-race",
+            runId: options.runId,
+            raceId: options.raceId,
+            sampleTime: new Date(tick.split.timestamp).toISOString(),
+            emittedAt: new Date().toISOString(),
+            eventCount: 1,
+          },
+          () => activePublisher.publishRaceSplits([tick.split]),
+        );
         raceStateStore.recordSplit({
           athleteId: options.athleteId,
           raceId: options.raceId,
@@ -454,6 +475,7 @@ export function createSimulateRouter(options: CreateSimulateRouterOptions = {}):
     "/trigger-session",
     requireAthleteAuthorization(getRequestedAthleteId),
     async (req: Request, res: Response<TriggerRouteResponse>): Promise<void> => {
+      const requestStartedAt = performance.now();
       const athleteId = getRequestedAthleteId(req);
       const rawDiscipline = getRawDiscipline(req);
       if (!athleteId || rawDiscipline === undefined) {
@@ -491,6 +513,7 @@ export function createSimulateRouter(options: CreateSimulateRouterOptions = {}):
         }
 
         try {
+          traceTwinAdmission({ scenario: "triathlon-session", runId }, requestStartedAt);
           await triggerSessionImpl({
             runId,
             athleteId,
@@ -521,6 +544,7 @@ export function createSimulateRouter(options: CreateSimulateRouterOptions = {}):
     "/trigger-race",
     requireAthleteAuthorization(getRequestedAthleteId),
     async (req: Request, res: Response<TriggerRouteResponse>): Promise<void> => {
+      const requestStartedAt = performance.now();
       const athleteId = getRequestedAthleteId(req);
       const raceId = getRequestedRaceId(req);
       if (!athleteId || !raceId) {
@@ -556,6 +580,7 @@ export function createSimulateRouter(options: CreateSimulateRouterOptions = {}):
         }
 
         try {
+          traceTwinAdmission({ scenario: "triathlon-race", runId }, requestStartedAt);
           await triggerRaceImpl({
             runId,
             athleteId,
@@ -585,3 +610,5 @@ export function createSimulateRouter(options: CreateSimulateRouterOptions = {}):
 
   return router;
 }
+import { performance } from "node:perf_hooks";
+import { traceTwinAdmission, traceTwinSend } from "../services/twin-latency.js";
