@@ -1,5 +1,55 @@
 import { readingAt } from "./data.js";
 
+const overlayMetric = {
+  hopper: "level",
+  crusher: "ore_flow",
+  sorter: "ore_flow",
+  water: "level",
+  dms: "medium_density",
+};
+
+export function plantEvidence(catalog, getReading, number, selected) {
+  const readings = new Map();
+  for (const module of catalog.modules) {
+    const metric = overlayMetric[module.kind];
+    if (!metric || (module.kind === "dms" && module.id !== selected)) continue;
+    const tag = catalog.telemetry_tags.find(
+      (tag) => tag.module_id === module.id && tag.metric === metric,
+    );
+    if (!tag) continue;
+    const value = getReading(tag.id);
+    readings.set(module.id, {
+      label: `${module.line === "shared" ? module.kind : `${module.line} ${module.kind}`} · ${value ? `${number(value.value)} ${tag.unit}` : "unknown"}`,
+      current: !!value,
+    });
+  }
+  const activeRoutes = new Set();
+  for (const route of catalog.streams) {
+    const id = route.target.module_id;
+    if (!(
+      (route.material === "ore" && id.endsWith(".crusher")) ||
+      (route.material === "concentrate" && id.endsWith(".sorter"))
+    ))
+      continue;
+    if (getReading(`${id}.ore_flow`)?.value > 0) activeRoutes.add(route.id);
+  }
+  return { readings, activeRoutes };
+}
+
+export function investigationPrompt({ moduleId, incident, asOf }) {
+  if (!moduleId && !incident) return "";
+  const scope = [
+    moduleId && `equipment ${moduleId}`,
+    incident && `assessment ${incident.ruleId} (${incident.scopeId})`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+  const cutoff = Number.isFinite(Date.parse(asOf))
+    ? ` The cockpit evidence cutoff was ${new Date(asOf).toISOString()}.`
+    : "";
+  return `Investigate ${scope} in the current approved D01 simulation.${cutoff} What do the available readings show, what remains uncertain, and what should I check next?`;
+}
+
 const paths = ["A", "B", "C"];
 const processMaterials = new Set([
   "ore",

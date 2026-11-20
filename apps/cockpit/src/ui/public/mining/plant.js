@@ -1,4 +1,12 @@
 const svgNs = "http://www.w3.org/2000/svg";
+const routeColors = { process: 0x64748b, water: 0x2563a6, observed: 0x08765c };
+function routeStyle(stream, evidence) {
+  return evidence?.activeRoutes.has(stream.id)
+    ? "observed"
+    : stream.material.includes("water")
+      ? "water"
+      : "process";
+}
 export function visibleModules(catalog, lines) {
   return catalog.modules.filter((module) => lines.has(module.line));
 }
@@ -48,6 +56,7 @@ export function renderTop(
   select,
   statuses = new Map(),
   topology = new Set(),
+  evidence,
 ) {
   container.replaceChildren();
   const defs = svg("defs");
@@ -76,6 +85,7 @@ export function renderTop(
       svg("polyline", {
         points: stream.route_points_m.map(([x, , z]) => `${x},${z}`).join(" "),
         "marker-end": "url(#flow-arrow)",
+        "data-route": routeStyle(stream, evidence),
       }),
     );
   }
@@ -100,6 +110,18 @@ export function renderTop(
     group.append(label);
     group.addEventListener("click", () => select(module.id));
     container.append(group);
+    const reading = evidence?.readings.get(module.id);
+    if (reading) {
+      const badge = svg("text", {
+        x,
+        y: z - depth / 2 - 1,
+        "text-anchor": "middle",
+        class: "plant-svg-reading",
+        "data-current": reading.current,
+      });
+      badge.textContent = reading.label;
+      container.append(badge);
+    }
   }
 }
 
@@ -113,6 +135,9 @@ export async function createPlant3D(container, catalog, select) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0xeef1f9);
   container.replaceChildren(renderer.domElement);
+  let overlay;
+  const badges = new Map();
+  const renderedBadges = [];
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
   camera.position.set(85, 100, 110);
@@ -196,8 +221,46 @@ export async function createPlant3D(container, catalog, select) {
   let currentUtilities = false;
   let currentStatuses = new Map();
   let currentTopology = new Set();
+  let currentEvidence;
+  const position = new THREE.Vector3();
+  const cameraSpace = new THREE.Vector3();
+  function projectReadings() {
+    const width = container.clientWidth,
+      height = container.clientHeight;
+    renderedBadges.length = 0;
+    for (const [id, badge] of badges) {
+      const target = targets.get(id);
+      position.copy(target.position);
+      position.y += target.geometry.parameters.height / 2 + 1;
+      cameraSpace.copy(position).applyMatrix4(camera.matrixWorldInverse);
+      position.project(camera);
+      const x = ((position.x + 1) * width) / 2;
+      const y = ((1 - position.y) * height) / 2;
+      // Selected equipment wins collisions; clips and overlaps are omitted, not relocated.
+      const offset = badge.offsetWidth / 2;
+      const visible =
+        target.visible &&
+        cameraSpace.z < -camera.near &&
+        Math.abs(position.z) < 1 &&
+        x - offset > 4 &&
+        x + offset < width - 4 &&
+        y > 24 &&
+        y < height &&
+        !renderedBadges.some(
+          (item) => Math.abs(item.x - x) < item.offset + offset + 5 && Math.abs(item.y - y) < 24,
+        );
+      badge.style.visibility = visible ? "visible" : "hidden";
+      if (!visible) continue;
+      badge.style.left = `${x}px`;
+      badge.style.top = `${y}px`;
+      renderedBadges.push({ x, y, offset });
+    }
+  }
   const render = () => {
-    if (enabled && !disposed) renderer.render(scene, camera);
+    if (enabled && !disposed) {
+      renderer.render(scene, camera);
+      projectReadings();
+    }
   };
   const updateLoop = () => {
     renderer.setAnimationLoop(enabled && activeMode === "reconstructed" ? render : null);
@@ -209,7 +272,7 @@ export async function createPlant3D(container, catalog, select) {
     const boxes = [...targets.values()].map((target) => new THREE.Box3().setFromObject(target));
     for (const box of boxes) bounds.union(box);
     const center = bounds.getCenter(new THREE.Vector3());
-    const direction = new THREE.Vector3(0.85, 1, 1.1).normalize();
+    const direction = new THREE.Vector3(0.45, 1.18, 1.15).normalize();
     camera.position.copy(center).add(direction);
     camera.lookAt(center);
     const inverse = camera.quaternion.clone().invert();
@@ -227,7 +290,7 @@ export async function createPlant3D(container, catalog, select) {
               Math.abs(point.y) / vertical + point.z,
             );
           }
-    camera.position.copy(center).addScaledVector(direction, distance * 1.12);
+    camera.position.copy(center).addScaledVector(direction, distance * 1.24);
     controls.target.copy(center);
     controls.update();
     render();
@@ -369,11 +432,19 @@ export async function createPlant3D(container, catalog, select) {
     }
   }
 
-  function update(lines, utilities, moduleId, statuses = new Map(), topology = new Set()) {
+  function update(
+    lines,
+    utilities,
+    moduleId,
+    statuses = new Map(),
+    topology = new Set(),
+    evidence,
+  ) {
     currentLines = new Set(lines);
     currentUtilities = utilities;
     currentStatuses = new Map(statuses);
     currentTopology = new Set(topology);
+    currentEvidence = evidence;
     selectedModuleId = moduleId;
     for (const module of catalog.modules) {
       const visible = lines.has(module.line);
@@ -401,11 +472,33 @@ export async function createPlant3D(container, catalog, select) {
       );
       if (box.visible) box.setFromObject(target);
     }
-    for (const { stream, group } of streams)
+    for (const { stream, group } of streams) {
       group.visible =
         (utilities || stream.visible_by_default) &&
         targets.get(stream.source.module_id).visible &&
         targets.get(stream.target.module_id).visible;
+      const color = routeColors[routeStyle(stream, evidence)];
+      group.children[0].material.color.setHex(color);
+      group.children[1]?.setColor(color);
+    }
+    badges.clear();
+    overlay?.replaceChildren();
+    const labels = [...(evidence?.readings ?? [])];
+    if (labels.length && !overlay) {
+      overlay = document.createElement("div");
+      overlay.className = "plant-overlays";
+      overlay.setAttribute("aria-hidden", "true");
+      container.append(overlay);
+    }
+    labels.sort(([a], [b]) => Number(b === moduleId) - Number(a === moduleId));
+    for (const [id, reading] of labels) {
+      const badge = document.createElement("span");
+      badge.className = "plant-reading";
+      badge.dataset.current = String(reading.current);
+      badge.textContent = reading.label;
+      badges.set(id, badge);
+      overlay.append(badge);
+    }
     const selected = targets.get(moduleId);
     selection.visible = !!selected?.visible;
     if (selected) selection.setFromObject(selected);
@@ -449,7 +542,14 @@ export async function createPlant3D(container, catalog, select) {
         if (mode === "clean") await loadClean(generation, controller.signal, root);
         else await loadReconstructed(generation, controller.signal, root, bundle, showScreenedOut);
         assertCurrent(generation, controller.signal);
-        update(currentLines, currentUtilities, selectedModuleId, currentStatuses, currentTopology);
+        update(
+          currentLines,
+          currentUtilities,
+          selectedModuleId,
+          currentStatuses,
+          currentTopology,
+          currentEvidence,
+        );
         updateLoop();
         renderedAppearance = { mode, bundle, showScreenedOut };
       } catch (error) {
@@ -474,6 +574,7 @@ export async function createPlant3D(container, catalog, select) {
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       controls.removeEventListener("change", render);
       controls.dispose();
+      overlay?.remove();
       disposeThreeResources([scene, ...templates.values()]);
       renderer.dispose();
     },

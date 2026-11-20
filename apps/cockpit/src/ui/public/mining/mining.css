@@ -21,6 +21,178 @@
   padding: 0.5rem 0 1.5rem;
   border-bottom: 1px solid var(--border-strong);
 }
+.mining .page-header {
+  padding-block: 0.8rem;
+}
+.mining .page-header h1 {
+  font-size: 1.4rem;
+}
+.mining .mining-session {
+  padding-bottom: 0.65rem;
+}
+.mining .mining-session h2 {
+  font-size: 1.05rem;
+}
+.mining .mining-session p {
+  margin-block: 0.35rem;
+  font-size: 0.84rem;
+}
+.mining .mining-arrival strong {
+  font-size: 1rem;
+}
+.mining #plant-workbench {
+  margin-bottom: 2rem;
+  font-size: 0.875rem;
+}
+.mining #plant-workbench .mining-kpis {
+  gap: 0;
+  padding: 0.25rem 0.65rem;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin: 0 0 0.85rem;
+}
+.mining #plant-workbench .mining-kpis article {
+  padding: 0.55rem 0.7rem;
+  background: transparent;
+  border: 0;
+}
+.mining #plant-workbench .mining-kpis h2 {
+  font-size: 0.8rem;
+}
+.mining #plant-workbench .mining-kpis strong {
+  font-size: 1.18rem;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.mining #plant-workbench .mining-kpis p {
+  font-size: 0.75rem;
+}
+.mining #plant-workbench .mining-workspace {
+  gap: 1rem;
+}
+.mining #plant-workbench .mining-plant,
+.mining #plant-workbench .mining-drawer {
+  min-width: 0;
+}
+.mining #plant-workbench .mining-drawer {
+  padding: 0.8rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.mining-investigation-rail .mining-incidents {
+  border-top: 1px solid var(--border-strong);
+  padding-block: 0.55rem 0.85rem;
+}
+.mining-investigation-rail .mining-incidents h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+.mining-investigation-rail .mining-incidents p {
+  margin-block: 0.3rem;
+}
+.mining-investigation-rail .mining-jump {
+  margin-bottom: 0.45rem;
+  padding-block: 0.35rem;
+}
+.mining-investigation-rail .mining-drawer > p {
+  margin-block: 0.35rem;
+}
+.mining-investigation-rail .mining-links {
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.mining-investigation-rail .mining-links button {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.76rem;
+  min-height: 2rem;
+}
+.mining #plant-workbench .card-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.8rem;
+  align-items: center;
+}
+.mining #plant-workbench .card-header h2 {
+  margin: 0 auto 0 0;
+  font-size: 1.2rem;
+}
+.mining #plant-workbench :is(#plant-3d, #plant-top) {
+  height: clamp(340px, 49vh, 500px);
+}
+.mining #plant-3d {
+  position: relative;
+}
+.plant-overlays {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.plant-reading {
+  position: absolute;
+  padding: 0.12rem 0.32rem;
+  visibility: hidden;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 0.2rem;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+.plant-reading[data-current="true"] {
+  border-color: #08765c;
+}
+#plant-top .plant-svg-reading {
+  font-size: 1.7px;
+  paint-order: stroke;
+  stroke: var(--surface-muted);
+  stroke-width: 0.55px;
+  stroke-linejoin: round;
+}
+#plant-top polyline[data-route="water"] {
+  stroke: #2563a6;
+}
+#plant-top polyline[data-route="observed"] {
+  stroke: #08765c;
+  stroke-width: 0.55px;
+}
+.plant-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  padding-block: 0.55rem;
+}
+.plant-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 0.9rem;
+  vertical-align: middle;
+  margin-inline-end: 0.35rem;
+  border-top: 2px solid #64748b;
+}
+.plant-legend .legend-water::before {
+  border-color: #2563a6;
+}
+.plant-legend .legend-observed::before {
+  border-color: #08765c;
+}
+.mining #asset-next {
+  margin-block: 0.35rem;
+}
+.mining #asset-id {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .mining #plant-workbench :is(#plant-3d, #plant-top) {
+    height: 310px;
+  }
+  .plant-reading {
+    font-size: 0.65rem;
+  }
+}
 .mining-jump,
 .flow-shared {
   display: flex;

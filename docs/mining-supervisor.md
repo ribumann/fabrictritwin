@@ -9,7 +9,10 @@ shared ten-minute simulation; they do not operate physical equipment.
 
 1. Check publisher status, the Fabric receipt, and standard-ingestion reconciliation
    independently. An arrived hopper tick does not prove that the rest of the plant is current.
-2. Scan Lines A, B and C in **Ore flow**. The authored process route includes shared feed
+2. Scan the compact headline KPIs, then inspect Lines A, B and C on the **Plant twin**.
+   The same sensor overlays are available in 3D and top view. Green route emphasis means a
+   positive reading at a linked feed sensor; it does not measure motion along the route.
+   **Ore flow** remains available as a process-order list. The authored process route includes shared feed
    and water, and separates ore, product and tailings. Only catalog sensor locations get
    rates; a missing or unusable reading is **unknown**. Open a node or incident to
    inspect its evidence. **Needs attention** lists assessed incidents separately from
@@ -19,9 +22,10 @@ shared ten-minute simulation; they do not operate physical equipment.
    compatible equipment and uses bounded Fabric trend reads. Live trends for the
    completed approved run stay anchored to its end. Replay pins the requested time;
    live receipts and live incidents are not reinterpreted as historical evidence.
-4. Open **Twin** for spatial context, **Inquiries** for the approved saved queries, or
-   **AI assistant** for interpretation of bounded evidence. The board does not require
-   an AI response or a working 3D view.
+4. Follow the selected asset's next check in the investigation panel, or choose **Ask about
+   this** to draft a question with the asset, available assessment identifier and evidence cutoff.
+   The text is editable and is only sent when submitted. **Inquiries** provides approved saved
+   queries. The board does not require an AI response or a working 3D view.
 
 ## Simulator red-team and field cross-check
 
