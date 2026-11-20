@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
+import { traceTwinAdmission } from "../services/twin-latency.js";
 import { Router, type Request, type Response } from "express";
 import type { JWTPayload } from "jose";
 import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulator/mining";
@@ -880,6 +881,7 @@ export function createMiningDemoRouter(options: Options): Router {
     }
   });
   router.post("/runs/start", async (req, res) => {
+    const requestStartedAt = performance.now();
     if (continuousMode) {
       error(
         res,
@@ -910,6 +912,7 @@ export function createMiningDemoRouter(options: Options): Router {
       signal.throwIfAborted();
       const execution = host.start({ plantId: "D01", requestId: runId, durationSeconds }, signal);
       const admission = await execution.admission;
+      traceTwinAdmission({ scenario: "mining", runId }, requestStartedAt);
       const incidents = options.incidents;
       if (incidents) {
         void execution.completion

@@ -280,6 +280,34 @@ its topology checks. See [visual UAT examples](screenshots.md).
 
 ## Technical debt worth tackling
 
+### Measure live latency
+
+Use the browser probe once per scenario against an idle demo, then query the
+exact run ID using a private Fabric identity. The browser probe needs
+Playwright and Microsoft Edge, and starts a real shared run.
+
+```powershell
+node .\scripts\simulate\measure-twin-latency.mjs $origin mining
+node .\scripts\simulate\measure-twin-latency.mjs $origin triathlon
+.\scripts\simulate\measure-fabric-latency.ps1 -SubscriptionId $subscription `
+  -KustoEndpoint $cluster -Database $database -Scenario mining -RunId $runId
+```
+
+In the backend console logs, filter `telemetry=twin-latency-v1` by `runId`.
+`admission` measures the admitted backend handler; `send` records wall-clock
+generation and SDK send boundaries plus monotonic send duration. Correlate
+Triathlon session rows by run ID and sample time and Mining by event ID where
+available, otherwise by batch sample time. Race publisher traces also carry
+the race ID; the browser/query probe runs a Triathlon **session** by default.
+Treat simulated sample timestamps as join keys, not as wall-clock emission.
+
+The sender's acknowledgement is not an independent Event Hubs enqueue
+timestamp. The exact-run KQL probe observes Eventhouse table receipts, and
+Mining separately exposes raw and validated receipts. It does not expose
+individual Eventstream operator timestamps. Compare clocks only at the
+precision they support. Triathlon renders from WebSocket after successful send,
+without waiting for Eventhouse, while Mining polls a Fabric-backed API.
+
 Prioritize durable Triathlon admission/results, automated scoped route recovery,
 repeatable new-tenant bootstrap, schema/diagram drift checks and systematic
 failure/load tests. Native Mining Operations Agent rule acceptance and live
