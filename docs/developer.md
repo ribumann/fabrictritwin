@@ -302,11 +302,12 @@ the race ID; the browser/query probe runs a Triathlon **session** by default.
 Treat simulated sample timestamps as join keys, not as wall-clock emission.
 
 The sender's acknowledgement is not an independent Event Hubs enqueue
-timestamp. The exact-run KQL probe observes Eventhouse table receipts, and
-Mining separately exposes raw and validated receipts. It does not expose
-individual Eventstream operator timestamps. Compare clocks only at the
-precision they support. Triathlon renders from WebSocket after successful send,
-without waiting for Eventhouse, while Mining polls a Fabric-backed API.
+timestamp. The exact-run probe reads enqueue and processing timestamps when
+the Eventstream envelope preserves them, and separately reads Eventhouse raw
+and Mining validated receipts. `processedAt` is the timestamp supplied by the
+route, not a separate timestamp per operator. Null means the stage was not
+observed. Triathlon renders from WebSocket after successful send, without
+waiting for Eventhouse, while Mining polls a Fabric-backed API.
 
 Prioritize durable Triathlon admission/results, automated scoped route recovery,
 repeatable new-tenant bootstrap, schema/diagram drift checks and systematic

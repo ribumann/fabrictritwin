@@ -20,13 +20,15 @@
 
     latitude:real,
 
-    longitude:real
+    longitude:real,
+    EventEnqueuedUtcTime:datetime,
+    EventProcessedUtcTime:datetime
 
 )
 
 
 
-.create-or-alter table SessionMetric ingestion json mapping 'sessionmetric_json_map' '[{"column":"sessionId","Properties":{"path":"$.sessionId"}},{"column":"timestamp","Properties":{"path":"$.timestamp"}},{"column":"heartRate","Properties":{"path":"$.heartRate"}},{"column":"power","Properties":{"path":"$.power"}},{"column":"pace","Properties":{"path":"$.pace"}},{"column":"cadence","Properties":{"path":"$.cadence"}},{"column":"latitude","Properties":{"path":"$.latitude"}},{"column":"longitude","Properties":{"path":"$.longitude"}}]'
+.create-or-alter table SessionMetric ingestion json mapping 'sessionmetric_json_map' '[{"column":"sessionId","Properties":{"path":"$.sessionId"}},{"column":"timestamp","Properties":{"path":"$.timestamp"}},{"column":"heartRate","Properties":{"path":"$.heartRate"}},{"column":"power","Properties":{"path":"$.power"}},{"column":"pace","Properties":{"path":"$.pace"}},{"column":"cadence","Properties":{"path":"$.cadence"}},{"column":"latitude","Properties":{"path":"$.latitude"}},{"column":"longitude","Properties":{"path":"$.longitude"}},{"column":"EventEnqueuedUtcTime","Properties":{"path":"$.EventEnqueuedUtcTime"}},{"column":"EventProcessedUtcTime","Properties":{"path":"$.EventProcessedUtcTime"}}]'
 
 
 .create-merge table RaceSplit (
@@ -45,13 +47,15 @@
 
     leg:string,
 
-    isFinish:bool
+    isFinish:bool,
+    EventEnqueuedUtcTime:datetime,
+    EventProcessedUtcTime:datetime
 
 )
 
 
 
-.create-or-alter table RaceSplit ingestion json mapping 'racesplit_json_map' '[{"column":"raceId","Properties":{"path":"$.raceId"}},{"column":"timestamp","Properties":{"path":"$.timestamp"}},{"column":"distanceCoveredMeters","Properties":{"path":"$.distanceCoveredMeters"}},{"column":"currentPaceSecPerKm","Properties":{"path":"$.currentPaceSecPerKm"}},{"column":"plannedPaceSecPerKm","Properties":{"path":"$.plannedPaceSecPerKm"}},{"column":"currentHeartRate","Properties":{"path":"$.currentHeartRate"}},{"column":"leg","Properties":{"path":"$.leg"}},{"column":"isFinish","Properties":{"path":"$.isFinish"}}]'
+.create-or-alter table RaceSplit ingestion json mapping 'racesplit_json_map' '[{"column":"raceId","Properties":{"path":"$.raceId"}},{"column":"timestamp","Properties":{"path":"$.timestamp"}},{"column":"distanceCoveredMeters","Properties":{"path":"$.distanceCoveredMeters"}},{"column":"currentPaceSecPerKm","Properties":{"path":"$.currentPaceSecPerKm"}},{"column":"plannedPaceSecPerKm","Properties":{"path":"$.plannedPaceSecPerKm"}},{"column":"currentHeartRate","Properties":{"path":"$.currentHeartRate"}},{"column":"leg","Properties":{"path":"$.leg"}},{"column":"isFinish","Properties":{"path":"$.isFinish"}},{"column":"EventEnqueuedUtcTime","Properties":{"path":"$.EventEnqueuedUtcTime"}},{"column":"EventProcessedUtcTime","Properties":{"path":"$.EventProcessedUtcTime"}}]'
 
 
 // Lightweight helper views for read-oriented experiences.

@@ -21,18 +21,28 @@ $query = if ($Scenario -eq 'triathlon') {
     @"
 SessionMetric
 | where sessionId == "$RunId"
-| project eventKey=tostring(sessionId), sampleTime=timestamp, rawReceipt=ingestion_time()
+| project eventKey=tostring(sessionId), sampleTime=timestamp, rawReceipt=ingestion_time(),
+    enqueuedAt=column_ifexists("EventEnqueuedUtcTime", datetime(null)),
+    processedAt=column_ifexists("EventProcessedUtcTime", datetime(null))
 | order by sampleTime asc
 | take 100
 "@
 } else {
     @"
+let raw = union mining_TelemetryRaw, mining_PlantStateEvents
+| where tostring(event.run_id) == "$RunId"
+| project eventKey=tostring(event.event_id), rawReceipt=ingestion_time(),
+    enqueuedAt=todatetime(event.EventEnqueuedUtcTime),
+    processedAt=todatetime(event.EventProcessedUtcTime)
+| summarize arg_min(rawReceipt, enqueuedAt, processedAt) by eventKey;
 union
     (mining_ValidatedTelemetry | extend eventKind="telemetry"),
     (mining_ValidatedState | extend eventKind="state")
 | where run_id == "$RunId"
 | extend validatedReceipt=ingestion_time()
-| project eventKind, eventKey=event_id, sampleTime=timestamp, rawReceipt=received_at, validatedReceipt
+| project eventKind, eventKey=event_id, sampleTime=timestamp, validatedReceipt
+| join kind=leftouter raw on eventKey
+| project eventKind, eventKey, sampleTime, enqueuedAt, processedAt, rawReceipt, validatedReceipt
 | order by sampleTime asc, eventKey asc
 | take 2000
 "@
