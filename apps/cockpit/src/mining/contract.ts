@@ -11,6 +11,7 @@ export interface MiningReading {
   unit: string;
   sampleTime: string | null;
   ingestionTime: string | null;
+  receivedAt?: string | null;
   quality: MiningQuality;
   ageSeconds: number | null;
   normalBand: [number, number] | null;

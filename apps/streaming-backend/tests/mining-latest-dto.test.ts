@@ -83,8 +83,12 @@ describe("latest mining source mapping", () => {
       received_at: input.asOf,
     });
     expect(mapLatestRows(input, rows).readings[0].ingestionTime).toBeNull();
+    expect(mapLatestRows(input, rows).readings[0].receivedAt).toBe(input.asOf);
     rows[0].received_at = null;
     expect(mapLatestRows(input, rows).readings[0].ingestionTime).toBeNull();
+    expect(mapLatestRows(input, rows).readings[0].receivedAt).toBeNull();
+    rows[0].received_at = "2026-01-01T00:05:01.000Z";
+    expect(() => mapLatestRows(input, rows)).toThrow("receipt exceeds query time");
     rows[0].received_at = "not-a-timestamp";
     expect(() => mapLatestRows(input, rows)).toThrow("timestamp");
   });

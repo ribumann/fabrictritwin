@@ -79,6 +79,7 @@ export function mapLatestRows(
       unit: string;
       sampleTime: string | null;
       ingestionTime: string | null;
+      receivedAt: string | null;
       quality: Quality;
       ageSeconds: number | null;
       normalBand: null;
@@ -116,6 +117,7 @@ export function mapLatestRows(
       let quality: Quality;
       let age: number | null = null;
       let sampleTime: string | null = null;
+      let receivedAt: string | null = null;
       let value: number | null = null;
       if (row.status === "UNKNOWN_NO_OBSERVATION") {
         if (
@@ -140,7 +142,10 @@ export function mapLatestRows(
           return fail("Invalid latest reading.");
         }
         const eventTime = instant(row.event_time);
-        if (row.received_at !== null) instant(row.received_at);
+        if (row.received_at !== null) {
+          if (instant(row.received_at) > asOf) return fail("Latest receipt exceeds query time.");
+          receivedAt = row.received_at;
+        }
         if (
           eventTime > asOf ||
           row.age_seconds !== Math.floor(asOf / 1000) - Math.floor(eventTime / 1000)
@@ -179,6 +184,7 @@ export function mapLatestRows(
         sampleTime,
         // A non-null source receipt is not proof of raw ingestion provenance.
         ingestionTime: null,
+        receivedAt,
         quality,
         ageSeconds: age,
         normalBand: null,
