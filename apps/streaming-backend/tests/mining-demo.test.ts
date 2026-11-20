@@ -538,6 +538,8 @@ describe("public mining demo service boundary", () => {
       expect.any(AbortSignal),
       undefined,
       expect.any(Function),
+      undefined,
+      expect.any(Function),
     );
     expect(documents.has(`public-demo/${result.body.runId}.json`)).toBe(true);
     expect(result.body.ingestionStatus).toBe("unknown");
@@ -587,6 +589,16 @@ describe("public mining demo service boundary", () => {
     expect(incidents.status).toBe(503);
     expect(incidents.body.error.code).toBe("mining_incidents_unavailable");
     const status = await request(app).get("/demo/runs/status");
+    const point = {
+      runId: started.body.runId,
+      sampleTime: new Date(Date.parse(status.body.run.startedAt) + 5_000).toISOString(),
+      hopperTonnes: 780,
+    };
+    start.mock.calls[0][5]!(point);
+    expect((await request(app).get("/demo/runs/status")).body).toMatchObject({
+      previewCadenceSeconds: 5,
+      run: { simulatorPreview: [point] },
+    });
     expect(Date.parse(status.body.run.stopAt) - Date.parse(status.body.run.startedAt)).toBe(
       600_000,
     );
@@ -600,5 +612,6 @@ describe("public mining demo service boundary", () => {
       .send({ plantId: "D01", runId: started.body.runId });
     expect(cancelled.status).toBe(202);
     expect(cancelled.body).toMatchObject({ stopRequested: true, ingestionStatus: "unknown" });
+    expect((await request(app).get("/demo/runs/status")).body.run).not.toHaveProperty("simulatorPreview");
   });
 });

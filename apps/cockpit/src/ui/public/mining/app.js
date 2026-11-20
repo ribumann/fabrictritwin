@@ -1,3 +1,4 @@
+import { collectPreview, collectReceipt, drawStreamCharts, streamWindow } from "./stream.js";
 import {
   MiningReads,
   MiningPolling,
@@ -1349,8 +1350,55 @@ let requestedSimulation = null;
 let demoStatusTimer;
 let demoStatusClosed = false;
 let nativeDemoLive = false;
+let fastDemoStatus = false;
+let streamRunId;
+let streamReceipts = [];
+let streamPreview = [];
+let renderedStream;
+
+function drawStream() {
+  const panel = $("stream-panel");
+  panel.hidden = mode !== "live" || !demoRun || (!fastDemoStatus && !nativeDemoLive);
+  if (panel.hidden) return;
+  if (streamRunId !== demoRun.runId) {
+    streamRunId = demoRun.runId;
+    streamReceipts = [];
+    streamPreview = [];
+  }
+  streamReceipts = collectReceipt(streamReceipts, demoRun);
+  if (demoRun.publisherStatus === "running" && !demoRun.stopRequested) {
+    const points = collectPreview(demoRun);
+    if (points.length) streamPreview = points;
+  }
+  const revision = JSON.stringify([streamRunId, streamReceipts, streamPreview]);
+  if (revision !== renderedStream) {
+    drawStreamCharts(streamReceipts, streamPreview, $, number);
+    renderedStream = revision;
+  }
+  drawStreamWindow();
+}
+
+function drawStreamWindow() {
+  const element = $("stream-window");
+  const window = nativeDemoLive && !$("stream-panel").hidden
+    ? streamWindow(demoRun, streamReceipts)
+    : null;
+  element.hidden = !window;
+  if (!window) return;
+  element.dataset.state = window.state;
+  $("stream-progress").value = window.progress;
+  text(
+    "stream-phase",
+    window.state === "overdue"
+      ? "Overdue · expected Fabric batch not observed"
+      : window.state === "arriving"
+        ? "Window closed · awaiting Fabric receipt"
+        : `${window.last ? "Between batches" : "First window filling"} · next sample in ${window.remaining}s`,
+  );
+}
 
 function drawStartupPreview() {
+  drawStream();
   const receipt = demoRun?.nativeReceipt;
   const liveElement = $("run-native-receipt");
   const confirmed =
@@ -1402,6 +1450,7 @@ function renderAnswer(answer) {
 }
 function drawArrival() {
   if (document.hidden) return;
+  drawStreamWindow();
   const data = mode === "live" ? (continuousOverview ?? overview) : null;
   const timing = simulationTiming(demoRun, data);
   const seconds = (value) => `${Math.round(value)}s`;
@@ -1497,6 +1546,7 @@ async function updateDemoStatus(notice = "") {
       throw new Error("Invalid demo status.");
     demoRun = data.run;
     nativeDemoLive = data.nativeLive === true && data.mode === "bounded";
+    fastDemoStatus = data.previewCadenceSeconds === 5 && data.mode === "bounded";
     drawStartupPreview();
     const managed = data.mode === "continuous";
     const active = demoRun && ["running", "stopping"].includes(demoRun.publisherStatus);
@@ -1537,6 +1587,7 @@ async function updateDemoStatus(notice = "") {
     if (epoch !== demoStatusEpoch || demoBusy) return;
     demoRun = null;
     nativeDemoLive = false;
+    fastDemoStatus = false;
     drawStartupPreview();
     $("run-start").disabled = true;
     $("run-cancel").disabled = true;
@@ -1558,7 +1609,7 @@ function scheduleDemoStatus() {
       (demoRun.publisherStatus === "running" && !demoRun.startupPreview));
   demoStatusTimer = setTimeout(
     () => void updateDemoStatus().finally(scheduleDemoStatus),
-    waitingForStartup || (nativeDemoLive && demoRun?.publisherStatus === "running")
+    waitingForStartup || ((nativeDemoLive || fastDemoStatus) && demoRun?.publisherStatus === "running")
       ? 2_000
       : 15_000,
   );
@@ -1597,6 +1648,7 @@ $("refresh").addEventListener("click", async () => {
 $("mode").addEventListener("change", async () => {
   invalidate();
   mode = $("mode").value;
+  drawStream();
   $("replay-label").hidden = mode !== "replay";
   text("mode-label", mode.toUpperCase());
   if (mode === "replay") {

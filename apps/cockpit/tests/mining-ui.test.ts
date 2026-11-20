@@ -5,6 +5,7 @@ import ts from "typescript";
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { D01PlantCatalog } from "@triathlon-twin/simulator/mining";
+import { collectPreview, collectReceipt, streamWindow } from "../src/ui/public/mining/stream.js";
 import {
   MiningReads,
   MiningPolling,
@@ -38,6 +39,39 @@ import {
   continuousClockSkewMs,
   simulationTiming,
 } from "../src/ui/public/mining/data.js";
+
+describe("bounded live stream charts", () => {
+  const start = Date.parse("2026-01-01T00:00:00Z");
+  const at = (seconds: number) => new Date(start + seconds * 1000).toISOString();
+  const run = { runId: "current", startedAt: at(0), stopAt: at(600), publisherStatus: "running" };
+  const numeric = {
+    runId: run.runId, sampleTime: at(30), receivedAt: at(31), telemetryCount: 45, stateCount: 4,
+  };
+
+  it("distinguishes normal collection, arrival and overdue without treating state as numeric", () => {
+    const state = { ...numeric, sampleTime: at(5), receivedAt: at(6), telemetryCount: 0 };
+    const observed = collectReceipt([], { ...run, nativeReceipt: state });
+    expect(streamWindow(run, observed, start + 29_000)).toMatchObject({ state: "collecting", remaining: 1 });
+    expect(streamWindow(run, observed, start + 32_000)?.state).toBe("arriving");
+    expect(streamWindow(run, observed, start + 36_000)?.state).toBe("overdue");
+    const withNumeric = collectReceipt(observed, { ...run, nativeReceipt: numeric });
+    expect(streamWindow(run, withNumeric, start + 36_000)).toMatchObject({ state: "collecting", remaining: 24 });
+    expect(collectReceipt(withNumeric, { ...run, nativeReceipt: numeric })).toBe(withNumeric);
+    expect(streamWindow({ ...run, stopRequested: true }, withNumeric)).toBeNull();
+    expect(collectReceipt(withNumeric, { ...run, runId: "other", nativeReceipt: numeric })).toEqual([]);
+  });
+
+  it("keeps only in-run simulator samples without filling missing ticks", () => {
+    const simulatorPreview = [
+      { runId: run.runId, sampleTime: at(15), hopperTonnes: 779 },
+      { runId: "earlier", sampleTime: at(10), hopperTonnes: 0 },
+      { runId: run.runId, sampleTime: at(5), hopperTonnes: 780 },
+    ];
+    expect(collectPreview({ ...run, simulatorPreview })).toEqual([
+      { seconds: 5, value: 780 }, { seconds: 15, value: 779 },
+    ]);
+  });
+});
 import {
   connections,
   createPlant3D,
@@ -1036,6 +1070,7 @@ describe("mining request lifecycle", () => {
         demoBusy: false,
         demoStatusEpoch: 0,
         nativeDemoLive: false,
+        fastDemoStatus: false,
         document: { hidden: false },
         demoRun: null,
         context: { mode: "continuous", approvedRun: { runId, generation: "g1" } },

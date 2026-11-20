@@ -36,11 +36,12 @@ export class MiningPublisherHost {
     incidents?: MiningPublisherIncidents,
     onStartup?: (preview: MiningStartupPreview) => void,
     onBatch?: MiningBatchObserver,
+    onPreview?: (preview: MiningStartupPreview) => void,
   ): MiningPublisherExecution {
     const snapshot = { ...input };
     return this.launch(
       (runtime, signal, notify) =>
-        runtime.run(snapshot, signal, incidents, notify, onStartup, onBatch),
+        runtime.run(snapshot, signal, incidents, notify, onStartup, onBatch, onPreview),
       requestSignal,
     );
   }
