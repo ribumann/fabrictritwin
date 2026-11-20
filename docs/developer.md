@@ -294,6 +294,22 @@ node .\scripts\simulate\measure-twin-latency.mjs $origin triathlon
 ```
 
 In the backend console logs, filter `telemetry=twin-latency-v1` by `runId`.
+
+The public Mining run flushes its initial plant-state events at the 5-second
+tick. After the publisher send succeeds, Cockpit can show a separate modeled
+hopper reading while waiting for Fabric. This preview isn't used for trends,
+reconciliation, or the Fabric arrival timer. The telemetry sampling cadence
+and event IDs are unchanged.
+
+The two Mining raw input tables use a 10-second queued batching window;
+catalog/profile joins still require queued ingestion. To roll back the
+table overrides and restore database inheritance, run these against the
+Mining Eventhouse database:
+
+```kusto
+.delete table mining_TelemetryRaw policy ingestionbatching
+.delete table mining_PlantStateEvents policy ingestionbatching
+```
 `admission` measures the admitted backend handler; `send` records wall-clock
 generation and SDK send boundaries plus monotonic send duration. Correlate
 Triathlon session rows by run ID and sample time and Mining by event ID where

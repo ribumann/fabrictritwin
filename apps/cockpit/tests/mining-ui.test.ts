@@ -1055,6 +1055,7 @@ describe("mining request lifecycle", () => {
         reads: { reset },
         drawOverview: vi.fn(),
         drawDemoRunStatus: vi.fn(),
+        drawStartupPreview: vi.fn(),
         loadContext: vi.fn(),
         updateDemoStatus: undefined as undefined | (() => Promise<void>),
       };

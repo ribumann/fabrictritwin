@@ -41,6 +41,12 @@ export interface MiningPublisherAdmission {
   status: MiningRunStatus;
 }
 
+export interface MiningStartupPreview {
+  runId: string;
+  sampleTime: string;
+  hopperTonnes: number;
+}
+
 const systemClock: MiningClock = { now: Date.now, monotonic: () => performance.now() };
 const systemScheduler: MiningScheduler = {
   wait: async (milliseconds, signal) => {
@@ -77,12 +83,19 @@ export class MiningPublisherRuntime {
     cancellation?: AbortSignal,
     incidents?: MiningPublisherIncidents,
     onAdmission?: (admission: MiningPublisherAdmission) => void,
+    onStartup?: (preview: MiningStartupPreview) => void,
   ): Promise<MiningRunStatus> {
     cancellation?.throwIfAborted();
     if (incidents && (input.durationSeconds ?? 1_200) % 60 !== 0) {
       throw new MiningCoordinationError("invalid", "Incident processing requires whole minutes.");
     }
-    return this.execute(() => this.coordinator.start(input), cancellation, incidents, onAdmission);
+    return this.execute(
+      () => this.coordinator.start(input),
+      cancellation,
+      incidents,
+      onAdmission,
+      onStartup,
+    );
   }
 
   /** Trusted worker only. Continuous execution never activates finite incident processing. */
@@ -104,6 +117,7 @@ export class MiningPublisherRuntime {
     cancellation?: AbortSignal,
     incidents?: MiningPublisherIncidents,
     onAdmission?: (admission: MiningPublisherAdmission) => void,
+    onStartup?: (preview: MiningStartupPreview) => void,
   ): Promise<MiningRunStatus> {
     cancellation?.throwIfAborted();
     const admission = await admit();
@@ -167,6 +181,7 @@ export class MiningPublisherRuntime {
           seed: run.seed,
           scenario: run.scenario,
           startedAt: new Date(startedAt),
+          flushStartup: onStartup !== undefined,
           ...(continuous ? { continuous: true } : { durationSeconds: run.durationSeconds }),
         });
         for (
@@ -254,6 +269,13 @@ export class MiningPublisherRuntime {
               await owner.runFinalBatch({ runId: run.runId, timestamp: batch.timestamp }, send);
             } else {
               await owner.runBatch(send);
+            }
+            if (elapsed === STEP_MS && !continuous && !signal.aborted) {
+              onStartup?.({
+                runId: run.runId,
+                sampleTime: batch.timestamp,
+                hopperTonnes: simulation.inventory.hopper_tonnes,
+              });
             }
           }
         }

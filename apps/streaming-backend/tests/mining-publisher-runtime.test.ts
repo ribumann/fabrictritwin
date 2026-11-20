@@ -265,6 +265,38 @@ describe("D01 real-clock publisher", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it("publishes startup state at 5s while preserving the ordered event payloads", async () => {
+    const preview = vi.fn();
+    const baseline = runtime.run(input);
+    await settle();
+    await vi.advanceTimersByTimeAsync(65_000);
+    await baseline;
+    const expected = publish.mock.calls.flatMap(([events]) => events);
+    publish.mockClear();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    coordinator = new MiningRunCoordinator(new Store(), clock, { finalFlushMilliseconds: 5_000 });
+    runtime = new MiningPublisherRuntime(coordinator, factory, clock, scheduler);
+    const execution = runtime.run(input, undefined, undefined, undefined, preview);
+    await settle();
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(preview).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(publish).toHaveBeenCalledOnce();
+    expect(publish.mock.calls[0][0].map((event) => event.entityType)).toEqual(
+      Array(4).fill("PlantStateEvent"),
+    );
+    expect(preview).toHaveBeenCalledWith({
+      runId: requestId,
+      hopperTonnes: expect.any(Number),
+      sampleTime: "2026-01-01T00:00:05.000Z",
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await execution).toMatchObject({ phase: "publisher_complete" });
+    expect(preview).toHaveBeenCalledOnce();
+    expect(publish.mock.calls.flatMap(([events]) => events)).toEqual(expected);
+  });
+
   it("never launches from a duplicate admission even while the owner is running", async () => {
     const execution = runtime.run(input);
     await settle();

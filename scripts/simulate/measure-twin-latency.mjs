@@ -44,6 +44,14 @@ try {
       );
       if (!mining) return;
       new MutationObserver(() => {
+        const startup = document.querySelector("#run-startup-preview:not([hidden])");
+        if (probe.trigger && startup?.dataset.runId && startup.textContent?.trim()) {
+          const previews = (probe.previews ??= {});
+          previews[startup.dataset.runId] ??= {
+            clock: performance.now(),
+            label: startup.textContent.trim(),
+          };
+        }
         const label = document.querySelector("#arrival-lag")?.textContent?.trim();
         if (!probe.trigger || !label || !/\d/.test(label)) return;
         const overview = probe.overview;
@@ -154,7 +162,20 @@ try {
       window.latencyProbe.runId = id;
     }, runId);
     await page.waitForFunction(() => !!window.latencyProbe.visible, null, { timeout });
-    const visible = await page.evaluate(() => window.latencyProbe.visible);
+    const { visible, startup } = await page.evaluate(
+      (id) => ({
+        visible: window.latencyProbe.visible,
+        startup: window.latencyProbe.previews?.[id],
+      }),
+      runId,
+    );
+    if (startup) {
+      record("simulator_startup_ui", {
+        runId,
+        clickToVisibleMs: Math.round(startup.clock - trigger.clock),
+        label: startup.label,
+      });
+    }
     record("fabric_ui", {
       runId,
       visibleUtc: visible.utc,

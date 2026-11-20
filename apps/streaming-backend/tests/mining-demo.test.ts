@@ -536,6 +536,8 @@ describe("public mining demo service boundary", () => {
     expect(start).toHaveBeenCalledWith(
       { plantId: "D01", requestId: result.body.runId, durationSeconds: 600 },
       expect.any(AbortSignal),
+      undefined,
+      expect.any(Function),
     );
     expect(documents.has(`public-demo/${result.body.runId}.json`)).toBe(true);
     expect(result.body.ingestionStatus).toBe("unknown");
