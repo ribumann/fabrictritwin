@@ -4,15 +4,16 @@ The [public Mining cockpit](https://ontologydemo.liberatetheinnerchild.net/minin
 shows a simulated plant connected to Microsoft Fabric. The measurements and line
 states are generated, not readings from real equipment. Fabric itself requires
 an authorized account; public visitors do not need one to view the cockpit.
-The hosted publisher is operator-managed, and public start/stop controls are
-disabled. The account-free local demo in the [main README](../README.md) is
-currently triathlon-only.
+Start with the [Business user walkthrough](business-user.md#2-mining-start-a-plant-follow-a-measurement)
+for the current public, shared ten-minute simulation, plant interactions and
+arrival-time indicators. The account-free local demo in the [main README](../README.md)
+is Triathlon-only. This page retains the deeper measurement/query references.
 
 ## Follow a measurement
 
 ```mermaid
 flowchart LR
-    S[Continuous D01 simulator] --> P[Publisher and single-owner coordination]
+    S[Bounded D01 simulator] --> P[Publisher and single-owner coordination]
     P --> E[Mining Eventstream]
     E --> R[Eventhouse raw tables]
     R --> V[Validated telemetry and state]
@@ -39,12 +40,12 @@ claims.
    A simulator-reported line state and a sensor-derived status are not proof of
    physical equipment health.
 4. Check the cockpit's availability indicators before exploring trends or other
-   views. Live incidents, the assistant and replay remain unavailable in the
-   current continuous configuration. Do not treat historical bounded-run
-   evidence as proof that a capability is enabled now.
+   views. Completed-run incidents and explanations can remain unavailable until
+   ingestion reconciliation completes. Do not treat historical evidence as proof
+   that a capability is currently ready.
 
-The simulator can restart with a new run ID and warm up again. A gap across
-restart is real; do not join runs as though their time series were continuous.
+Each admitted simulation has its own run ID and warm-up. Gaps between runs are
+real; do not join them as though their time series were continuous.
 Native Data Agent and Operations Agent experiments remain parked.
 
 ## In Fabric
