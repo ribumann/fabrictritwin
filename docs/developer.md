@@ -310,6 +310,16 @@ Mining Eventhouse database:
 .delete table mining_TelemetryRaw policy ingestionbatching
 .delete table mining_PlantStateEvents policy ingestionbatching
 ```
+
+To test native ingestion separately from the live queued route, run
+`scripts\simulate\measure-mining-native-streaming.ps1` with PowerShell 7.5+
+against the Mining Eventhouse. Build the simulator first (`npm run build -w
+apps/simulator`). The probe needs permission to create, ingest into, query, and
+drop a temporary table. It reports client-side send-to-classified-read
+latency and fails if any of the five batches exceeds 3 seconds or if the
+existing catalog and profile checks reject valid events or fail to quarantine
+their negative controls. This does not measure Eventstream, browser delivery,
+or the first aggregation window of the real-time publisher.
 `admission` measures the admitted backend handler; `send` records wall-clock
 generation and SDK send boundaries plus monotonic send duration. Correlate
 Triathlon session rows by run ID and sample time and Mining by event ID where
