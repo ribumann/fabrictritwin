@@ -106,6 +106,24 @@ describe("simulation arrival timing", () => {
     });
     expect(simulationTiming(run, null, now).lagSeconds).toBeNull();
     expect(simulationTiming(run, { ...data, runId: "previous" }, now).lagSeconds).toBeNull();
+    expect(
+      simulationTiming(
+        run,
+        {
+          ...data,
+          latest: {
+            readings: [
+              {
+                ...data.latest.readings[0],
+                receivedAt: data.latest.readings[0].ingestionTime,
+                ingestionTime: null,
+              },
+            ],
+          },
+        },
+        now,
+      ).lagSeconds,
+    ).toBe(35);
   });
   it("rejects impossible receipts and does not invent remaining time for stopped runs", () => {
     for (const receipt of ["invalid", "2026-11-19T12:00:10Z", "2026-11-19T12:02:00Z"]) {

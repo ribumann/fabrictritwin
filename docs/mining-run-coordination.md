@@ -137,6 +137,11 @@ latency. Missing or foreign-run timestamps remain unknown. Live reads refresh
 every 30 seconds (run status every 15 seconds); stopped simulations naturally
 become stale, and replay remains explicitly historical.
 
+Bounded readings expose the validated source's observed receipt as `receivedAt`.
+This supports the arrival display without populating `ingestionTime`, which
+remains null absent independent raw-ingestion provenance. An observed receipt
+and complete expected-ID ingestion reconciliation are different claims.
+
 For the separately opt-in public read path, set
 `MINING_PUBLIC_DEMO_READ_ENABLED=true` on both apps and configure
 `MINING_EVENTHOUSE_QUERY_URI`, `MINING_EVENTHOUSE_DATABASE_NAME`,
