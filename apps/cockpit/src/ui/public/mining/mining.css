@@ -60,6 +60,102 @@
   margin: 0;
   font-size: 0.85rem;
 }
+.mining-stream {
+  padding-block: 1.25rem;
+  border-bottom: 1px solid var(--border-strong);
+}
+.mining-stream h2,
+.mining-stream h3,
+.mining-stream p {
+  margin: 0;
+}
+.mining-stream h2 {
+  font-size: 1.25rem;
+}
+.mining-stream h3 {
+  font-size: 1rem;
+}
+.mining-stream p {
+  margin-block-start: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.stream-window {
+  margin-block: 1rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.stream-window label {
+  font-weight: 650;
+  margin-inline-end: 0.6rem;
+}
+.stream-window progress {
+  display: block;
+  width: 100%;
+  height: 0.5rem;
+  margin-top: 0.65rem;
+  accent-color: var(--accent-strong);
+}
+.stream-window[data-state="overdue"] progress {
+  accent-color: var(--warning);
+}
+.stream-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: 1.5rem;
+  margin-block: 1rem 0.75rem;
+}
+.stream-charts figure {
+  margin: 0;
+  min-width: 0;
+}
+.stream-plot svg {
+  display: block;
+  width: 100%;
+  height: 6rem;
+  margin-top: 0.5rem;
+}
+.stream-grid {
+  stroke: var(--border-strong);
+  vector-effect: non-scaling-stroke;
+}
+.stream-trace {
+  stroke: var(--text);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.stream-preview-point {
+  fill: var(--text);
+}
+.stream-numeric {
+  fill: var(--accent-strong);
+}
+.stream-state {
+  fill: var(--text-muted);
+}
+.stream-key-state,
+.stream-key-numeric {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.stream-key-state::before,
+.stream-key-numeric::before {
+  content: "";
+  width: 0.6rem;
+  height: 0.6rem;
+  background: var(--text-muted);
+}
+.stream-key-numeric::before {
+  background: var(--accent-strong);
+}
+.mining-stream details {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
 .mining-provenance {
   margin-top: 1rem;
   font-size: 0.85rem;

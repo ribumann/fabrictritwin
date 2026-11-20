@@ -296,10 +296,13 @@ node .\scripts\simulate\measure-twin-latency.mjs $origin triathlon
 In the backend console logs, filter `telemetry=twin-latency-v1` by `runId`.
 
 The public Mining run flushes its initial plant-state events at the 5-second
-tick. After the publisher send succeeds, Cockpit can show a separate modeled
-hopper reading while waiting for Fabric. This preview isn't used for trends,
-reconciliation, or the Fabric arrival timer. The telemetry sampling cadence
-and event IDs are unchanged.
+tick. Cockpit's **Live stream activity** plots modeled hopper inventory every
+5 seconds from the bounded demo status API. These simulator-only points go
+neither to Fabric nor to historical trends, reconciliation, or the arrival
+timer. The separate batch chart shows native Fabric receipts observed in the
+tab. Its countdown distinguishes a normal 30-second collection window from a
+closed window awaiting a receipt or an overdue batch. The validated 30/60-second
+telemetry windows and event IDs are unchanged.
 
 The two Mining raw input tables use a 10-second queued batching window;
 catalog/profile joins still require queued ingestion. To roll back the

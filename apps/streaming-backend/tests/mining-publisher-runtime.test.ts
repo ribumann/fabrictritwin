@@ -276,10 +276,12 @@ describe("D01 real-clock publisher", () => {
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
     coordinator = new MiningRunCoordinator(new Store(), clock, { finalFlushMilliseconds: 5_000 });
     runtime = new MiningPublisherRuntime(coordinator, factory, clock, scheduler);
-    const execution = runtime.run(input, undefined, undefined, undefined, preview);
+    const ticks = vi.fn();
+    const execution = runtime.run(input, undefined, undefined, undefined, preview, undefined, ticks);
     await settle();
     await vi.advanceTimersByTimeAsync(4_999);
     expect(preview).not.toHaveBeenCalled();
+    expect(ticks).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(publish).toHaveBeenCalledOnce();
@@ -294,6 +296,12 @@ describe("D01 real-clock publisher", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(await execution).toMatchObject({ phase: "publisher_complete" });
     expect(preview).toHaveBeenCalledOnce();
+    expect(ticks.mock.calls.map(([tick]) => Date.parse(tick.sampleTime))).toEqual(
+      Array.from(
+        { length: input.durationSeconds / 5 },
+        (_, i) => Date.parse("2026-01-01T00:00:00Z") + (i + 1) * 5_000,
+      ),
+    );
     expect(publish.mock.calls.flatMap(([events]) => events)).toEqual(expected);
   });
 

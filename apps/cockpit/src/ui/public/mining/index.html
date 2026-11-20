@@ -73,6 +73,55 @@
           </p>
         </div>
       </section>
+      <section id="stream-panel" class="mining-stream" aria-labelledby="stream-heading" hidden>
+        <h2 id="stream-heading">Live stream activity</h2>
+        <p>
+          Watch the simulator tick, then see which batches Fabric validates. Gaps are unobserved,
+          not zero.
+        </p>
+        <div id="stream-window" class="stream-window" hidden>
+          <label for="stream-progress">30-second numeric window</label>
+          <span id="stream-phase"></span>
+          <progress id="stream-progress" max="30" value="0"></progress>
+        </div>
+        <div class="stream-charts">
+          <figure>
+            <figcaption>
+              <h3>Fabric-validated events per batch</h3>
+              <p>
+                <span class="stream-key-state">Plant state</span> ·
+                <span class="stream-key-numeric">Numeric telemetry</span>
+              </p>
+            </figcaption>
+            <div id="stream-batches" class="stream-plot"></div>
+            <p id="stream-batch-scale"></p>
+            <p id="stream-batch-latest"></p>
+          </figure>
+          <figure>
+            <figcaption>
+              <h3>Hopper inventory</h3>
+              <p>Simulator preview every 5 seconds · not Fabric-validated</p>
+            </figcaption>
+            <div id="stream-reading" class="stream-plot"></div>
+            <p id="stream-reading-scale"></p>
+            <p id="stream-reading-latest"></p>
+          </figure>
+        </div>
+        <details id="stream-batch-details" hidden>
+          <summary>Observed batch values</summary>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Run time</th>
+                <th scope="col">State</th>
+                <th scope="col">Numeric</th>
+                <th scope="col">Reading</th>
+              </tr>
+            </thead>
+            <tbody id="stream-batch-rows"></tbody>
+          </table>
+        </details>
+      </section>
       <details class="mining-provenance">
         <summary>Run identity &amp; source evidence</summary>
         <div class="mining-state" aria-label="Run and freshness">

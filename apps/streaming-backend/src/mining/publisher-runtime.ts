@@ -92,6 +92,7 @@ export class MiningPublisherRuntime {
     onAdmission?: (admission: MiningPublisherAdmission) => void,
     onStartup?: (preview: MiningStartupPreview) => void,
     onBatch?: MiningBatchObserver,
+    onPreview?: (preview: MiningStartupPreview) => void,
   ): Promise<MiningRunStatus> {
     cancellation?.throwIfAborted();
     if (incidents && (input.durationSeconds ?? 1_200) % 60 !== 0) {
@@ -104,6 +105,7 @@ export class MiningPublisherRuntime {
       onAdmission,
       onStartup,
       onBatch,
+      onPreview,
     );
   }
 
@@ -128,6 +130,7 @@ export class MiningPublisherRuntime {
     onAdmission?: (admission: MiningPublisherAdmission) => void,
     onStartup?: (preview: MiningStartupPreview) => void,
     onBatch?: MiningBatchObserver,
+    onPreview?: (preview: MiningStartupPreview) => void,
   ): Promise<MiningRunStatus> {
     cancellation?.throwIfAborted();
     const admission = await admit();
@@ -290,6 +293,13 @@ export class MiningPublisherRuntime {
             if (!continuous && !signal.aborted) {
               onBatch?.(run.runId, batch.timestamp, batch.events, signal);
             }
+          }
+          if (!continuous && !signal.aborted) {
+            onPreview?.({
+              runId: run.runId,
+              sampleTime: new Date(wallDeadline).toISOString(),
+              hopperTonnes: simulation.inventory.hopper_tonnes,
+            });
           }
         }
         if (!stopped) signal.throwIfAborted();
