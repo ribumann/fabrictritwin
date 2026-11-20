@@ -594,7 +594,7 @@ describe("public mining demo service boundary", () => {
       sampleTime: new Date(Date.parse(status.body.run.startedAt) + 5_000).toISOString(),
       hopperTonnes: 780,
     };
-    start.mock.calls[0][5]!(point);
+    start.mock.calls[0][5]!(point, 5, new AbortController().signal);
     expect((await request(app).get("/demo/runs/status")).body).toMatchObject({
       previewCadenceSeconds: 5,
       run: { simulatorPreview: [point] },

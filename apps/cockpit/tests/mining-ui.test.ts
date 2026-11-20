@@ -1071,6 +1071,7 @@ describe("mining request lifecycle", () => {
         demoStatusEpoch: 0,
         nativeDemoLive: false,
         fastDemoStatus: false,
+        fabricDemoSignal: false,
         document: { hidden: false },
         demoRun: null,
         context: { mode: "continuous", approvedRun: { runId, generation: "g1" } },

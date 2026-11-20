@@ -1,0 +1,22 @@
+.create-or-alter function with (folder = "Mining/Demo") mining_DemoSignalReceipt(id:string, tick:datetime, elapsed:long)
+{
+    let points = materialize(mining_DemoSignal
+        | where run_id == id and sample_time > tick - 60s and sample_time <= tick
+        | where elapsed_seconds > 0 and elapsed_seconds <= elapsed and elapsed_seconds % 5 == 0
+        | where (tick - sample_time) / 1s == elapsed - elapsed_seconds
+        | where hopper_tonnes between (0.0 .. 1200.0)
+        | extend received = ingestion_time());
+    points
+    | summarize copies=countif(sample_time == tick),
+                value=take_anyif(hopper_tonnes, sample_time == tick),
+                receivedAt=maxif(received, sample_time == tick),
+                rows30=countif(sample_time > tick - 30s),
+                ticks30=make_set_if(sample_time, sample_time > tick - 30s, 6),
+                mean30=avgif(hopper_tonnes, sample_time > tick - 30s),
+                rows60=count(),
+                ticks60=make_set(sample_time, 12),
+                mean60=avg(hopper_tonnes)
+    | project copies, value, receivedAt,
+              avg30=iff(elapsed % 30 == 0 and rows30 == 6 and array_length(ticks30) == 6, mean30, real(null)),
+              avg60=iff(elapsed % 60 == 0 and rows60 == 12 and array_length(ticks60) == 12, mean60, real(null))
+}

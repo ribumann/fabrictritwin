@@ -5,6 +5,7 @@ import {
   type MiningPublisherRuntime,
   type MiningStartupPreview,
   type MiningBatchObserver,
+  type MiningPreviewObserver,
 } from "./publisher-runtime.js";
 import type {
   MiningRunStatus,
@@ -36,7 +37,7 @@ export class MiningPublisherHost {
     incidents?: MiningPublisherIncidents,
     onStartup?: (preview: MiningStartupPreview) => void,
     onBatch?: MiningBatchObserver,
-    onPreview?: (preview: MiningStartupPreview) => void,
+    onPreview?: MiningPreviewObserver,
   ): MiningPublisherExecution {
     const snapshot = { ...input };
     return this.launch(

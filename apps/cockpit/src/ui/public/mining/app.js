@@ -1351,28 +1351,31 @@ let demoStatusTimer;
 let demoStatusClosed = false;
 let nativeDemoLive = false;
 let fastDemoStatus = false;
+let fabricDemoSignal = false;
 let streamRunId;
 let streamReceipts = [];
 let streamPreview = [];
 let renderedStream;
+let previousSignalMode;
 
 function drawStream() {
   const panel = $("stream-panel");
   panel.hidden = mode !== "live" || !demoRun || (!fastDemoStatus && !nativeDemoLive);
   if (panel.hidden) return;
-  if (streamRunId !== demoRun.runId) {
+  if (streamRunId !== demoRun.runId || previousSignalMode !== fabricDemoSignal) {
     streamRunId = demoRun.runId;
+    previousSignalMode = fabricDemoSignal;
     streamReceipts = [];
     streamPreview = [];
   }
   streamReceipts = collectReceipt(streamReceipts, demoRun);
   if (demoRun.publisherStatus === "running" && !demoRun.stopRequested) {
-    const points = collectPreview(demoRun);
+    const points = collectPreview(demoRun, fabricDemoSignal);
     if (points.length) streamPreview = points;
   }
-  const revision = JSON.stringify([streamRunId, streamReceipts, streamPreview]);
+  const revision = JSON.stringify([streamRunId, fabricDemoSignal, streamReceipts, streamPreview]);
   if (revision !== renderedStream) {
-    drawStreamCharts(streamReceipts, streamPreview, $, number);
+    drawStreamCharts(streamReceipts, streamPreview, $, number, fabricDemoSignal);
     renderedStream = revision;
   }
   drawStreamWindow();
@@ -1547,6 +1550,7 @@ async function updateDemoStatus(notice = "") {
     demoRun = data.run;
     nativeDemoLive = data.nativeLive === true && data.mode === "bounded";
     fastDemoStatus = data.previewCadenceSeconds === 5 && data.mode === "bounded";
+    fabricDemoSignal = data.fabricSignal === true && data.mode === "bounded";
     drawStartupPreview();
     const managed = data.mode === "continuous";
     const active = demoRun && ["running", "stopping"].includes(demoRun.publisherStatus);
@@ -1588,6 +1592,7 @@ async function updateDemoStatus(notice = "") {
     demoRun = null;
     nativeDemoLive = false;
     fastDemoStatus = false;
+    fabricDemoSignal = false;
     drawStartupPreview();
     $("run-start").disabled = true;
     $("run-cancel").disabled = true;
