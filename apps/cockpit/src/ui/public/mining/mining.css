@@ -21,6 +21,70 @@
   padding: 0.5rem 0 1.5rem;
   border-bottom: 1px solid var(--border-strong);
 }
+.mining-jump,
+.flow-shared {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+.mining-jump {
+  padding-block: 0.65rem;
+  margin-bottom: 0.65rem;
+  border-bottom: 1px solid var(--border);
+}
+.mining-jump a {
+  color: var(--accent-strong);
+}
+.mining-shift {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(15rem, 1fr);
+  gap: 1.6rem;
+  margin-bottom: 1.5rem;
+}
+.mining-shift h2 {
+  margin-bottom: 0.35rem;
+}
+.mining-shift p {
+  margin-top: 0.35rem;
+}
+.flow-shared,
+.flow-line {
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.flow-line {
+  display: grid;
+  grid-template-columns: 3.5rem repeat(6, minmax(0, 1fr));
+  align-items: start;
+  gap: 0.5rem;
+}
+.flow-line button {
+  width: 100%;
+  min-height: 3rem;
+  overflow-wrap: anywhere;
+}
+.flow-line small {
+  display: block;
+  margin-top: 0.25rem;
+}
+.mining-shift .mining-incidents {
+  min-width: 0;
+  border-top: 2px solid var(--border-strong);
+}
+@media (max-width: 1000px) {
+  .mining-shift {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 650px) {
+  .flow-line {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .flow-line > strong {
+    grid-column: 1 / -1;
+  }
+}
 .mining-session h2 {
   margin: 0;
   font-size: 1.4rem;

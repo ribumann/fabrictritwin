@@ -67,6 +67,22 @@ interface LineState {
 type WaterStage = "normal" | "restricted" | "ramping" | "holding" | "recovering";
 
 const stepSeconds = 5;
+const stepHours = stepSeconds / 3600;
+const hopperCapacityTonnes = 1200;
+// Illustrative dry-solids mass yield to the sorter, not diamond recovery.
+const sorterFeedMassFraction = 0.18;
+
+export function balanceHopper(inventory: number, inflow: number, requestedOutflow: number) {
+  const available = inventory + inflow;
+  const outflow = Math.min(available, requestedOutflow);
+  const spill = Math.max(0, available - outflow - hopperCapacityTonnes);
+  return { inventory: available - outflow - spill, outflow, spill };
+}
+
+export function splitSorterFeed(feed: number) {
+  const concentrate = feed * sorterFeedMassFraction;
+  return { concentrate, reject: feed - concentrate };
+}
 const defaultDurationSeconds = 20 * 60;
 const maximumDurationSeconds = 30 * 60;
 const scopeIds: readonly D01StateScope[] = ["A", "B", "C", "shared"];
@@ -349,7 +365,7 @@ export class D01PlantSimulator {
         value = 2920;
       } else if (tag.metric === "level") {
         if (tag.module_id === "D01.shared.hopper") {
-          value = (this.hopperTonnes / 1200) * 100;
+          value = (this.hopperTonnes / hopperCapacityTonnes) * 100;
         } else if (tag.module_id === "D01.shared.water") {
           value = (this.waterVolumeM3 / 60) * 100;
         } else if (tag.module_id === "D01.shared.tailings") {
@@ -423,6 +439,7 @@ export class D01PlantSimulator {
     const lineSorterFeeds: Record<"A" | "B" | "C", number> = { A: 0, B: 0, C: 0 };
     const lineLoads: Record<"A" | "B" | "C", number> = { A: 0, B: 0, C: 0 };
     let feedTotal = 0;
+    let tailingsFeed = 0;
 
     for (const line of ["A", "B", "C"] as const) {
       const state = this.lines[line];
@@ -443,17 +460,25 @@ export class D01PlantSimulator {
         35,
         0.006,
       );
+      feedTotal += state.current_feed_tph;
+    }
+    // Truck deliveries vary; departures are limited by the actual surge inventory.
+    const inflow = 132 * (1 + 0.18 * Math.sin((this.elapsedSeconds * Math.PI) / 180));
+    const hopper = balanceHopper(this.hopperTonnes, inflow * stepHours, feedTotal * stepHours);
+    this.hopperTonnes = hopper.inventory;
+    const availableFeedFraction = feedTotal > 0 ? hopper.outflow / (feedTotal * stepHours) : 1;
+    for (const line of ["A", "B", "C"] as const) {
+      const state = this.lines[line];
+      state.current_feed_tph *= availableFeedFraction;
       lineLoads[line] = state.current_feed_tph / state.nominal_feed_tph;
       lineDischarges[line] = this.delayed(state.crusher_discharge_delay, state.current_feed_tph);
       lineDmsFeeds[line] = this.delayed(state.dms_feed_delay, lineDischarges[line]);
-      lineSorterFeeds[line] = this.delayed(state.sorter_feed_delay, lineDmsFeeds[line]);
-      feedTotal += state.current_feed_tph;
+      const split = splitSorterFeed(this.delayed(state.sorter_feed_delay, lineDmsFeeds[line]));
+      lineSorterFeeds[line] = split.concentrate;
+      tailingsFeed += split.reject;
     }
+    feedTotal = hopper.outflow / stepHours;
     this.totalFeed = feedTotal;
-    this.hopperTonnes = Math.min(
-      1200,
-      Math.max(0, this.hopperTonnes + ((132 - feedTotal) * stepSeconds) / 3600),
-    );
 
     const waterDemandByLine: Record<"A" | "B" | "C", { scrubber: number; screen: number }> = {
       A: { scrubber: lineLoads.A * 55, screen: lineLoads.A * 22 },
@@ -493,7 +518,7 @@ export class D01PlantSimulator {
 
     if (
       this.scenario === "shared-water-restriction" &&
-      this.elapsedSeconds >= 180 &&
+      this.elapsedSeconds === 180 &&
       this.waterStage === "normal"
     ) {
       this.waterStage = "restricted";
@@ -529,7 +554,7 @@ export class D01PlantSimulator {
     );
     this.tailingsTonnes = Math.min(
       8000,
-      Math.max(0, this.tailingsTonnes + ((feedTotal * 0.82 - 99) * stepSeconds) / 3600),
+      Math.max(0, this.tailingsTonnes + (tailingsFeed - 99) * stepHours),
     );
     // Continuous operation collects/replaces the lab sample every 30 minutes.
     // Finite deterministic captures keep their original cumulative sample.
@@ -643,7 +668,7 @@ export class D01PlantSimulator {
         }
         case "level":
           if (tag.module_id === "D01.shared.hopper") {
-            target = (this.hopperTonnes / 1200) * 100;
+            target = (this.hopperTonnes / hopperCapacityTonnes) * 100;
           } else if (tag.module_id === "D01.shared.water") {
             target = (this.waterVolumeM3 / 60) * 100;
           } else if (tag.module_id === "D01.shared.thickener") {

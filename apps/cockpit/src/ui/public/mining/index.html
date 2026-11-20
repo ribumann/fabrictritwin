@@ -49,7 +49,7 @@
     <main class="mining-main">
       <section class="mining-session" aria-labelledby="simulation-heading">
         <div>
-          <h2 id="simulation-heading">Run the plant. Follow the data.</h2>
+          <h2 id="simulation-heading">Simulation control</h2>
           <p id="run-control-help">
             A shared ten-minute simulation sends synthetic plant data through Fabric. Reopening this
             page never starts a run.
@@ -73,57 +73,98 @@
           </p>
         </div>
       </section>
-      <section id="stream-panel" class="mining-stream" aria-labelledby="stream-heading" hidden>
-        <h2 id="stream-heading">Live stream activity</h2>
+      <nav class="mining-jump" aria-label="Supervisor tools">
+        <a href="#ore-flow">Ore flow</a><a href="#streams">Streams</a>
+        <a href="#diagnostics">Diagnostics</a><a href="#twin">Twin</a>
+        <a href="#inquiries">Inquiries</a><a href="#assistant">AI assistant</a>
+      </nav>
+      <div class="mining-shift">
+        <section id="ore-flow" aria-labelledby="flow-heading">
+          <h2 id="flow-heading">Ore flow</h2>
+          <p>Illustrative processing circuit with rates at modeled sensor locations.</p>
+          <div class="flow-shared">
+            <button type="button" class="secondary" data-flow-asset="D01.shared.hopper">
+              Feed hopper
+            </button>
+            <span id="flow-hopper">Inventory unknown</span>
+          </div>
+          <div id="flow-lines"></div>
+          <div class="flow-shared">
+            <span>Outputs:</span> <span>Recovered product</span>
+            <button type="button" class="secondary" data-flow-asset="D01.shared.tailings">
+              Tailings network
+            </button>
+          </div>
+          <div class="flow-shared">
+            <button type="button" class="secondary" data-flow-asset="D01.shared.water">
+              Shared process water
+            </button>
+            <span id="flow-water">Tank level unknown</span>
+            <span>Serves lines A, B and C</span>
+          </div>
+        </section>
+        <section class="mining-incidents" aria-labelledby="incident-heading">
+          <h2 id="incident-heading">Needs attention</h2>
+          <p id="shift-data">Data: waiting for run status.</p>
+          <p id="buildup-status">Buildup: no comparable evidence yet.</p>
+          <p id="incident-status">Unknown — incident source not connected.</p>
+          <ol id="incidents" class="stack"></ol>
+        </section>
+      </div>
+      <section id="streams" class="mining-stream" aria-labelledby="stream-heading">
+        <h2 id="stream-heading">Streams</h2>
         <p>
-          Watch the simulator tick, then see which batches Fabric validates. Gaps are unobserved,
-          not zero.
+          Hopper ticks arrive every five seconds when the raw lane is enabled. Plant telemetry uses
+          separate 30- and 60-second windows. A gap means no value was observed.
         </p>
-        <div id="stream-window" class="stream-window" hidden>
-          <label for="stream-progress">30-second numeric window</label>
-          <span id="stream-phase"></span>
-          <progress id="stream-progress" max="30" value="0"></progress>
+        <p id="stream-empty">No live stream evidence is available.</p>
+        <div id="stream-panel" hidden>
+          <div id="stream-window" class="stream-window" hidden>
+            <label for="stream-progress">30-second numeric window</label>
+            <span id="stream-phase"></span>
+            <progress id="stream-progress" max="30" value="0"></progress>
+          </div>
+          <div class="stream-charts">
+            <figure>
+              <figcaption>
+                <h3>Fabric-validated events per batch</h3>
+                <p>
+                  <span class="stream-key-state">Plant state</span> ·
+                  <span class="stream-key-numeric">Numeric telemetry</span>
+                </p>
+              </figcaption>
+              <div id="stream-batches" class="stream-plot"></div>
+              <p id="stream-batch-scale"></p>
+              <p id="stream-batch-latest"></p>
+            </figure>
+            <figure>
+              <figcaption>
+                <h3>Hopper inventory</h3>
+                <p id="stream-reading-source">
+                  Simulator preview every 5 seconds · not Fabric-validated
+                </p>
+              </figcaption>
+              <div id="stream-reading" class="stream-plot"></div>
+              <p id="stream-reading-scale"></p>
+              <p id="stream-reading-latest"></p>
+              <p id="stream-reading-averages" hidden></p>
+            </figure>
+          </div>
+          <details id="stream-batch-details" hidden>
+            <summary>Observed batches and one example reading per batch</summary>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Run time</th>
+                  <th scope="col">State</th>
+                  <th scope="col">Numeric</th>
+                  <th scope="col">Reading</th>
+                </tr>
+              </thead>
+              <tbody id="stream-batch-rows"></tbody>
+            </table>
+          </details>
         </div>
-        <div class="stream-charts">
-          <figure>
-            <figcaption>
-              <h3>Fabric-validated events per batch</h3>
-              <p>
-                <span class="stream-key-state">Plant state</span> ·
-                <span class="stream-key-numeric">Numeric telemetry</span>
-              </p>
-            </figcaption>
-            <div id="stream-batches" class="stream-plot"></div>
-            <p id="stream-batch-scale"></p>
-            <p id="stream-batch-latest"></p>
-          </figure>
-          <figure>
-            <figcaption>
-              <h3>Hopper inventory</h3>
-              <p id="stream-reading-source">
-                Simulator preview every 5 seconds · not Fabric-validated
-              </p>
-            </figcaption>
-            <div id="stream-reading" class="stream-plot"></div>
-            <p id="stream-reading-scale"></p>
-            <p id="stream-reading-latest"></p>
-            <p id="stream-reading-averages" hidden></p>
-          </figure>
-        </div>
-        <details id="stream-batch-details" hidden>
-          <summary>Observed batch values</summary>
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Run time</th>
-                <th scope="col">State</th>
-                <th scope="col">Numeric</th>
-                <th scope="col">Reading</th>
-              </tr>
-            </thead>
-            <tbody id="stream-batch-rows"></tbody>
-          </table>
-        </details>
       </section>
       <details class="mining-provenance">
         <summary>Run identity &amp; source evidence</summary>
@@ -187,9 +228,9 @@
         </p>
       </details>
       <div class="mining-workspace">
-        <section class="card mining-plant" aria-labelledby="plant-heading">
+        <section id="twin" class="card mining-plant" aria-labelledby="plant-heading">
           <div class="card-header">
-            <h2 id="plant-heading">Plant</h2>
+            <h2 id="plant-heading">Spatial twin</h2>
             <label
               >View<select id="view">
                 <option value="3d">3D</option>
@@ -245,8 +286,16 @@
             Keyboard selection is available in the object list.
           </p>
         </section>
-        <aside class="card mining-drawer" aria-labelledby="asset-heading">
+        <aside
+          id="asset-detail"
+          class="card mining-drawer"
+          aria-labelledby="asset-heading"
+          tabindex="-1"
+        >
           <h2 id="asset-heading">Equipment detail</h2>
+          <nav class="mining-jump" aria-label="Equipment investigation">
+            <a href="#diagnostics">Diagnostics</a><a href="#twin">Show in twin</a>
+          </nav>
           <p id="asset-id">Select a module in the plant or object list.</p>
           <p id="asset-status">Status: unknown</p>
           <p id="incident-evidence"></p>
@@ -267,13 +316,9 @@
           </p>
         </aside>
       </div>
-      <section class="card mining-incidents" aria-labelledby="incident-heading">
-        <h2 id="incident-heading">Priority incidents</h2>
-        <p id="incident-status">Unknown — incident source not connected.</p>
-        <ol id="incidents" class="stack"></ol>
-      </section>
-      <section class="mining-charts" aria-label="Two focused comparisons">
+      <section id="diagnostics" class="mining-charts" aria-label="Diagnostics and line comparison">
         <article class="card">
+          <h2>Diagnostics</h2>
           <h2>A / B / C feed</h2>
           <div id="feed-chart"></div>
         </article>
@@ -285,12 +330,20 @@
               <option value="water-energy">Water / energy</option>
             </select></label
           >
-          <p id="diagnostic-scope">Select a module for its diagnostic trend.</p>
+          <label>Equipment<select id="diagnostic-asset" disabled></select></label>
+          <p id="diagnostic-scope">Waiting for the catalog.</p>
           <div id="diagnostic-chart"></div>
         </article>
       </section>
-      <section class="card" aria-labelledby="ask-heading">
-        <h2 id="ask-heading">Ask / inspect evidence</h2>
+      <section id="inquiries" class="card">
+        <h2>Inquiries</h2>
+        <p>
+          Inspect saved queries or open <a href="#diagnostics">diagnostics</a> for direct evidence.
+        </p>
+        <div id="queries">No approved saved queries are configured.</div>
+      </section>
+      <section id="assistant" class="card" aria-labelledby="ask-heading">
+        <h2 id="ask-heading">AI evidence assistant</h2>
         <p id="assistant-state">
           Checking availability of the read-only Mining evidence assistant.
         </p>
@@ -319,10 +372,6 @@
         <a id="fabric-agent" hidden target="_blank" rel="noopener noreferrer"
           >Open data agent in Fabric</a
         >
-        <details>
-          <summary>Inspect saved queries</summary>
-          <div id="queries">No approved saved queries are configured.</div>
-        </details>
       </section>
     </main>
     <script type="module" src="/mining/app.js"></script>

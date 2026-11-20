@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { balanceHopper, splitSorterFeed } from "../src/mining/simulator.js";
 import {
   D01_CATALOG_VERSION,
   D01_PLANT_CATALOG,
@@ -362,6 +363,29 @@ describe("D01 mining contracts and catalog", () => {
 });
 
 describe("D01 deterministic bounded simulator", () => {
+  it("accounts for full and empty surge inventory and meters only concentrate to the sorter", () => {
+    expect(balanceHopper(1199, 5, 1)).toEqual({ inventory: 1200, outflow: 1, spill: 3 });
+    expect(balanceHopper(1, 2, 5)).toEqual({ inventory: 0, outflow: 3, spill: 0 });
+    for (const feed of [0, 0.1, 42, 150]) {
+      const { concentrate, reject } = splitSorterFeed(feed);
+      expect(concentrate + reject).toBeCloseTo(feed);
+      expect(concentrate).toBeGreaterThanOrEqual(0);
+      expect(reject).toBeGreaterThanOrEqual(0);
+    }
+    const ore = runSimulation("normal", 600).events.filter(
+      (row): row is D01NumericTelemetryEvent =>
+        row.entityType === "PlantTelemetry" && row.tag_id.endsWith(".ore_flow"),
+    );
+    const at = "2024-01-01T00:10:00.000Z";
+    const crusher = ore.find(
+      (row) => row.timestamp === at && row.tag_id === "D01.A.crusher.ore_flow",
+    );
+    const sorter = ore.find(
+      (row) => row.timestamp === at && row.tag_id === "D01.A.sorter.ore_flow",
+    );
+    expect(sorter?.value).toBeGreaterThan(0);
+    expect(sorter?.value).toBeLessThan(crusher!.value * 0.25);
+  });
   it("produces 2,020 numeric events, 80 heartbeats, and stable retry batches in 20 minutes", () => {
     const first = runSimulation("normal", 1200);
     const second = runSimulation("normal", 1200);

@@ -1,4 +1,5 @@
 import { collectPreview, collectReceipt, drawStreamCharts, streamWindow } from "./stream.js";
+import { buildupObservation, diagnosticAssets, orePaths, possibleBuildup } from "./supervisor.js";
 import {
   MiningReads,
   MiningPolling,
@@ -117,6 +118,13 @@ function configurePolling() {
   $("mining-ask-submit").disabled = !canAsk;
 }
 function query() {
+  const finishedAt =
+    mode === "live" &&
+    context?.mode !== "continuous" &&
+    demoRun?.runId === context?.approvedRun?.runId &&
+    demoRun?.publisherStatus === "publisher_complete"
+      ? Date.parse(demoRun.stopAt)
+      : NaN;
   const asOf =
     mode === "replay"
       ? replayTime
@@ -128,12 +136,16 @@ function query() {
   if (!asOf || !Number.isFinite(Date.parse(asOf)))
     throw new Error("Choose a valid UTC replay time.");
   const minutes = Number($("window").value);
+  const trendEnd =
+    Number.isFinite(finishedAt) && finishedAt < Date.parse(asOf)
+      ? new Date(finishedAt).toISOString()
+      : asOf;
   return {
     plantId: "D01",
     runId: context.approvedRun.runId,
     asOf,
-    start: new Date(Date.parse(asOf) - minutes * 60_000).toISOString(),
-    end: asOf,
+    start: new Date(Date.parse(trendEnd) - minutes * 60_000).toISOString(),
+    end: trendEnd,
     binMinutes: minutes > 30 ? "5" : "1",
     maxRows: "1000",
   };
@@ -274,6 +286,7 @@ async function applyAppearance() {
   }
 }
 function drawOverview() {
+  drawShift();
   const continuous = context?.mode === "continuous";
   $("continuous-evidence").hidden = !continuous;
   if (continuous) {
@@ -453,6 +466,121 @@ function drawIncidentEvidence() {
     `${selectedIncident.title} · rule ${selectedIncident.ruleId} · scope ${selectedIncident.scopeId} · ${selectedIncident.verification} · ${incidentAssessmentLabel(incidentAssessment)} · raised ${timestamp(selectedIncident.raisedAt)} · acknowledged ${selectedIncident.acknowledgedAt ? timestamp(selectedIncident.acknowledgedAt) : "not acknowledged"} (separate from assessment time). Current hold: ${hold}; evidence window: ${timestamp(selectedIncident.evidenceWindowStart)} to ${timestamp(selectedIncident.evidenceWindowEnd)}. ${evidence}${moduleContext}`,
   );
 }
+let buildup = [];
+let flowPaths = [];
+
+function openAsset(id) {
+  select(id);
+  $("asset-detail").focus();
+}
+
+function buildShift() {
+  flowPaths = orePaths(catalog);
+  for (const { line, modules } of flowPaths) {
+    const row = node("div");
+    row.className = "flow-line";
+    row.append(node("strong", `Line ${line}`));
+    for (const [index, module] of modules.entries()) {
+      const step = node("div");
+      const button = node("button", module.label.replace(/^Line [ABC]\s*/i, ""));
+      button.setAttribute("aria-label", `Line ${line}, stage ${index + 1}: ${button.textContent}`);
+      button.type = "button";
+      button.className = "secondary";
+      button.dataset.flowAsset = module.id;
+      step.append(button);
+      if (module.kind === "crusher" || module.kind === "sorter") {
+        const rate = node("small", "Rate unknown");
+        rate.id = `rate-${module.id}`;
+        step.append(rate);
+      }
+      row.append(step);
+    }
+    $("flow-lines").append(row);
+  }
+  document.querySelectorAll("[data-flow-asset]").forEach((button) => {
+    button.addEventListener("click", () => openAsset(button.dataset.flowAsset));
+  });
+}
+
+function drawShift() {
+  if (!catalog) return;
+  const continuous = context?.mode === "continuous";
+  const data = continuous ? continuousOverview : overview;
+  const reading = (id) =>
+    continuous
+      ? continuousTagReading(data, id)
+      : data?.latest?.readings?.find((row) => row.tagId === id);
+  const describe = (id, label) => {
+    const value = reading(id);
+    return usable(value) &&
+      Number.isFinite(value.ageSeconds) &&
+      (continuous || overview?.quality === "good")
+      ? `${label} ${number(value.value)} ${value.unit} · ${Math.round(value.ageSeconds)}s old at read`
+      : `${label} unknown`;
+  };
+  text("flow-hopper", describe("D01.shared.hopper.level", "Inventory"));
+  text("flow-water", describe("D01.shared.water.level", "Tank level"));
+  for (const { modules } of flowPaths) {
+    for (const module of modules) {
+      if (!["crusher", "sorter"].includes(module.kind)) continue;
+      text(
+        `rate-${module.id}`,
+        describe(`${module.id}.ore_flow`, module.kind === "crusher" ? "Feed" : "Sorter feed"),
+      );
+    }
+  }
+  const observation =
+    !continuous &&
+    mode === "live" &&
+    data?.quality === "good" &&
+    demoRun?.publisherStatus === "running" &&
+    !demoRun.stopRequested &&
+    demoRun.runId === context?.approvedRun?.runId
+      ? buildupObservation(data.latest.readings, data.asOf)
+      : null;
+  if (!observation) buildup = [];
+  else if (observation.time > (buildup.at(-1)?.time ?? 0))
+    buildup = [...buildup, observation].slice(-2);
+  const [previous, current] = buildup;
+  text(
+    "buildup-status",
+    possibleBuildup(previous, current)
+      ? `Possible upstream buildup · hopper ${number(previous.level)}% → ${number(current.level)}%; combined line feed ${number(previous.feed)} → ${number(current.feed)} t/h at ${timestamp(new Date(current.time).toISOString())}. Check feed and inventory before diagnosing a blockage.`
+      : current
+        ? "Buildup: latest comparable readings do not meet the demo advisory rule."
+        : "Buildup: waiting for two comparable live samples.",
+  );
+}
+
+function configureDiagnostic(preferred) {
+  const metric = $("diagnostic").value;
+  const assets = diagnosticAssets(catalog, metric);
+  const picker = $("diagnostic-asset");
+  const id = [preferred, picker.value, assets[0]?.id].find((candidate) =>
+    assets.some((asset) => asset.id === candidate),
+  );
+  picker.replaceChildren(
+    ...assets.map((asset) => {
+      const option = node("option", asset.label);
+      option.value = asset.id;
+      return option;
+    }),
+  );
+  picker.disabled = !id;
+  if (id) picker.value = id;
+  drawDiagnosticScope();
+}
+
+function drawDiagnosticScope() {
+  const picker = $("diagnostic-asset");
+  text(
+    "diagnostic-scope",
+    picker.value
+      ? `${picker.selectedOptions[0].textContent} · ${mode === "replay" ? "replay at " + timestamp(replayTime) : context?.mode === "continuous" ? "cross-run observed averages" : demoRun?.publisherStatus === "publisher_complete" && demoRun?.runId === context?.approvedRun?.runId ? "completed run ending " + timestamp(demoRun.stopAt) : "approved run trend"} · ${$("window").selectedOptions[0].textContent}`
+      : "No compatible diagnostic equipment is available.",
+  );
+}
+
 function drawDrawer() {
   if (!catalog) return;
   if (!selected) {
@@ -464,12 +592,6 @@ function drawDrawer() {
         ? `Status: ${selectedIncident.verification} · no single module association`
         : "Status: unknown",
     );
-    text(
-      "diagnostic-scope",
-      selectedIncident
-        ? "No module-level trend is associated with this assessment."
-        : "Select a module for its diagnostic trend.",
-    );
     $("readings").replaceChildren(
       node(
         "p",
@@ -480,7 +602,6 @@ function drawDrawer() {
     );
     for (const direction of ["upstream", "downstream"])
       $(direction).replaceChildren(node("p", "No single module is associated."));
-    if (selectedIncident) chart($("diagnostic-chart"), null);
     drawIncidentEvidence();
     return;
   }
@@ -493,16 +614,6 @@ function drawDrawer() {
     continuous
       ? `Status: ${moduleStatus(continuousOverview, selected, "continuous", catalog)}; sensor freshness/quality only, not equipment operating status`
       : `Status: ${moduleStatus(overview, selected)}`,
-  );
-  text(
-    "diagnostic-scope",
-    continuous
-      ? context.capabilities?.trends === true
-        ? "Cross-run sensor trends are shown by metric; module operating state is not directly reported."
-        : "Continuous trend reads are unavailable; module operating state is not directly reported."
-      : selectedIncident?.metric === null
-        ? "No supported trend metric is associated with this incident; choose a diagnostic to inspect a separate series."
-        : `Selected module: ${selected} · 30-minute default trend`,
   );
   const readings = $("readings");
   readings.replaceChildren();
@@ -577,7 +688,6 @@ function drawDrawer() {
     }
     if (!container.childNodes.length) container.append(node("p", "No authored connection."));
   }
-  if (selectedIncident?.metric === null) chart($("diagnostic-chart"), null);
   drawIncidentEvidence();
 }
 function select(id, incident = null) {
@@ -591,18 +701,14 @@ function select(id, incident = null) {
   });
   if (incident?.metric)
     $("diagnostic").value = incident.metric === "feed" ? "vibration" : incident.metric;
-  else if (!incident)
+  else if (["dms", "water", "crusher"].includes(module.kind))
     $("diagnostic").value =
       module.kind === "dms" ? "density" : module.kind === "water" ? "water-energy" : "vibration";
+  configureDiagnostic(id);
+  chart($("diagnostic-chart"), null);
   drawPlant();
   drawDrawer();
-  if (
-    context?.readAvailable &&
-    context?.approvedRun &&
-    !document.hidden &&
-    (!incident || incident.metric !== null)
-  )
-    refresh("diagnostic");
+  if (context?.readAvailable && context?.approvedRun && !document.hidden) refresh("diagnostic");
 }
 function selectIncident(incident) {
   if (incident.moduleId) {
@@ -637,7 +743,10 @@ function drawIncidents(emptyMessage = "Unknown - incident assessment unavailable
       "button",
       `${incident.severity.toUpperCase()} · ${incident.title} · ${incident.moduleId ?? incident.scopeId} · ${duration} min · ${incident.verification}${incident.acknowledgedAt ? " · acknowledged (not cleared)" : ""}`,
     );
-    button.addEventListener("click", () => selectIncident(incident));
+    button.addEventListener("click", () => {
+      selectIncident(incident);
+      $("asset-detail").focus();
+    });
     item.append(button);
     container.append(item);
   }
@@ -851,6 +960,7 @@ function chart(container, data) {
   container.append(details);
 }
 function clearReadState(message) {
+  buildup = [];
   overview = null;
   continuousOverview = null;
   continuousAdvisoryData = null;
@@ -943,6 +1053,11 @@ async function refresh(scope = "all") {
     }
     const params = query();
     const loadTrend = async (target, metric) => {
+      const asset = $("diagnostic-asset").value;
+      const matching = () =>
+        current() &&
+        (target !== "diagnostic-chart" ||
+          ($("diagnostic").value === metric && $("diagnostic-asset").value === asset));
       try {
         const request = {
           plantId: "D01",
@@ -952,21 +1067,18 @@ async function refresh(scope = "all") {
           binMinutes: params.binMinutes,
         };
         const data = await reads.read("cross-run-trends", request);
-        if (!current() || (target === "diagnostic-chart" && $("diagnostic").value !== metric))
-          return;
+        if (!matching()) return;
         const chartData = crossRunChartData(data, request, catalogVersion, catalog, {
           runId,
           generation,
         });
         if (!chartData) throw new Error("Cross-run trend evidence is invalid or unavailable.");
+        if (target === "diagnostic-chart" && metric !== "water-energy")
+          chartData.rows = chartData.rows.filter((row) => row.moduleId === asset);
         chart($(target), chartData);
-        if (target === "diagnostic-chart")
-          text(
-            "diagnostic-scope",
-            "Observed cross-run sensor averages; module state is not inferred.",
-          );
+        if (target === "diagnostic-chart") drawDiagnosticScope();
       } catch (error) {
-        if (current() && (target !== "diagnostic-chart" || $("diagnostic").value === metric)) {
+        if (matching()) {
           chart($(target), null);
           $(target).append(node("p", error.message));
         }
@@ -1131,9 +1243,14 @@ async function refresh(scope = "all") {
         }
       })(),
     );
-  if (selected && (scope === "all" || scope === "detail" || scope === "diagnostic")) {
-    const moduleId = selected,
+  if (
+    $("diagnostic-asset").value &&
+    (scope === "all" || scope === "detail" || scope === "diagnostic")
+  ) {
+    const moduleId = $("diagnostic-asset").value,
       metric = $("diagnostic").value;
+    const diagnosticCurrent = () =>
+      current() && $("diagnostic-asset").value === moduleId && $("diagnostic").value === metric;
     tasks.push(
       (async () => {
         try {
@@ -1142,10 +1259,10 @@ async function refresh(scope = "all") {
             throw new Error(
               "Trend response does not match the requested module, time, metric or catalog.",
             );
-          if (current() && selected === moduleId && $("diagnostic").value === metric)
-            chart($("diagnostic-chart"), data);
+          if (diagnosticCurrent()) chart($("diagnostic-chart"), data);
+          if (diagnosticCurrent()) drawDiagnosticScope();
         } catch (error) {
-          if (current() && selected === moduleId && $("diagnostic").value === metric) {
+          if (diagnosticCurrent()) {
             chart($("diagnostic-chart"), null);
             $("diagnostic-chart").append(node("p", error.message));
           }
@@ -1361,6 +1478,13 @@ let previousSignalMode;
 function drawStream() {
   const panel = $("stream-panel");
   panel.hidden = mode !== "live" || !demoRun || (!fastDemoStatus && !nativeDemoLive);
+  $("stream-empty").hidden = !panel.hidden;
+  text(
+    "stream-empty",
+    mode === "replay"
+      ? "Live receipts are excluded from replay. Use diagnostics for the selected time."
+      : "No live receipt history is available for this run.",
+  );
   if (panel.hidden) return;
   if (streamRunId !== demoRun.runId || previousSignalMode !== fabricDemoSignal) {
     streamRunId = demoRun.runId;
@@ -1383,10 +1507,22 @@ function drawStream() {
 
 function drawStreamWindow() {
   const element = $("stream-window");
-  const window = nativeDemoLive && !$("stream-panel").hidden
-    ? streamWindow(demoRun, streamReceipts)
-    : null;
+  const window =
+    nativeDemoLive && !$("stream-panel").hidden ? streamWindow(demoRun, streamReceipts) : null;
   element.hidden = !window;
+  text(
+    "shift-data",
+    mode === "replay"
+      ? "Data: historical read at the selected time."
+      : window?.state === "overdue"
+        ? "Data gap: an expected Fabric batch is overdue."
+        : window?.state === "arriving"
+          ? "Data: numeric window closed; awaiting Fabric."
+          : window
+            ? "Data: collecting the next numeric window."
+            : "Data: no active batch countdown; see run and receipt status.",
+  );
+  $("buildup-status").hidden = mode === "replay" || window?.state === "overdue";
   if (!window) return;
   element.dataset.state = window.state;
   $("stream-progress").value = window.progress;
@@ -1473,7 +1609,7 @@ function drawArrival() {
             : "Ready to start",
   );
   const hasReceipt = timing.lagSeconds !== null;
-  if (hasReceipt && requestedSimulation?.runId === demoRun?.runId) {
+  if (hasReceipt && requestedSimulation && requestedSimulation.runId === demoRun?.runId) {
     requestedSimulation.firstVisibleSeconds ??= (Date.now() - requestedSimulation.at) / 1000;
   }
   text(
@@ -1488,7 +1624,8 @@ function drawArrival() {
   );
   text("arrival-lag", hasReceipt ? seconds(timing.lagSeconds) : "Not measured yet");
   const first =
-    requestedSimulation?.runId === demoRun?.runId &&
+    requestedSimulation &&
+    requestedSimulation.runId === demoRun?.runId &&
     requestedSimulation.firstVisibleSeconds !== undefined
       ? ` First visible in this tab after ${seconds(requestedSimulation.firstVisibleSeconds)}.`
       : "";
@@ -1614,7 +1751,8 @@ function scheduleDemoStatus() {
       (demoRun.publisherStatus === "running" && !demoRun.startupPreview));
   demoStatusTimer = setTimeout(
     () => void updateDemoStatus().finally(scheduleDemoStatus),
-    waitingForStartup || ((nativeDemoLive || fastDemoStatus) && demoRun?.publisherStatus === "running")
+    waitingForStartup ||
+      ((nativeDemoLive || fastDemoStatus) && demoRun?.publisherStatus === "running")
       ? 2_000
       : 15_000,
   );
@@ -1661,6 +1799,8 @@ $("mode").addEventListener("change", async () => {
     replayTime = new Date(`${$("replay-time").value}Z`).toISOString();
   }
   clearReadState("Loading selected time mode…");
+  drawDiagnosticScope();
+  drawStream();
   await refresh();
   configurePolling();
 });
@@ -1669,10 +1809,12 @@ $("replay-time").addEventListener("change", async () => {
   const value = Date.parse(`${$("replay-time").value}Z`);
   replayTime = Number.isFinite(value) ? new Date(value).toISOString() : null;
   clearReadState("Loading replay time…");
+  drawDiagnosticScope();
   await refresh();
   configurePolling();
 });
 $("window").addEventListener("change", () => {
+  drawDiagnosticScope();
   invalidate();
   if (context?.mode === "continuous") {
     $("feed-chart").replaceChildren(node("p", "Loading cross-run trend…"));
@@ -1682,6 +1824,12 @@ $("window").addEventListener("change", () => {
   configurePolling();
 });
 $("diagnostic").addEventListener("change", () => {
+  configureDiagnostic(selected);
+  chart($("diagnostic-chart"), null);
+  refresh("diagnostic");
+});
+$("diagnostic-asset").addEventListener("change", () => {
+  drawDiagnosticScope();
   chart($("diagnostic-chart"), null);
   refresh("diagnostic");
 });
@@ -1747,6 +1895,8 @@ try {
     throw new Error("Invalid canonical plant package.");
   drawPlant();
   selected = catalog.modules.find((module) => module.kind === "dms")?.id;
+  buildShift();
+  configureDiagnostic(selected);
   drawDrawer();
   await loadContext();
   try {
