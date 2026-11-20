@@ -3,7 +3,9 @@
 The existing `/` triathlon entry, APIs, synthetic profile, assistant and live controls
 are unchanged. `/mining` is a separate domain entry with its own scripts, state and
 styles. It shares the existing host, visual tokens and authenticated BFF helpers.
-It is **not a live-integrated twin or hosted acceptance evidence**.
+See the [current lab guides](../../README.md) for the public Fabric-connected
+scenarios and [Developer UAT](../../docs/developer.md#uat-the-actual-environment)
+for acceptance. Source/build success is not hosted ingestion evidence.
 
 ## Mining source prerequisites
 
@@ -38,7 +40,7 @@ Athlete IDs and athlete permissions are not mining grants.
 | `context`               | `MiningContext`                                   | none; backend-selected approved run, catalog version, capabilities                 |
 | `overview`              | `MiningOverview` (`PlantLatest` + `PlantSummary`) | `plantId=D01`, approved `runId`, optional replay `asOf` UTC                        |
 | `trends`                | `MiningSeries` (`AssetTrend`)                     | plant/run, canonical `moduleId`, `metric`, `start`, `end`, `binMinutes`, `maxRows` |
-| `incidents`             | `MiningIncidents` (`ActiveIncidents`)             | plant/run; current assessment only                                                |
+| `incidents`             | `MiningIncidents` (`ActiveIncidents`)             | plant/run; current assessment only                                                 |
 | `compare-lines`         | `MiningSeries` (`CompareLines`)                   | plant/run, `metric`, `start`, `end`, `binMinutes`, `maxRows`                       |
 | `cross-run-trends`      | Continuous cross-run trend evidence               | `plantId=D01`, `metric`, `start`, `end`, `binMinutes`; no run filter               |
 | `runs/status`           | `MiningRun`                                       | plant/run                                                                          |
@@ -90,9 +92,11 @@ substitutes evaluator or response-receipt time.
 The BFF constructs its own service-auth headers for reads, ignoring all browser
 authorization/principal headers. It uses only the existing viewer-scoped Cockpit
 identity. Synthetic profile mining reads return 503, not athlete demo samples.
-POST `runs/start`, `runs/cancel` and `assistant` always return explicit 503 until
-a verified human delegated boundary and separate backend mining authorization
-are implemented. Hidden/disabled buttons are not the authorization boundary.
+Protected delegated actions and the separately opt-in public demo service
+boundary are distinct. Public `demo/runs/start`, `demo/runs/cancel` and
+`demo/assistant` require configured gates and the Cockpit service identity;
+their [run contract](../../docs/mining-run-coordination.md) is authoritative.
+Hidden/disabled buttons are not the authorization boundary.
 No ingress, EasyAuth exemptions, credentials or identity grants are added.
 
 Backend 401/403/query errors propagate explicitly. A 404/503 leaves the account-free
@@ -100,18 +104,17 @@ geometry shell usable with unknown telemetry. Identical reads reuse 15-second
 cache/in-flight work; overview polls every 30 seconds, charts/incidents every
 60 seconds, hidden tabs abort/pause and replay never polls. Reopening never
 starts a run. Publisher and ingestion completion are separate statuses, as are
-stop requested and stopped. The assistant makes no cost-incurring calls; only
-explicitly configured `https://app.fabric.microsoft.com` query/agent links appear.
+stop requested and stopped. The explicitly enabled read-only Foundry assistant
+can incur model costs; it is not a native Fabric Data Agent.
 
-## Remaining release gates
+## Deployment acceptance
 
-Connect backend routes to the approved-run/read authorization, five bounded query
-functions and incident evidence; verify the exact DTO and catalog version.
-Configure supported native Fabric query/data-agent links under user permissions
-if available. Human delegated run/assistant authorization remains a separate gate.
-Then use the existing protected release lanes and verify actual hosted normal,
-fault/stale, replay and stop behavior. Local source/browser checks are not this
-proof. Rollback is the prior Cockpit image; no infrastructure or data teardown.
+Verify approved-run authorization, query/DTO/catalog bindings and incident
+readiness in the target environment. Use the existing protected release lanes
+and verify actual hosted normal, stale, replay and stop behavior. Human delegated
+features and native Fabric links remain separate permission/acceptance paths.
+Local source/browser checks are not hosted ingestion proof. Roll back to a
+compatible prior Cockpit image without infrastructure or data teardown.
 
 `npm run dev --workspace apps/cockpit` prepares the same validated generated
 catalog/vendor files before starting the existing source watcher. Mining CSS/JS
