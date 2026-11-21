@@ -177,9 +177,14 @@ export function validSeries(data, params, catalogVersion, catalog) {
     data.rows.length > Math.min(1000, Number(params.maxRows))
   )
     return false;
-  if (["sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"].includes(params.metric)) {
-    const checked = crossRunChartData(data, params, catalogVersion, catalog, null, Date.now(),
-      { runId: params.runId, moduleId: params.moduleId, asOf: params.asOf });
+  if (
+    ["sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"].includes(params.metric)
+  ) {
+    const checked = crossRunChartData(data, params, catalogVersion, catalog, null, Date.now(), {
+      runId: params.runId,
+      moduleId: params.moduleId,
+      asOf: params.asOf,
+    });
     return !!checked && JSON.stringify(checked.rows) === JSON.stringify(data.rows);
   }
   const binMs = data.binMinutes * 60_000;
@@ -203,7 +208,15 @@ export function validSeries(data, params, catalogVersion, catalog) {
   });
 }
 
-export function crossRunChartData(data, params, catalogVersion, catalog, owner, now = Date.now(), scoped = null) {
+export function crossRunChartData(
+  data,
+  params,
+  catalogVersion,
+  catalog,
+  owner,
+  now = Date.now(),
+  scoped = null,
+) {
   const start = Date.parse(params.start);
   const end = Date.parse(params.end);
   const asOf = Date.parse(data?.asOf);
@@ -220,11 +233,13 @@ export function crossRunChartData(data, params, catalogVersion, catalog, owner, 
   ]);
   if (
     (scoped
-      ? (!sameScope(data, scoped.runId, catalogVersion) || data.moduleId !== scoped.moduleId ||
-         Date.parse(data.asOf) !== Date.parse(scoped.asOf))
-      : (!owner || data?.owner?.runId !== owner.runId ||
-         data.owner.generation !== owner.generation ||
-         !(Date.parse(data.owner.authorityUntil) > now + continuousClockSkewMs))) ||
+      ? !sameScope(data, scoped.runId, catalogVersion) ||
+        data.moduleId !== scoped.moduleId ||
+        Date.parse(data.asOf) !== Date.parse(scoped.asOf)
+      : !owner ||
+        data?.owner?.runId !== owner.runId ||
+        data.owner.generation !== owner.generation ||
+        !(Date.parse(data.owner.authorityUntil) > now + continuousClockSkewMs)) ||
     data.catalogVersion !== catalogVersion ||
     data.profileVersion !== "d01-publish-profile-v1" ||
     data.metric !== params.metric ||
@@ -260,13 +275,16 @@ export function crossRunChartData(data, params, catalogVersion, catalog, owner, 
                 : params.metric === "feed-pressure"
                   ? tag?.metric === "feed_pressure" && tag.module_id.endsWith(".dms")
                   : params.metric === "motor-current"
-                    ? tag?.metric === "motor_current" && [".crusher", ".dms", ".sorter"].some((suffix) => tag.module_id.endsWith(suffix))
-            : params.metric === "water-energy" &&
-              [
-                "D01.shared.water.level",
-                "D01.shared.water.water_flow",
-                "D01.shared.control.power",
-              ].includes(tag?.id);
+                    ? tag?.metric === "motor_current" &&
+                      [".crusher", ".dms", ".sorter"].some((suffix) =>
+                        tag.module_id.endsWith(suffix),
+                      )
+                    : params.metric === "water-energy" &&
+                      [
+                        "D01.shared.water.level",
+                        "D01.shared.water.water_flow",
+                        "D01.shared.control.power",
+                      ].includes(tag?.id);
     const key = `${point?.runId}:${point?.seriesId}:${time}`;
     if (
       !tag ||
@@ -357,7 +375,8 @@ export function moduleStatus(
 
 // A line controller observation is not an individual machine health signal.
 export function lineOperatingState(overview, line, mode, now = Date.now(), replay = false) {
-  const states = mode === "continuous" ? overview?.detail?.lineStates : overview?.latest?.lineStates;
+  const states =
+    mode === "continuous" ? overview?.detail?.lineStates : overview?.latest?.lineStates;
   if (!["A", "B", "C"].includes(line) || !Array.isArray(states)) return "unknown";
   const matching = states.filter((item) => item?.scopeId === line);
   if (matching.length !== 1) return "unknown";
@@ -365,13 +384,21 @@ export function lineOperatingState(overview, line, mode, now = Date.now(), repla
   const at = Date.parse(overview?.asOf);
   const sampled = Date.parse(state.sampleTime);
   const reference = replay ? at : now;
-  if (!Number.isFinite(at) || !Number.isFinite(sampled) || !Number.isFinite(reference) ||
-      sampled > at || at - sampled > 195_000 || reference - sampled > 195_000 ||
-      sampled > reference + continuousClockSkewMs ||
-      (mode === "continuous" && (state.quality !== "good" ||
+  if (
+    !Number.isFinite(at) ||
+    !Number.isFinite(sampled) ||
+    !Number.isFinite(reference) ||
+    sampled > at ||
+    at - sampled > 195_000 ||
+    reference - sampled > 195_000 ||
+    sampled > reference + continuousClockSkewMs ||
+    (mode === "continuous" &&
+      (state.quality !== "good" ||
         !continuousOwnerCurrent(overview, now) ||
         now + continuousClockSkewMs - sampled > 195_000)) ||
-      typeof state.scheduledRunning !== "boolean") return "unknown";
+    typeof state.scheduledRunning !== "boolean"
+  )
+    return "unknown";
   if (state.state === "running" && state.scheduledRunning) return "running";
   if (state.state === "stopped") return "stopped";
   return "unknown";
@@ -915,7 +942,11 @@ export function continuousThroughputUsable(data, now = Date.now()) {
   );
 }
 
-export function seriesQuery({ plantId, runId, start, end, binMinutes, maxRows, asOf }, metric, moduleId) {
+export function seriesQuery(
+  { plantId, runId, start, end, binMinutes, maxRows, asOf },
+  metric,
+  moduleId,
+) {
   const request = { plantId, runId, start, end, binMinutes, maxRows, metric, moduleId };
   if (["sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"].includes(metric))
     request.asOf = asOf;
@@ -956,10 +987,17 @@ export class MiningReads {
       .then(async (response) => {
         if (!response.ok) {
           let envelope;
-          try { envelope = await response.json(); } catch { /* No trusted error envelope. */ }
+          try {
+            envelope = await response.json();
+          } catch {
+            /* No trusted error envelope. */
+          }
           const code = envelope?.error?.code;
-          const [category, message] = (Object.hasOwn(safeReadErrors, code) && safeReadErrors[code]) ||
-            ["service_failed", "Live readings unavailable. Plant layout still works. Retry."];
+          const [category, message] = (Object.hasOwn(safeReadErrors, code) &&
+            safeReadErrors[code]) || [
+            "service_failed",
+            "Live readings unavailable. Plant layout still works. Retry.",
+          ];
           const error = new Error(message);
           error.category = category;
           throw error;

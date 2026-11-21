@@ -18,7 +18,16 @@ const fields = new Set([
   "binMinutes",
   "maxRows",
 ]);
-const metrics = new Set(["feed", "density", "vibration", "water-energy", "sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"]);
+const metrics = new Set([
+  "feed",
+  "density",
+  "vibration",
+  "water-energy",
+  "sorter-feed",
+  "motor-current",
+  "bearing-temperature",
+  "feed-pressure",
+]);
 const routes = [
   "context",
   "overview",

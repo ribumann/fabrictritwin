@@ -7,8 +7,14 @@ import {
 import { MiningQueryError } from "./bounded-query.js";
 
 export type MiningCrossRunMetric =
-  | "feed" | "density" | "vibration" | "water-energy"
-  | "sorter-feed" | "motor-current" | "bearing-temperature" | "feed-pressure";
+  | "feed"
+  | "density"
+  | "vibration"
+  | "water-energy"
+  | "sorter-feed"
+  | "motor-current"
+  | "bearing-temperature"
+  | "feed-pressure";
 export type MiningCrossRunBinMinutes = 1 | 5;
 
 export interface MiningCrossRunTrendRequest {
@@ -34,22 +40,46 @@ const maximumWindowMs = 86_400_000;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 export const miningTrendMetrics: readonly MiningCrossRunMetric[] = [
-  "feed", "density", "vibration", "water-energy",
-  "sorter-feed", "motor-current", "bearing-temperature", "feed-pressure",
+  "feed",
+  "density",
+  "vibration",
+  "water-energy",
+  "sorter-feed",
+  "motor-current",
+  "bearing-temperature",
+  "feed-pressure",
 ];
 const quote = (value: string) => JSON.stringify(value);
 
-export function miningTrendFamily(tag: (typeof D01_PLANT_CATALOG.telemetry_tags)[number]): MiningCrossRunMetric | null {
+export function miningTrendFamily(
+  tag: (typeof D01_PLANT_CATALOG.telemetry_tags)[number],
+): MiningCrossRunMetric | null {
   const line = tag.module_id.split(".")[1];
   if (!["A", "B", "C", "shared"].includes(line)) return null;
-  if (line !== "shared" && tag.module_id.endsWith(".crusher") && tag.metric === "ore_flow") return "feed";
-  if (line !== "shared" && tag.module_id.endsWith(".sorter") && tag.metric === "ore_flow") return "sorter-feed";
-  if (line !== "shared" && tag.module_id.endsWith(".dms") && tag.metric === "medium_density") return "density";
-  if (line !== "shared" && tag.module_id.endsWith(".crusher") && tag.metric === "vibration_rms") return "vibration";
-  if (line !== "shared" && tag.module_id.endsWith(".crusher") && tag.metric === "bearing_temperature") return "bearing-temperature";
-  if (line !== "shared" && tag.module_id.endsWith(".dms") && tag.metric === "feed_pressure") return "feed-pressure";
-  if (line !== "shared" && [".crusher", ".dms", ".sorter"].some((suffix) => tag.module_id.endsWith(suffix)) && tag.metric === "motor_current") return "motor-current";
-  if (tag.module_id === "D01.shared.water" && ["level", "water_flow"].includes(tag.metric)) return "water-energy";
+  if (line !== "shared" && tag.module_id.endsWith(".crusher") && tag.metric === "ore_flow")
+    return "feed";
+  if (line !== "shared" && tag.module_id.endsWith(".sorter") && tag.metric === "ore_flow")
+    return "sorter-feed";
+  if (line !== "shared" && tag.module_id.endsWith(".dms") && tag.metric === "medium_density")
+    return "density";
+  if (line !== "shared" && tag.module_id.endsWith(".crusher") && tag.metric === "vibration_rms")
+    return "vibration";
+  if (
+    line !== "shared" &&
+    tag.module_id.endsWith(".crusher") &&
+    tag.metric === "bearing_temperature"
+  )
+    return "bearing-temperature";
+  if (line !== "shared" && tag.module_id.endsWith(".dms") && tag.metric === "feed_pressure")
+    return "feed-pressure";
+  if (
+    line !== "shared" &&
+    [".crusher", ".dms", ".sorter"].some((suffix) => tag.module_id.endsWith(suffix)) &&
+    tag.metric === "motor_current"
+  )
+    return "motor-current";
+  if (tag.module_id === "D01.shared.water" && ["level", "water_flow"].includes(tag.metric))
+    return "water-energy";
   if (tag.module_id === "D01.shared.control" && tag.metric === "power") return "water-energy";
   return null;
 }
@@ -264,7 +294,8 @@ export function prepareMiningCrossRunTrendQuery(
     !miningTrendMetrics.includes(input.metric) ||
     (input.runId !== undefined && !isMiningRunId(input.runId)) ||
     (input.moduleId !== undefined &&
-      (!input.runId || !D01_PLANT_CATALOG.modules.some((module) => module.id === input.moduleId))) ||
+      (!input.runId ||
+        !D01_PLANT_CATALOG.modules.some((module) => module.id === input.moduleId))) ||
     (input.binMinutes !== 1 && input.binMinutes !== 5) ||
     end <= start ||
     end - start > maximumWindowMs ||

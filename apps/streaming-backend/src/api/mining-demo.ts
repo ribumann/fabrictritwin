@@ -353,7 +353,16 @@ export function createMiningDemoRouter(options: Options): Router {
       typeof req.query.start !== "string" ||
       typeof req.query.end !== "string" ||
       typeof req.query.metric !== "string" ||
-      !["feed", "density", "vibration", "water-energy", "sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"].includes(req.query.metric) ||
+      ![
+        "feed",
+        "density",
+        "vibration",
+        "water-energy",
+        "sorter-feed",
+        "motor-current",
+        "bearing-temperature",
+        "feed-pressure",
+      ].includes(req.query.metric) ||
       !["1", "5"].includes(String(req.query.binMinutes))
     ) {
       error(res, 400, "invalid_mining_query", "Invalid cross-run trend scope.");

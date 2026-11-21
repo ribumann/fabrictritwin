@@ -71,7 +71,12 @@ const processMaterials = new Set([
   "sinks",
   "concentrate",
 ]);
-const diagnosticKinds = { density: "dms", vibration: "crusher", "sorter-feed": "sorter", "water-energy": "water" };
+const diagnosticKinds = {
+  density: "dms",
+  vibration: "crusher",
+  "sorter-feed": "sorter",
+  "water-energy": "water",
+};
 
 export function diagnosticAssets(catalog, metric) {
   const kind = diagnosticKinds[metric];

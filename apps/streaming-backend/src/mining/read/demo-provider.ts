@@ -145,22 +145,54 @@ export function createMiningDemoProvider(
       throw new Error("Unsupported public mining read.");
     }
     const runId = input.run.runId;
-    if (input.kind === "trend" && (input.metric === "sorter-feed" || input.metric === "motor-current" ||
-      input.metric === "bearing-temperature" || input.metric === "feed-pressure")) {
+    if (
+      input.kind === "trend" &&
+      (input.metric === "sorter-feed" ||
+        input.metric === "motor-current" ||
+        input.metric === "bearing-temperature" ||
+        input.metric === "feed-pressure")
+    ) {
       if (!input.asOf || input.maxRows !== 1000)
-        throw new MiningQueryError("invalid", "Scoped trend requires an evidence cutoff and 1000-row bound.");
-      const scoped = { start: input.start, end: input.end, asOf: input.asOf, metric: input.metric,
-        binMinutes: input.binMinutes, runId, moduleId: input.moduleId };
+        throw new MiningQueryError(
+          "invalid",
+          "Scoped trend requires an evidence cutoff and 1000-row bound.",
+        );
+      const scoped = {
+        start: input.start,
+        end: input.end,
+        asOf: input.asOf,
+        metric: input.metric,
+        binMinutes: input.binMinutes,
+        runId,
+        moduleId: input.moduleId,
+      };
       const rows = await query({ ...scoped, kind: "cross-run-trend", maxRows: 1000 }, signal);
       signal.throwIfAborted();
       const data = mapMiningCrossRunTrendRows(scoped, rows, now);
-      return { plantId: "D01" as const, runId, catalogVersion: D01_CATALOG_VERSION,
-        moduleId: input.moduleId, metric: input.metric, windowStart: input.start, windowEnd: input.end,
-        binMinutes: input.binMinutes, crossRun: true, start: data.start, end: data.end,
-        asOf: data.asOf, profileVersion: data.profileVersion, points: data.points,
-        rows: data.points.map((point) => ({ ...point, timestamp: point.binStart })) };
+      return {
+        plantId: "D01" as const,
+        runId,
+        catalogVersion: D01_CATALOG_VERSION,
+        moduleId: input.moduleId,
+        metric: input.metric,
+        windowStart: input.start,
+        windowEnd: input.end,
+        binMinutes: input.binMinutes,
+        crossRun: true,
+        start: data.start,
+        end: data.end,
+        asOf: data.asOf,
+        profileVersion: data.profileVersion,
+        points: data.points,
+        rows: data.points.map((point) => ({ ...point, timestamp: point.binStart })),
+      };
     }
-    if (input.metric !== "feed" && input.metric !== "density" && input.metric !== "vibration" && input.metric !== "water-energy")
+    if (
+      input.metric !== "feed" &&
+      input.metric !== "density" &&
+      input.metric !== "vibration" &&
+      input.metric !== "water-energy"
+    )
       throw new MiningQueryError("invalid", "Unsupported mining series metric.");
     if (input.kind === "compare" && input.metric === "water-energy")
       throw new MiningQueryError("invalid", "Unsupported mining comparison metric.");

@@ -59,8 +59,8 @@
           <details>
             <summary>Simulation details</summary>
             <p id="run-control-help">
-              A shared ten-minute simulation sends synthetic plant data through Fabric; reopening this
-              page does not start it.
+              A shared ten-minute simulation sends synthetic plant data through Fabric; reopening
+              this page does not start it.
             </p>
           </details>
         </div>
@@ -105,10 +105,22 @@
         <details class="kpi-details">
           <summary>Indicator details</summary>
           <div class="kpi-details-grid">
-            <div><h3>Throughput</h3><p id="meta-throughput">t/h · window / coverage unknown</p></div>
-            <div><h3>Running lines</h3><p id="meta-runningLines">lines · window / coverage unknown</p></div>
-            <div><h3>Gross process-water intensity</h3><p id="meta-grossProcessWaterIntensity">m³/t · window / coverage unknown</p></div>
-            <div><h3>Energy intensity</h3><p id="meta-energyIntensity">kWh/t · window / coverage unknown</p></div>
+            <div>
+              <h3>Throughput</h3>
+              <p id="meta-throughput">t/h · window / coverage unknown</p>
+            </div>
+            <div>
+              <h3>Running lines</h3>
+              <p id="meta-runningLines">lines · window / coverage unknown</p>
+            </div>
+            <div>
+              <h3>Gross process-water intensity</h3>
+              <p id="meta-grossProcessWaterIntensity">m³/t · window / coverage unknown</p>
+            </div>
+            <div>
+              <h3>Energy intensity</h3>
+              <p id="meta-energyIntensity">kWh/t · window / coverage unknown</p>
+            </div>
           </div>
         </details>
       </section>
@@ -116,10 +128,14 @@
         <section id="twin" class="mining-plant" aria-labelledby="plant-heading">
           <div class="card-header">
             <h2 id="plant-heading">Plant twin</h2>
-            <label>Line scope<select id="line-scope">
-              <option value="all">All lines</option><option value="A">Line A</option>
-              <option value="B">Line B</option><option value="C">Line C</option>
-            </select></label>
+            <label
+              >Line scope<select id="line-scope">
+                <option value="all">All lines</option>
+                <option value="A">Line A</option>
+                <option value="B">Line B</option>
+                <option value="C">Line C</option>
+              </select></label
+            >
             <label
               >View<select id="view">
                 <option value="3d">3D</option>
@@ -146,14 +162,14 @@
                 (review only)</label
               >
             </fieldset>
-          <fieldset class="mining-toggles">
-            <legend>Visible topology</legend>
-            <label><input type="checkbox" name="line" value="A" checked />Line A</label>
-            <label><input type="checkbox" name="line" value="B" checked />Line B</label>
-            <label><input type="checkbox" name="line" value="C" checked />Line C</label>
-            <label><input type="checkbox" name="line" value="shared" checked />Shared</label>
-            <label><input id="utilities" type="checkbox" />Utility streams</label>
-          </fieldset>
+            <fieldset class="mining-toggles">
+              <legend>Visible topology</legend>
+              <label><input type="checkbox" name="line" value="A" checked />Line A</label>
+              <label><input type="checkbox" name="line" value="B" checked />Line B</label>
+              <label><input type="checkbox" name="line" value="C" checked />Line C</label>
+              <label><input type="checkbox" name="line" value="shared" checked />Shared</label>
+              <label><input id="utilities" type="checkbox" />Utility streams</label>
+            </fieldset>
           </details>
           <div
             id="plant-3d"
@@ -203,7 +219,11 @@
             <p id="incident-status">Unknown — incident source not connected.</p>
             <ol id="incidents" class="stack"></ol>
           </section>
-          <div id="latest-readings" class="latest-readings" aria-label="Latest equipment readings"></div>
+          <div
+            id="latest-readings"
+            class="latest-readings"
+            aria-label="Latest equipment readings"
+          ></div>
           <details>
             <summary>Sensor readings and provenance</summary>
             <div id="readings" class="mining-readings"></div>
@@ -220,8 +240,10 @@
           </div>
           <details class="connection-details">
             <summary>About connections</summary>
-            <p>Connections show modeled links; verify the evidence before drawing a causal conclusion.
-              Logical equipment children have no independent geometry.</p>
+            <p>
+              Connections show modeled links; verify the evidence before drawing a causal
+              conclusion. Logical equipment children have no independent geometry.
+            </p>
           </details>
         </aside>
       </div>
@@ -280,47 +302,91 @@
       </section>
       <details id="inquiries" class="card">
         <summary>Saved inquiries</summary>
-        <p>Inspect saved queries or open <a href="#diagnostics">diagnostics</a> for direct evidence.</p>
+        <p>
+          Inspect saved queries or open <a href="#diagnostics">diagnostics</a> for direct evidence.
+        </p>
         <div id="queries">No approved saved queries are configured.</div>
       </details>
       <details id="streams" class="mining-stream">
         <summary id="stream-heading">Batch and source details</summary>
-        <p>Hopper ticks arrive every five seconds when the raw lane is enabled. Plant observations have separate 30- and 60-second cadences.</p>
+        <p>
+          Hopper ticks arrive every five seconds when the raw lane is enabled. Plant observations
+          have separate 30- and 60-second cadences.
+        </p>
         <p id="stream-empty">No live stream evidence is available.</p>
         <div id="stream-panel" hidden>
           <div class="stream-charts">
             <figure>
-              <figcaption><h3>Fabric-validated events per batch</h3><p><span class="stream-key-state">Plant state</span> · <span class="stream-key-numeric">Numeric telemetry</span></p></figcaption>
-              <div id="stream-batches" class="stream-plot"></div><p id="stream-batch-scale"></p><p id="stream-batch-latest"></p>
+              <figcaption>
+                <h3>Fabric-validated events per batch</h3>
+                <p>
+                  <span class="stream-key-state">Plant state</span> ·
+                  <span class="stream-key-numeric">Numeric telemetry</span>
+                </p>
+              </figcaption>
+              <div id="stream-batches" class="stream-plot"></div>
+              <p id="stream-batch-scale"></p>
+              <p id="stream-batch-latest"></p>
             </figure>
             <figure>
-              <figcaption><h3>Hopper inventory</h3><p id="stream-reading-source">Simulator preview every 5 seconds · not Fabric-validated</p></figcaption>
-              <div id="stream-reading" class="stream-plot"></div><p id="stream-reading-scale"></p><p id="stream-reading-latest"></p><p id="stream-reading-averages" hidden></p>
+              <figcaption>
+                <h3>Hopper inventory</h3>
+                <p id="stream-reading-source">
+                  Simulator preview every 5 seconds · not Fabric-validated
+                </p>
+              </figcaption>
+              <div id="stream-reading" class="stream-plot"></div>
+              <p id="stream-reading-scale"></p>
+              <p id="stream-reading-latest"></p>
+              <p id="stream-reading-averages" hidden></p>
             </figure>
           </div>
           <details id="stream-batch-details" hidden>
             <summary>Observed batches and one example reading per batch</summary>
-            <table><thead><tr><th scope="col">Run time</th><th scope="col">State</th><th scope="col">Numeric</th><th scope="col">Reading</th></tr></thead><tbody id="stream-batch-rows"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Run time</th>
+                  <th scope="col">State</th>
+                  <th scope="col">Numeric</th>
+                  <th scope="col">Reading</th>
+                </tr>
+              </thead>
+              <tbody id="stream-batch-rows"></tbody>
+            </table>
           </details>
         </div>
       </details>
       <details class="mining-provenance">
         <summary>Run identity &amp; source evidence</summary>
         <div class="mining-state" aria-label="Run and freshness">
-          <strong id="mode-label">LIVE</strong><span>Plant D01</span><span id="run">Approved run: unavailable</span>
-          <span id="catalog-scope">APPROVED EXPECTED catalog scope: unavailable</span><span id="freshness">Last refresh: unknown</span><span id="quality">Quality: unknown</span>
+          <strong id="mode-label">LIVE</strong><span>Plant D01</span
+          ><span id="run">Approved run: unavailable</span>
+          <span id="catalog-scope">APPROVED EXPECTED catalog scope: unavailable</span
+          ><span id="freshness">Last refresh: unknown</span
+          ><span id="quality">Quality: unknown</span>
         </div>
       </details>
       <details id="continuous-evidence" class="card" hidden>
-        <summary id="continuous-heading">Continuous source evidence &amp; rolling advisories</summary>
-        <p id="continuous-source"></p><p id="continuous-window"></p><ul id="throughput-readings"></ul>
+        <summary id="continuous-heading">
+          Continuous source evidence &amp; rolling advisories
+        </summary>
+        <p id="continuous-source"></p>
+        <p id="continuous-window"></p>
+        <ul id="throughput-readings"></ul>
         <h3>Simulator-reported line states</h3>
-        <p>These are validated simulator events, not physical equipment-health observations or a simultaneous snapshot.</p>
+        <p>
+          These are validated simulator events, not physical equipment-health observations or a
+          simultaneous snapshot.
+        </p>
         <ul id="line-state-readings"></ul>
         <h3 id="continuous-advisory-heading">Retrospective rolling event-time advisories</h3>
         <p id="continuous-advisory-status">Unknown — bounded advisory evidence is not connected.</p>
         <ol id="continuous-advisories" class="stack"></ol>
-        <p>Summary windows never cross run boundaries. Rolling advisories are retrospective evidence, not durable incident history. An empty list is not proof of health or completeness.</p>
+        <p>
+          Summary windows never cross run boundaries. Rolling advisories are retrospective evidence,
+          not durable incident history. An empty list is not proof of health or completeness.
+        </p>
       </details>
     </main>
     <script type="module" src="/mining/app.js"></script>

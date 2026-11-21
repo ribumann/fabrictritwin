@@ -111,8 +111,13 @@ export function renderTop(
     group.append(label);
     if (module.kind === "crusher" && evidence?.lineStates?.has(module.line)) {
       const state = evidence.lineStates.get(module.line);
-      const marker = svg("circle", { cx: -width / 2, cy: -depth / 2, r: 0.75,
-        class: "plant-line-marker", "data-line-state": state });
+      const marker = svg("circle", {
+        cx: -width / 2,
+        cy: -depth / 2,
+        r: 0.75,
+        class: "plant-line-marker",
+        "data-line-state": state,
+      });
       const markerTitle = svg("title");
       markerTitle.textContent = `Line ${module.line}: ${state} (line controller, not equipment health)`;
       marker.append(markerTitle);
@@ -205,10 +210,16 @@ export async function createPlant3D(container, catalog, select) {
         new THREE.CylinderGeometry(1, 1, length, 8),
         new THREE.MeshBasicMaterial({ color: routeColors.observed }),
       );
-      segment.position.copy(points[i - 1]).add(points[i]).multiplyScalar(0.5);
+      segment.position
+        .copy(points[i - 1])
+        .add(points[i])
+        .multiplyScalar(0.5);
       segment.quaternion.setFromUnitVectors(
         new THREE.Vector3(0, 1, 0),
-        points[i].clone().sub(points[i - 1]).normalize(),
+        points[i]
+          .clone()
+          .sub(points[i - 1])
+          .normalize(),
       );
       measured.add(segment);
     }

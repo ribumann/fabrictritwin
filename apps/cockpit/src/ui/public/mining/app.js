@@ -166,13 +166,19 @@ function drawPlant() {
   const statuses = new Map(
     catalog.modules.map((module) => [
       module.id,
-      context?.mode !== "continuous" && mode === "live" && incidentAssessment &&
+      context?.mode !== "continuous" &&
+      mode === "live" &&
+      incidentAssessment &&
       validIncidentAssessment(incidentAssessment) &&
       incidents.some((incident) => incident.moduleId === module.id && incident.severity === "high")
         ? "high"
-        : context?.mode !== "continuous" && mode === "live" && incidentAssessment &&
-          validIncidentAssessment(incidentAssessment) &&
-          incidents.some((incident) => incident.moduleId === module.id && incident.severity === "warning")
+        : context?.mode !== "continuous" &&
+            mode === "live" &&
+            incidentAssessment &&
+            validIncidentAssessment(incidentAssessment) &&
+            incidents.some(
+              (incident) => incident.moduleId === module.id && incident.severity === "warning",
+            )
           ? "warning"
           : moduleStatus(statusOverview, module.id, context?.mode, catalog),
     ]),
@@ -193,8 +199,12 @@ function drawPlant() {
         selected,
       )
     : { readings: new Map(), measuredRoutes: new Map() };
-  evidence.lineStates = new Map(["A", "B", "C"].map((line) => [line,
-    lineOperatingState(statusOverview, line, context?.mode, Date.now(), mode === "replay")]));
+  evidence.lineStates = new Map(
+    ["A", "B", "C"].map((line) => [
+      line,
+      lineOperatingState(statusOverview, line, context?.mode, Date.now(), mode === "replay"),
+    ]),
+  );
   renderTop(
     $("plant-top"),
     catalog,
@@ -547,7 +557,9 @@ function configureDiagnostic(preferred, strict = false) {
     assets.some((asset) => asset.id === candidate),
   );
   picker.replaceChildren(
-    ...(!id && strict ? [Object.assign(node("option", "Selected equipment has no supported trend"), { value: "" })] : []),
+    ...(!id && strict
+      ? [Object.assign(node("option", "Selected equipment has no supported trend"), { value: "" })]
+      : []),
     ...assets.map((asset) => {
       const option = node("option", asset.label);
       option.value = asset.id;
@@ -730,7 +742,13 @@ function select(id, incident = null) {
     $("diagnostic").value = incident.metric === "feed" ? "vibration" : incident.metric;
   else if (["dms", "water", "crusher", "sorter"].includes(module.kind))
     $("diagnostic").value =
-      module.kind === "dms" ? "density" : module.kind === "water" ? "water-energy" : module.kind === "sorter" ? "sorter-feed" : "vibration";
+      module.kind === "dms"
+        ? "density"
+        : module.kind === "water"
+          ? "water-energy"
+          : module.kind === "sorter"
+            ? "sorter-feed"
+            : "vibration";
   configureDiagnostic(id, true);
   chart($("diagnostic-chart"), null);
   drawPlant();
@@ -941,7 +959,12 @@ function chart(container, data) {
   container.prepend(svg);
   if (data.crossRun && !rows.some(drawable))
     container.append(node("p", "Unknown — no fully observed trend averages are available."));
-  container.append(node("p", `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins`));
+  container.append(
+    node(
+      "p",
+      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins`,
+    ),
+  );
   const details = node("details"),
     summary = node("summary", "Chart data and provenance"),
     wrap = node("div"),
@@ -980,7 +1003,10 @@ function chart(container, data) {
   wrap.append(table);
   details.append(
     summary,
-    node("p", `${data.crossRun ? "Observed bin averages; runs remain separate. " : ""}Gaps and non-good-quality samples are not connected.${data.crossRun ? " Within the selected window, missing rows mean no bin was returned, not zero or an unrequested interval." : ""}`),
+    node(
+      "p",
+      `${data.crossRun ? "Observed bin averages; runs remain separate. " : ""}Gaps and non-good-quality samples are not connected.${data.crossRun ? " Within the selected window, missing rows mean no bin was returned, not zero or an unrequested interval." : ""}`,
+    ),
     wrap,
   );
   container.append(details);
@@ -1016,22 +1042,48 @@ async function refreshContextualTrends(scope) {
   const continuous = context?.mode === "continuous";
   $("feed-chart").hidden = line !== "all";
   $("line-chart").hidden = line === "all";
-  text("feed-heading", line === "all" ? "A / B / C crusher feed" : `Line ${line} · crusher feed and sorter input`);
+  text(
+    "feed-heading",
+    line === "all" ? "A / B / C crusher feed" : `Line ${line} · crusher feed and sorter input`,
+  );
   $("diagnostic-extra").replaceChildren();
   if (line !== "all") $("line-chart").replaceChildren(node("p", "Loading line readings…"));
-  if (!owner || !context?.readAvailable || document.hidden || (continuous && context.capabilities?.trends !== true)) {
-    if (line !== "all") $("line-chart").replaceChildren(node("p", "Line trend unavailable. Retry when readings are available."));
+  if (
+    !owner ||
+    !context?.readAvailable ||
+    document.hidden ||
+    (continuous && context.capabilities?.trends !== true)
+  ) {
+    if (line !== "all")
+      $("line-chart").replaceChildren(
+        node("p", "Line trend unavailable. Retry when readings are available."),
+      );
     return;
   }
   let params;
-  try { params = query(); } catch { return; }
-  const current = () => generation === contextualGeneration && epoch === requestEpoch &&
-    !document.hidden && context?.approvedRun?.runId === owner.runId &&
-    context?.approvedRun?.generation === owner.generation && $("line-scope").value === line &&
-    $("diagnostic-asset").value === asset && $("diagnostic").value === family;
+  try {
+    params = query();
+  } catch {
+    return;
+  }
+  const current = () =>
+    generation === contextualGeneration &&
+    epoch === requestEpoch &&
+    !document.hidden &&
+    context?.approvedRun?.runId === owner.runId &&
+    context?.approvedRun?.generation === owner.generation &&
+    $("line-scope").value === line &&
+    $("diagnostic-asset").value === asset &&
+    $("diagnostic").value === family;
   const load = async (metric, moduleId) => {
     if (continuous) {
-      const request = { plantId: "D01", start: params.start, end: params.end, metric, binMinutes: params.binMinutes };
+      const request = {
+        plantId: "D01",
+        start: params.start,
+        end: params.end,
+        metric,
+        binMinutes: params.binMinutes,
+      };
       const data = await reads.read("cross-run-trends", request);
       const result = crossRunChartData(data, request, catalogVersion, catalog, owner);
       if (!result) throw new Error("Trend evidence unavailable.");
@@ -1045,36 +1097,68 @@ async function refreshContextualTrends(scope) {
     return data;
   };
   const tasks = [];
-  if (line !== "all") tasks.push((async () => {
-    try {
-      const [feed, sorter] = await Promise.all([
-        load("feed", `D01.${line}.crusher`), load("sorter-feed", `D01.${line}.sorter`),
-      ]);
-      if (!current()) return;
-      // The legacy finite feed is already run-scoped. Preserve gaps when combining it
-      // with segmented validated sorter points on the same t/h axis.
-      const rows = [feed, sorter].flatMap((data) => data.crossRun ? data.rows : data.rows.map((row) => ({
-        ...row, runId: params.runId, status: usable(row) ? "OBSERVED" : "GAP",
-        segmentId: usable(row) ? `${params.runId}:${row.seriesId}:finite` : null,
-      })));
-      const target = $("line-chart");
-      chart(target, { crossRun: true, rows, binMinutes: Number(params.binMinutes), windowStart: params.start, windowEnd: params.end });
-      target.prepend(node("p", "Crusher feed and sorter input · t/h"));
-    } catch (error) {
-      if (current()) $("line-chart").replaceChildren(node("p", "Line trend unavailable. Try again."));
-    }
-  })());
-  const extras = !asset ? [] : family === "vibration" ? [["Crusher feed", "feed"], ["Bearing temperature", "bearing-temperature"], ["Motor current", "motor-current"]]
-    : family === "density" ? [["Feed pressure", "feed-pressure"], ["Motor current", "motor-current"]]
-    : family === "sorter-feed" ? [["Motor current", "motor-current"]] : [];
-  tasks.push(...extras.map(async ([label, metric]) => {
-    try {
-      const data = await load(metric, asset);
-      return { label, data };
-    } catch {
-      return { label, data: null };
-    }
-  }));
+  if (line !== "all")
+    tasks.push(
+      (async () => {
+        try {
+          const [feed, sorter] = await Promise.all([
+            load("feed", `D01.${line}.crusher`),
+            load("sorter-feed", `D01.${line}.sorter`),
+          ]);
+          if (!current()) return;
+          // The legacy finite feed is already run-scoped. Preserve gaps when combining it
+          // with segmented validated sorter points on the same t/h axis.
+          const rows = [feed, sorter].flatMap((data) =>
+            data.crossRun
+              ? data.rows
+              : data.rows.map((row) => ({
+                  ...row,
+                  runId: params.runId,
+                  status: usable(row) ? "OBSERVED" : "GAP",
+                  segmentId: usable(row) ? `${params.runId}:${row.seriesId}:finite` : null,
+                })),
+          );
+          const target = $("line-chart");
+          chart(target, {
+            crossRun: true,
+            rows,
+            binMinutes: Number(params.binMinutes),
+            windowStart: params.start,
+            windowEnd: params.end,
+          });
+          target.prepend(node("p", "Crusher feed and sorter input · t/h"));
+        } catch (error) {
+          if (current())
+            $("line-chart").replaceChildren(node("p", "Line trend unavailable. Try again."));
+        }
+      })(),
+    );
+  const extras = !asset
+    ? []
+    : family === "vibration"
+      ? [
+          ["Crusher feed", "feed"],
+          ["Bearing temperature", "bearing-temperature"],
+          ["Motor current", "motor-current"],
+        ]
+      : family === "density"
+        ? [
+            ["Feed pressure", "feed-pressure"],
+            ["Motor current", "motor-current"],
+          ]
+        : family === "sorter-feed"
+          ? [["Motor current", "motor-current"]]
+          : [];
+  tasks.push(
+    ...extras.map(async ([label, metric]) => {
+      try {
+        const data = await load(metric, asset);
+        return { label, data };
+      } catch {
+        return { label, data: null };
+      }
+    }),
+  );
   const results = await Promise.all(tasks);
   if (!current()) return;
   for (const result of results.filter(Boolean)) {
@@ -1767,7 +1851,9 @@ function drawArrival() {
           ? "Complete"
           : demoRun?.publisherStatus === "stopping" || demoRun?.stopRequested
             ? "Stopping / stopped"
-            : demoRun ? "Ready to start" : "Status unavailable",
+            : demoRun
+              ? "Ready to start"
+              : "Status unavailable",
   );
   const hasReceipt = timing.lagSeconds !== null;
   if (hasReceipt && requestedSimulation && requestedSimulation.runId === demoRun?.runId) {
