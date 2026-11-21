@@ -10,18 +10,27 @@ shared ten-minute simulation; they do not operate physical equipment.
 1. Check publisher status, the Fabric receipt, and standard-ingestion reconciliation
    independently. An arrived hopper tick does not prove that the rest of the plant is current.
 2. Scan the compact headline KPIs, then inspect Lines A, B and C on the **Plant twin**.
-   The same sensor overlays are available in 3D and top view. Green route emphasis means a
-   positive reading at a linked feed sensor; it does not measure motion along the route.
-   **Ore flow** remains available as a process-order list. The authored process route includes shared feed
+   The same sensor overlays are available in 3D and top view. Emphasized route thickness
+   represents the measured crusher or sorter inlet rate on a capped demo scale, not motion
+   or equipment health. Zero is distinct from an unmeasured route. Use **Browse plant equipment**
+   as the keyboard-accessible alternative to the twin. The authored process route includes shared feed
    and water, and separates ore, product and tailings. Only catalog sensor locations get
    rates; a missing or unusable reading is **unknown**. Open a node or incident to
    inspect its evidence. **Needs attention** lists assessed incidents separately from
    batch arrival status and the local buildup advisory.
-3. Use **Streams** for five-second hopper observations and 30/60-second aggregate arrivals.
+   Line markers report fresh line-controller observations, not the operating state or health
+   of every machine. Stale, fault and missing controller observations stay unknown. A direct
+   current incident can mark its own equipment; a source outage cannot.
+3. Use **Batch and source details** for five-second hopper observations and 30/60-second aggregate arrivals.
    The batch details show one example tag per batch. **Diagnostics** pairs the family with
    compatible equipment and uses bounded Fabric trend reads. Live trends for the
    completed approved run stay anchored to its end. Replay pins the requested time;
    live receipts and live incidents are not reinterpreted as historical evidence.
+   Selecting a line compares its crusher feed and sorter input in t/h, not recovery efficiency.
+   Crusher, DMS and sorter views use separate plots for distinct units. The additional bounded
+   catalog families are sorter ore flow, crusher bearing temperature, DMS feed pressure and
+   crusher/DMS/sorter motor current. Shared water flow is a pump total, not a measured flow on
+   each downstream branch. Unsupported equipment does not inherit another machine's trend.
 4. Follow the selected asset's next check in the investigation panel, or choose **Ask about
    this** to draft a question with the asset, available assessment identifier and evidence cutoff.
    The text is editable and is only sent when submitted. **Inquiries** provides approved saved

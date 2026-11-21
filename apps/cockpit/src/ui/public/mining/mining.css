@@ -40,11 +40,16 @@
 .mining .mining-arrival strong {
   font-size: 1rem;
 }
-.mining #plant-workbench {
+.mining-main {
+  display: flex;
+  flex-direction: column;
+}
+.mining-main > #connection { margin-block: 0.3rem; padding: 0.4rem 0.65rem; }
+.mining-main {
   margin-bottom: 2rem;
   font-size: 0.875rem;
 }
-.mining #plant-workbench .mining-kpis {
+.mining .mining-kpis {
   gap: 0;
   padding: 0.25rem 0.65rem;
   background: var(--surface-muted);
@@ -52,30 +57,30 @@
   border-radius: var(--radius-sm);
   margin: 0 0 0.85rem;
 }
-.mining #plant-workbench .mining-kpis article {
+.mining .mining-kpis article {
   padding: 0.55rem 0.7rem;
   background: transparent;
   border: 0;
 }
-.mining #plant-workbench .mining-kpis h2 {
+.mining .mining-kpis h2 {
   font-size: 0.8rem;
 }
-.mining #plant-workbench .mining-kpis strong {
+.mining .mining-kpis strong {
   font-size: 1.18rem;
   line-height: 1.25;
   font-variant-numeric: tabular-nums;
 }
-.mining #plant-workbench .mining-kpis p {
+.mining .mining-kpis p {
   font-size: 0.75rem;
 }
-.mining #plant-workbench .mining-workspace {
+.mining .mining-workspace {
   gap: 1rem;
 }
-.mining #plant-workbench .mining-plant,
-.mining #plant-workbench .mining-drawer {
+.mining .mining-plant,
+.mining .mining-drawer {
   min-width: 0;
 }
-.mining #plant-workbench .mining-drawer {
+.mining .mining-drawer {
   padding: 0.8rem 1rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -107,17 +112,17 @@
   font-size: 0.76rem;
   min-height: 2rem;
 }
-.mining #plant-workbench .card-header {
+.mining .mining-workspace .card-header {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 0.8rem;
   align-items: center;
 }
-.mining #plant-workbench .card-header h2 {
+.mining .mining-workspace .card-header h2 {
   margin: 0 auto 0 0;
   font-size: 1.2rem;
 }
-.mining #plant-workbench :is(#plant-3d, #plant-top) {
+.mining .mining-workspace :is(#plant-3d, #plant-top) {
   height: clamp(340px, 49vh, 500px);
 }
 .mining #plant-3d {
@@ -157,7 +162,6 @@
 }
 #plant-top polyline[data-route="observed"] {
   stroke: #08765c;
-  stroke-width: 0.55px;
 }
 .plant-legend {
   display: flex;
@@ -186,7 +190,7 @@
   overflow-wrap: anywhere;
 }
 @media (max-width: 600px) {
-  .mining #plant-workbench :is(#plant-3d, #plant-top) {
+  .mining .mining-workspace :is(#plant-3d, #plant-top) {
     height: 310px;
   }
   .plant-reading {
@@ -625,8 +629,9 @@
   stroke: var(--info);
 }
 #plant-top g[data-status="sensor-evidence-stale"] rect {
-  fill: var(--warning-soft);
-  stroke: var(--warning);
+  fill: var(--surface-muted);
+  stroke: var(--neutral);
+  stroke-dasharray: 1 0.5;
 }
 #plant-top g[data-status="sensor-evidence-flagged"] rect {
   fill: var(--neutral-soft);
@@ -651,7 +656,7 @@
   background: var(--info-soft);
 }
 .mining-objects button[data-status="sensor-evidence-stale"] {
-  background: var(--warning-soft);
+  background: var(--surface-muted);
 }
 .mining-objects button[data-status="sensor-evidence-flagged"] {
   background: var(--neutral-soft);
@@ -663,7 +668,6 @@
 #plant-top polyline {
   fill: none;
   stroke: var(--text-muted);
-  stroke-width: 0.25;
 }
 .mining-objects {
   display: grid;
@@ -894,4 +898,51 @@
   .mining-state {
     gap: 0.5rem 1rem;
   }
+}
+.plant-line-marker { fill: transparent; stroke: #667085; stroke-width: .25; stroke-dasharray: .3 .2; }
+.plant-line-marker[data-line-state="running"] { fill: #16835d; stroke: #16835d; stroke-dasharray: none; }
+.plant-line-marker[data-line-state="stopped"] { fill: #667085; stroke: #667085; stroke-dasharray: none; }
+.plant-reading[data-line-state]::before { content: ""; display: inline-block; width: .5rem; height: .5rem; margin-right: .35rem; border: 1px dashed #667085; border-radius: 50%; }
+.plant-reading[data-line-state="running"]::before { background: #16835d; border-style: solid; border-color: #16835d; }
+.plant-reading[data-line-state="stopped"]::before { background: #667085; border-style: solid; }
+
+/* Keep the operating view compact without hiding evidence or changing source order. */
+.mining .page-header { padding-block: 0.4rem; }
+.mining-main { padding-top: 0.5rem; }
+.mining .mining-session { gap: 1.5rem; padding: 0 0 0.35rem; }
+.mining-session h2 { margin-bottom: 0.25rem; }
+.mining-session .mining-actions { gap: 0.5rem; }
+.mining-session :is(button, summary) { min-height: 0; }
+.mining-session button { padding: 0.45rem 0.7rem; }
+.mining-session summary, .kpi-details summary, .mining-render-options summary,
+.connection-details summary { min-height: 0; padding-block: 0.2rem; cursor: pointer; }
+.mining-arrival { align-content: start; gap: 0.25rem 1rem; }
+.mining-arrival strong { margin-top: 0.1rem; }
+.mining-arrival .pipeline, .arrival-details, .mining-arrival .stream-window { grid-column: 1 / -1; }
+.mining-arrival .stream-window { margin: 0.15rem 0; padding: 0.35rem; }
+.mining-arrival .stream-window progress { margin-top: 0.2rem; }
+.mining-main > #connection { margin-block: 0.15rem; padding-block: 0.25rem; }
+.mining .mining-kpis { margin-bottom: 0.4rem; padding-block: 0; }
+.mining .mining-kpis article { padding-block: 0.3rem; }
+.mining .mining-kpis h2 { min-height: 0; margin: 0 0 0.15rem; }
+.kpi-details { grid-column: 1 / -1; }
+.kpi-details-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.kpi-details h3 { font-size: 0.8rem; margin: 0.4rem 0 0; }
+.kpi-details p { margin: 0.2rem 0 0.5rem; }
+.mining .mining-workspace { align-items: start; }
+.mining-render-options { margin-block: 0.1rem; }
+.mining-render-options summary { padding-block: 0.2rem; }
+.mining-drawer > p { margin-block: 0.35rem; }
+.mining-drawer .mining-jump { margin-bottom: 0.35rem; padding-block: 0.3rem; }
+.mining-drawer .mining-incidents p, .latest-readings p { margin-block: 0.3rem; }
+.latest-readings { border-top: 1px solid var(--border); padding-block: 0.25rem; }
+.mining-drawer .mining-links { gap: 0.5rem; margin-top: 0.5rem; }
+.mining-drawer .mining-links h3 { margin: 0.2rem 0; }
+.mining-drawer .mining-links button { min-height: 2rem; padding: 0.25rem 0.4rem; font-size: 0.76rem; }
+.mining-charts { align-items: start; }
+.diagnostic-extra { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+.diagnostic-extra > section { min-width: 0; padding: 1rem 1.25rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.diagnostic-extra h3 { margin: 0 0 0.4rem; }
+@media (max-width: 600px) {
+  .diagnostic-extra, .kpi-details-grid { grid-template-columns: 1fr; }
 }

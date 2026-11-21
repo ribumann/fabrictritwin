@@ -353,7 +353,7 @@ export function createMiningDemoRouter(options: Options): Router {
       typeof req.query.start !== "string" ||
       typeof req.query.end !== "string" ||
       typeof req.query.metric !== "string" ||
-      !["feed", "density", "vibration", "water-energy"].includes(req.query.metric) ||
+      !["feed", "density", "vibration", "water-energy", "sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"].includes(req.query.metric) ||
       !["1", "5"].includes(String(req.query.binMinutes))
     ) {
       error(res, 400, "invalid_mining_query", "Invalid cross-run trend scope.");
@@ -646,16 +646,7 @@ export function createMiningDemoRouter(options: Options): Router {
             asOf: new Date((req.query.asOf as string | undefined) ?? Date.now()).toISOString(),
           };
         } else {
-          const metric = req.query.metric;
-          if (
-            metric !== "feed" &&
-            metric !== "density" &&
-            metric !== "vibration" &&
-            metric !== "water-energy"
-          ) {
-            error(res, 400, "invalid_mining_query", "Unsupported mining metric.");
-            return;
-          }
+          const metric = req.query.metric as MiningCrossRunMetric;
           const window = {
             run: demo.run,
             start: new Date(String(req.query.start)).toISOString(),
@@ -663,6 +654,7 @@ export function createMiningDemoRouter(options: Options): Router {
             metric,
             binMinutes: req.query.binMinutes === "1" ? 1 : 5,
             maxRows: Number(req.query.maxRows),
+            ...(req.query.asOf ? { asOf: new Date(String(req.query.asOf)).toISOString() } : {}),
           } as const;
           input =
             route === "trends"

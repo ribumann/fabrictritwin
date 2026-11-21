@@ -19,6 +19,7 @@ import {
   refreshedIncidentSelection,
   sameScope,
   moduleStatus,
+  lineOperatingState,
   validOverview,
   validAsOf,
   currentIncidentQuery,
@@ -59,6 +60,23 @@ describe("bounded live stream charts", () => {
     expect(collectReceipt(withNumeric, { ...run, nativeReceipt: numeric })).toBe(withNumeric);
     expect(streamWindow({ ...run, stopRequested: true }, withNumeric)).toBeNull();
     expect(collectReceipt(withNumeric, { ...run, runId: "other", nativeReceipt: numeric })).toEqual([]);
+  });
+
+  describe("safe mining read errors", () => {
+    it("preserves known categories without exposing upstream text or guessing a 503 cause", async () => {
+      const response = (code: string) => new Response(
+        JSON.stringify({ error: { code, message: "private backend detail" } }), { status: 503 },
+      );
+      const configured = new MiningReads(async () => response("mining_read_configuration"));
+      await expect(configured.read("overview")).rejects.toMatchObject({
+        category: "not_configured", message: "Mining readings are not configured.",
+      });
+      const unknown = new MiningReads(async () => response("__proto__"));
+      await expect(unknown.read("overview")).rejects.toMatchObject({
+        category: "service_failed",
+        message: "Live readings unavailable. Plant layout still works. Retry.",
+      });
+    });
   });
 
   it("keeps only in-run simulator samples without filling missing ticks", () => {
@@ -287,6 +305,27 @@ describe("continuous throughput presentation", () => {
     };
     return { data: detailedData, catalog };
   }
+  it("uses the current continuous run authority for fresh running and stopped line markers", () => {
+    const { data, catalog } = withDetail(fixture());
+    data.detail.lineStates[1].state = "stopped";
+    data.detail.lineStates[1].scheduledRunning = false;
+    data.detail.runningLines.value = 2;
+    expect(validContinuousOverview(data, data.runId, "catalog", data.generation, now, catalog)).toBe(true);
+    expect(lineOperatingState(data, "A", "continuous", now)).toBe("running");
+    expect(lineOperatingState(data, "B", "continuous", now)).toBe("stopped");
+    for (const run of [
+      { ...data.run, publisherStatus: "stopped" },
+      { ...data.run, stopRequested: true },
+      { ...data.run, authorityUntil: new Date(now + continuousClockSkewMs).toISOString() },
+      { ...data.run, generation: "foreign" },
+      { ...data.run, runId: "foreign" },
+    ]) {
+      expect(lineOperatingState({ ...data, run }, "A", "continuous", now)).toBe("unknown");
+      expect(lineOperatingState({ ...data, run }, "B", "continuous", now)).toBe("unknown");
+    }
+    expect(lineOperatingState(data, "A", "continuous", now + 196_000)).toBe("unknown");
+    expect(lineOperatingState({ ...data, asOf: "2026-01-01T11:58:00Z" }, "A", "continuous", now)).toBe("unknown");
+  });
   function withSummary(data: ReturnType<typeof fixture>) {
     const definitions = [
       { window: "30m", duration: 30 * 60_000, coverage: 0.966667, status: "OK", value: 2.1502 },
@@ -755,6 +794,102 @@ describe("retrospective continuous advisory presentation", () => {
   });
 });
 describe("cross-run chart validation", () => {
+  it("discards pending line charts after a selection change and requests only scoped families", async () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile("app.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    const fn = tree.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "refreshContextualTrends");
+    if (!fn) throw new Error("Missing contextual trend refresh");
+    const params = { plantId: "D01", runId: "11111111-1111-4111-8111-111111111111",
+      start: "2026-01-01T12:00:00.000Z", end: "2026-01-01T12:01:00.000Z",
+      asOf: "2026-01-01T12:01:10.000Z", binMinutes: "1", maxRows: "1000" };
+    const controls: Record<string, any> = {
+      "line-scope": { value: "A" }, "diagnostic-asset": { value: "" },
+      diagnostic: { value: "water-energy" }, "feed-chart": {}, "line-chart": {
+        replaceChildren: vi.fn(), prepend: vi.fn(),
+      }, "diagnostic-extra": { replaceChildren: vi.fn(), append: vi.fn() },
+    };
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const read = vi.fn(async (_path, request) => {
+      if (request.moduleId.includes(".A.")) await pending;
+      return { rows: [], windowStart: params.start, windowEnd: params.end, binMinutes: 1 };
+    });
+    const chart = vi.fn();
+    const sandbox: any = {
+      contextualGeneration: 0, requestEpoch: 0, document: { hidden: false },
+      context: { readAvailable: true, mode: "finite", approvedRun: { runId: params.runId } },
+      query: () => params, $: (id: string) => controls[id], text: vi.fn(), node: () => ({}),
+      reads: { read }, seriesQuery, validSeries: () => true, usable, chart, catalog: {}, catalogVersion: "catalog",
+    };
+    runInNewContext(`${fn.getText(tree)}; this.run = refreshContextualTrends;`, sandbox);
+    const older = sandbox.run("diagnostic");
+    controls["line-scope"].value = "B";
+    await sandbox.run("diagnostic");
+    release();
+    await older;
+    expect(chart).toHaveBeenCalledTimes(1);
+    const requests = read.mock.calls.map((call) => call[1]);
+    expect(requests.map((request) => [request.moduleId, request.metric])).toEqual([
+      ["D01.A.crusher", "feed"], ["D01.A.sorter", "sorter-feed"],
+      ["D01.B.crusher", "feed"], ["D01.B.sorter", "sorter-feed"],
+    ]);
+    expect(requests[0].asOf).toBeUndefined();
+    expect(requests[1].asOf).toBe(params.asOf);
+  });
+  it("uses only fresh explicit line state and never treats flow or a fault as running", () => {
+    const now = Date.parse("2026-01-01T12:01:00.000Z");
+    const state = { scopeId: "A", state: "running", scheduledRunning: true, sampleTime: "2026-01-01T12:00:30.000Z" };
+    const overview = { asOf: "2026-01-01T12:01:00.000Z", latest: { lineStates: [state] } };
+    expect(lineOperatingState(overview, "A", "finite", now)).toBe("running");
+    expect(lineOperatingState(overview, "A", "finite", now + 196_000)).toBe("unknown");
+    expect(lineOperatingState({ ...overview, latest: { lineStates: [{ ...state, state: "stopped" }] } }, "A", "finite", now)).toBe("stopped");
+    expect(lineOperatingState({ ...overview, latest: { lineStates: [{ ...state, state: "fault" }] } }, "A", "finite", now)).toBe("unknown");
+    expect(lineOperatingState({ ...overview, latest: { lineStates: [state, state] } }, "A", "finite", now)).toBe("unknown");
+    expect(lineOperatingState(overview, "B", "finite", now)).toBe("unknown");
+    expect(lineOperatingState(overview, "A", "finite", now + 196_000, true)).toBe("running");
+  });
+  it("keeps keyboard source order aligned with the workspace journey", () => {
+    const html = readFileSync(new URL("../src/ui/public/mining/index.html", import.meta.url), "utf8");
+    const ids = ["run-start", "kpi-throughput", "line-scope", "object-disclosure", "asset-detail", "diagnostics"];
+    const offsets = ids.map((id) => html.indexOf(`id="${id}"`));
+    expect(offsets.every((offset) => offset >= 0)).toBe(true);
+    expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
+  });
+  it("keeps compact latest readings before closed provenance and supplemental plots after primary plots", () => {
+    const html = readFileSync(new URL("../src/ui/public/mining/index.html", import.meta.url), "utf8");
+    expect(html).toMatch(/id="latest-readings"[\s\S]*?<details>\s*<summary>Sensor readings and provenance<\/summary>/);
+    expect(html).toMatch(/id="diagnostic-chart"><\/div>\s*<\/article>\s*<div id="diagnostic-extra"/);
+    expect(html).toMatch(/<details class="kpi-details">\s*<summary>Indicator details<\/summary>/);
+  });
+  it("shows validated latest values and never exposes a stale reading as current", () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile("app.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    const fn = tree.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "drawDrawer");
+    if (!fn) throw new Error("Missing equipment drawer");
+    const elements: Record<string, any> = {};
+    const element = (id: string) => elements[id] ??= {
+      children: [], get childNodes() { return this.children; }, replaceChildren(...children: any[]) { this.children = children; },
+      append(...children: any[]) { this.children.push(...children); },
+    };
+    const tag = (metric: string) => ({ id: metric, metric, equipment_id: "e", unit: "t/h" });
+    const tags = [tag("ore_flow"), tag("stale_flow")];
+    const sandbox: any = {
+      catalog: { modules: [{ id: "D01.A.crusher", kind: "crusher", label: "Crusher" }] },
+      selected: "D01.A.crusher", selectedIncident: null, context: { mode: "finite" },
+      overview: { quality: "good", latest: { readings: [
+        { tagId: "ore_flow", moduleId: "D01.A.crusher", equipmentId: "e", unit: "t/h", quality: "good", value: 42, sampleTime: "2026-01-01T00:00:00Z" },
+        { tagId: "stale_flow", moduleId: "D01.A.crusher", equipmentId: "e", unit: "t/h", quality: "stale", value: 99, sampleTime: "2026-01-01T00:00:00Z" },
+      ] } },
+      $: element, text: vi.fn(), relevantTags: () => tags, moduleStatus: () => "current",
+      usable, number: (value: number) => String(value), timestamp: () => "time",
+      unknownQuality, connections: () => [], drawIncidentEvidence: vi.fn(),
+      node: (_type: string, value?: string) => ({ value, children: [], append(...children: any[]) { this.children.push(...children); } }),
+    };
+    runInNewContext(`${fn.getText(tree)}; drawDrawer();`, sandbox);
+    expect(elements["latest-readings"].children.map((item: any) => item.value)).toEqual([
+      "ore flow: 42 t/h", "stale flow: Unknown t/h",
+    ]);
+  });
   it("accepts observed evidence and fails closed on foreign ownership, samples and statuses", () => {
     const catalog = readCatalog();
     const tag = catalog.telemetry_tags.find((item) => item.id === "D01.A.crusher.ore_flow")!;
@@ -805,6 +940,20 @@ describe("cross-run chart validation", () => {
     expect(validate({ ...data, points: [{ ...point, sampleTimes: [start] }] })).toBeNull();
     expect(validate({ ...data, points: [{ ...point, unit: "kg/m3" }] })).toBeNull();
     expect(validate({ ...data, points: [] })?.rows).toEqual([]);
+    const sorter = catalog.telemetry_tags.find((item) => item.id === "D01.A.sorter.ore_flow")!;
+    const sorterPoint = { ...point, seriesId: sorter.id, moduleId: sorter.module_id,
+      equipmentId: sorter.equipment_id, metric: sorter.metric, unit: sorter.unit,
+      segmentId: `${runId}:${sorter.id}:${start}` };
+    const finiteParams = { ...params, metric: "sorter-feed", runId, moduleId: sorter.module_id,
+      asOf: data.asOf, maxRows: "1000" };
+    const finite = { ...data, ...finiteParams, plantId: "D01", binMinutes: 1,
+      windowStart: start, windowEnd: end, points: [sorterPoint],
+      rows: [{ ...sorterPoint, timestamp: start }] };
+    expect(validSeries(finite, finiteParams, "catalog", catalog)).toBe(true);
+    expect(validSeries({ ...finite, asOf: end }, finiteParams, "catalog", catalog)).toBe(false);
+    expect(validSeries({ ...finite, points: [{ ...sorterPoint, runId: "22222222-2222-4222-8222-222222222222" }] },
+      finiteParams, "catalog", catalog)).toBe(false);
+    expect(validSeries({ ...finite, moduleId: "D01.B.sorter" }, finiteParams, "catalog", catalog)).toBe(false);
     expect(
       crossRunChartData(data, params, "catalog", catalog, owner, Date.parse(data.asOf) - 1_400),
     ).not.toBeNull();
@@ -1279,6 +1428,7 @@ describe("mining request lifecycle", () => {
       refreshedIncidentSelection,
       drawIncidents: vi.fn(),
       drawDrawer: vi.fn(),
+      drawPlant: vi.fn(),
       drawOverview: vi.fn(),
       clearReadState: vi.fn(),
       drawContinuousAdvisories: vi.fn(),
@@ -1427,7 +1577,7 @@ describe("mining request lifecycle", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     now = 15_000;
     fetchImpl.mockResolvedValueOnce(new Response("", { status: 503 }));
-    await expect(reads.read("context")).rejects.toThrow("503");
+    await expect(reads.read("context")).rejects.toThrow("Live readings unavailable");
     fetchImpl.mockResolvedValueOnce(new Response("{}"));
     await reads.read("context");
     expect(fetchImpl).toHaveBeenCalledTimes(3);

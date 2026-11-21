@@ -30,14 +30,17 @@ import { assertReceiptObservationConsistency } from "./receipt-observations.js";
 import { parseMiningProofReceipt, type MiningProofReceipt } from "./receipt-schema.js";
 import { mapComparisonRows, mapTrendRows } from "./series-dto.js";
 import { mapSummaryRows } from "./summary-dto.js";
+import { mapMiningCrossRunTrendRows } from "./cross-run-trend-dto.js";
+import type { MiningCrossRunMetric } from "./cross-run-trend-query.js";
 
-type Metric = "feed" | "density" | "vibration" | "water-energy";
+type Metric = MiningCrossRunMetric;
 interface Window {
   start: string;
   end: string;
   metric: Metric;
   binMinutes: 1 | 5;
   maxRows: number;
+  asOf?: string;
 }
 export type MiningCuratedRequest = { run: MiningRunRecord } & (
   | { kind: "context" }
@@ -98,7 +101,7 @@ export async function readMiningOverview(
     refreshedAt: new Date(now()).toISOString(),
     quality,
     ...(ingestionRows ? { ingestion: mapMiningIngestion(input.run, end, ingestionRows) } : {}),
-    latest: { modules, readings: latest.readings },
+    latest: { modules, readings: latest.readings, lineStates: latest.stateObservations.filter((item) => item.scopeId !== "shared") },
     summary,
   };
 }
@@ -164,14 +167,39 @@ export function createMiningCuratedProvider(dependencies: Dependencies) {
         return incidents;
       }
       if (input.kind === "trend") {
-        const rows = await query({ ...input, runId }, active);
+        if (input.metric === "sorter-feed" || input.metric === "motor-current" ||
+            input.metric === "bearing-temperature" || input.metric === "feed-pressure") {
+          if (!input.asOf || input.maxRows !== 1000) {
+            throw new MiningQueryError("invalid", "Scoped trend requires an evidence cutoff and 1000-row bound.");
+          }
+          const scoped = {
+            start: input.start, end: input.end, asOf: input.asOf, metric: input.metric,
+            binMinutes: input.binMinutes, runId, moduleId: input.moduleId,
+          };
+          const rows = await query({ ...scoped, kind: "cross-run-trend", maxRows: 1000 }, active);
+          active.throwIfAborted();
+          const data = mapMiningCrossRunTrendRows(scoped, rows, now);
+          return {
+            plantId: "D01" as const, runId, catalogVersion: D01_CATALOG_VERSION,
+            moduleId: input.moduleId, metric: input.metric, windowStart: input.start,
+            windowEnd: input.end, binMinutes: input.binMinutes, crossRun: true,
+            start: data.start, end: data.end, asOf: data.asOf, profileVersion: data.profileVersion, points: data.points,
+            rows: data.points.map((point) => ({ ...point, timestamp: point.binStart })),
+          };
+        }
+        const legacy = { ...input, runId, metric: input.metric as "feed" | "density" | "vibration" | "water-energy" };
+        const rows = await query(legacy, active);
         active.throwIfAborted();
-        return mapTrendRows({ ...input, runId }, rows);
+        return mapTrendRows(legacy, rows);
       }
       if (input.kind === "compare") {
-        const rows = await query({ ...input, runId }, active);
+        if (input.metric !== "feed" && input.metric !== "density" && input.metric !== "vibration") {
+          throw new MiningQueryError("invalid", "Unsupported mining comparison metric.");
+        }
+        const legacy = { ...input, runId, metric: input.metric };
+        const rows = await query(legacy, active);
         active.throwIfAborted();
-        return mapComparisonRows({ ...input, runId }, rows);
+        return mapComparisonRows(legacy, rows);
       }
       return await readMiningOverview(
         input,

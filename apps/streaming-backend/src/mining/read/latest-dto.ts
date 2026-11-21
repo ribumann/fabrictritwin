@@ -89,6 +89,7 @@ export function mapLatestRows(
     string,
     { status: "running" | "stopped" | "fault" | "unknown"; state: State | null }
   >();
+  const stateObservations: Array<{ scopeId: string; state: State | null; scheduledRunning: boolean | null; sampleTime: string | null }> = [];
   for (const row of rows) {
     if (
       row.plant_id !== "D01" ||
@@ -209,6 +210,7 @@ export function mapLatestRows(
         )
           return fail("Invalid missing state.");
         states.set(row.scope_id, { status: "unknown", state: null });
+        stateObservations.push({ scopeId: row.scope_id, state: null, scheduledRunning: null, sampleTime: null });
         continue;
       }
       if (
@@ -251,6 +253,12 @@ export function mapLatestRows(
                 : "running",
         state: row.state as State,
       });
+      stateObservations.push({
+        scopeId: row.scope_id,
+        state: row.age_seconds > 195 ? null : row.state as State,
+        scheduledRunning: row.age_seconds > 195 ? null : row.scheduled_running,
+        sampleTime: row.age_seconds > 195 ? null : row.event_time,
+      });
     } else return fail("Invalid latest row kind.");
   }
   if (readings.size !== tags.size || states.size !== scopes.length)
@@ -258,5 +266,6 @@ export function mapLatestRows(
   return {
     readings: D01_PLANT_CATALOG.telemetry_tags.map((tag) => readings.get(tag.id)!),
     states: Object.fromEntries(states),
+    stateObservations,
   };
 }

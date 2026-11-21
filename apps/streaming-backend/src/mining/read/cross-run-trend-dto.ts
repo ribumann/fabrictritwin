@@ -9,6 +9,7 @@ import {
   isMiningRunId,
   miningCrossRunTrendSourceContractVersion,
   prepareMiningCrossRunTrendQuery,
+  miningTrendFamily,
 } from "./cross-run-trend-query.js";
 import type { MiningCrossRunTrendRequest } from "./cross-run-trend-query.js";
 
@@ -26,23 +27,7 @@ type Status =
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$/;
 const tagsById = new Map(
   D01_PLANT_CATALOG.telemetry_tags.flatMap((tag) => {
-    const line = tag.module_id.split(".")[1];
-    const family =
-      tag.metric === "ore_flow" && line !== "shared" && tag.module_id.endsWith(".crusher")
-        ? "feed"
-        : tag.metric === "medium_density"
-          ? "density"
-          : tag.metric === "vibration_rms" && tag.module_id.endsWith(".crusher")
-            ? "vibration"
-            : line === "shared" &&
-                tag.module_id === "D01.shared.water" &&
-                ["level", "water_flow"].includes(tag.metric)
-              ? "water-energy"
-              : line === "shared" &&
-                  tag.module_id === "D01.shared.control" &&
-                  tag.metric === "power"
-                ? "water-energy"
-                : null;
+    const family = miningTrendFamily(tag);
     return family ? [[tag.id, { tag, family }] as const] : [];
   }),
 );
@@ -142,6 +127,8 @@ export function mapMiningCrossRunTrendRows(
       !sameScopeInstant(row.as_of_utc, input.asOf) ||
       row.source_contract_version !== miningCrossRunTrendSourceContractVersion ||
       !isMiningRunId(row.run_id) ||
+      (input.runId !== undefined && row.run_id !== input.runId) ||
+      (input.moduleId !== undefined && row.module_id !== input.moduleId) ||
       typeof row.tag_id !== "string" ||
       !row.tag_id ||
       typeof row.ambiguous_owner !== "boolean" ||

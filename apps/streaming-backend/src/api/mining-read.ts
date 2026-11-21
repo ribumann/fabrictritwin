@@ -7,12 +7,14 @@ import type {
   MiningCuratedProvider,
   MiningCuratedRequest,
 } from "../mining/read/curated-provider.js";
+import type { MiningCrossRunMetric } from "../mining/read/cross-run-trend-query.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const principalId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const plantId = "D01";
-const metrics = new Set(["feed", "density", "vibration", "water-energy"]);
+const metrics = new Set(["feed", "density", "vibration", "water-energy", "sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"]);
+const extendedMetrics = new Set(["sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"]);
 const routes = [
   "context",
   "overview",
@@ -61,7 +63,7 @@ export function validateMiningReadQuery(
   const fields: Record<MiningReadRoute, string[]> = {
     context: ["plantId", "runId"],
     overview: ["plantId", "runId", "asOf"],
-    trends: ["plantId", "runId", "start", "end", "moduleId", "metric", "binMinutes", "maxRows"],
+    trends: ["plantId", "runId", "start", "end", "moduleId", "metric", "binMinutes", "maxRows", "asOf"],
     incidents: ["plantId", "runId", "asOf"],
     "compare-lines": ["plantId", "runId", "start", "end", "metric", "binMinutes", "maxRows"],
     "runs/status": ["plantId", "runId"],
@@ -86,7 +88,7 @@ export function validateMiningReadQuery(
   if (route === "trends" || route === "compare-lines") {
     const start = get("start");
     const end = get("end");
-    if (route === "compare-lines" && get("metric") === "water-energy") {
+    if (route === "compare-lines" && !["feed", "density", "vibration"].includes(get("metric") ?? "")) {
       return "Water and energy are not supported as per-line comparison metrics.";
     }
     if (
@@ -97,6 +99,9 @@ export function validateMiningReadQuery(
       !metrics.has(get("metric") ?? "") ||
       !["1", "5"].includes(get("binMinutes") ?? "") ||
       !/^(?:[1-9]\d{0,2}|1000)$/.test(get("maxRows") ?? "") ||
+      (extendedMetrics.has(get("metric") ?? "") &&
+        (route !== "trends" || !get("asOf") || Date.parse(get("asOf")!) < Date.parse(end) || get("maxRows") !== "1000")) ||
+      (!extendedMetrics.has(get("metric") ?? "") && get("asOf") !== undefined) ||
       (route === "trends" && !moduleIds.has(get("moduleId") ?? ""))
     )
       return "Use a canonical module, metric, 1 or 5 minute bins, at most 1000 rows and a window up to 24 hours.";
@@ -304,16 +309,7 @@ export function createMiningReadRouter(options: ReadOptions): Router {
                 ).toISOString(),
               };
             } else {
-              const metric = req.query.metric;
-              if (
-                metric !== "feed" &&
-                metric !== "density" &&
-                metric !== "vibration" &&
-                metric !== "water-energy"
-              ) {
-                error(res, 400, "invalid_mining_query", "Unsupported mining metric.");
-                return;
-              }
+              const metric = req.query.metric as MiningCrossRunMetric;
               const window = {
                 run: status.run,
                 start: new Date(String(req.query.start)).toISOString(),
@@ -321,6 +317,7 @@ export function createMiningReadRouter(options: ReadOptions): Router {
                 metric,
                 binMinutes: req.query.binMinutes === "1" ? 1 : 5,
                 maxRows: Number(req.query.maxRows),
+                ...(req.query.asOf ? { asOf: new Date(String(req.query.asOf)).toISOString() } : {}),
               } as const;
               input =
                 route === "trends"

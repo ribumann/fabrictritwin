@@ -105,6 +105,8 @@ describe("latest mining source mapping", () => {
       scheduled_running: true,
     });
     expect(mapLatestRows(input, rows).states.A).toEqual({ status: "running", state: "running" });
+    expect(mapLatestRows(input, rows).stateObservations.find((item) => item.scopeId === "A"))
+      .toEqual({ scopeId: "A", state: "running", scheduledRunning: true, sampleTime: "2026-01-01T00:04:50.000Z" });
     state.received_at = "invalid";
     expect(() => mapLatestRows(input, rows)).toThrow("timestamp");
   });
