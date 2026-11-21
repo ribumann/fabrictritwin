@@ -113,6 +113,9 @@ Describe 'apply-mining-definitions.ps1' {
                 $retention = if ($tableName -in @('mining_AlertTransitions', 'mining_IncidentLedger')) {
                     '30.00:00:00'
                 }
+                elseif ($tableName -in @('mining_PlantCatalog', 'mining_PublishProfile', 'mining_SourceContract')) {
+                    '36500.00:00:00'
+                }
                 else {
                     '7.00:00:00'
                 }
@@ -198,7 +201,11 @@ Describe 'apply-mining-definitions.ps1' {
         }
 
         @($script:WriteCommands | Where-Object { $_ -match '^\.alter table .* policy retention ' }) |
-            Should -HaveCount 7
+            Should -HaveCount 10
+        foreach ($table in @('mining_PlantCatalog', 'mining_PublishProfile', 'mining_SourceContract')) {
+            @($script:WriteCommands | Where-Object { $_ -match "^\.alter table $table policy retention " }) |
+                Should -HaveCount 1
+        }
         @($script:WriteCommands | Where-Object { $_ -match '^\.create-or-alter function\b' }) |
             Should -HaveCount 10
         $script:AppliedFunctions | Should -HaveCount 10
