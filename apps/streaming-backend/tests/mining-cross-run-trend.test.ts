@@ -82,6 +82,40 @@ function trendRow(
 }
 
 describe("bounded cross-run Mining trends", () => {
+  it("pins new families to catalog sensors and rejects foreign finite scope", () => {
+    expect(
+      getMiningCrossRunTrendTags("sorter-feed")
+        .map((tag) => tag.tagId)
+        .sort(),
+    ).toEqual(["A", "B", "C"].map((line) => `D01.${line}.sorter.ore_flow`));
+    expect(getMiningCrossRunTrendTags("bearing-temperature")).toHaveLength(3);
+    expect(getMiningCrossRunTrendTags("feed-pressure")).toHaveLength(3);
+    expect(getMiningCrossRunTrendTags("motor-current")).toHaveLength(9);
+    const scoped = {
+      ...request,
+      metric: "sorter-feed" as const,
+      runId: "11111111-1111-4111-8111-111111111111",
+      moduleId: "D01.A.sorter",
+    };
+    const prepared = prepareMiningCrossRunTrendQuery(scoped, fixedNow);
+    expect(prepared.parameters.scoped_run).toBe(JSON.stringify(scoped.runId));
+    expect(prepared.parameters.scoped_module).toBe(JSON.stringify(scoped.moduleId));
+    const row = trendRow("D01.A.sorter.ore_flow", scoped.runId, start, {
+      metric_family: "sorter-feed",
+    });
+    expect(mapMiningCrossRunTrendRows(scoped, [row], fixedNow).points).toHaveLength(1);
+    expect(() =>
+      mapMiningCrossRunTrendRows(
+        scoped,
+        [{ ...row, run_id: "22222222-2222-4222-8222-222222222222" }],
+        fixedNow,
+      ),
+    ).toThrow();
+    expect(() =>
+      mapMiningCrossRunTrendRows(scoped, [{ ...row, module_id: "D01.B.sorter" }], fixedNow),
+    ).toThrow();
+    expect(() => prepareMiningCrossRunTrendQuery({ ...scoped, asOf: start }, fixedNow)).toThrow();
+  });
   it("uses fixed parameterized read-only KQL and pins the reviewed metric catalog", () => {
     const prepared = prepareMiningCrossRunTrendQuery(request, fixedNow);
     expect(prepared.csl).toBe(miningCrossRunTrendQuery);
@@ -92,6 +126,8 @@ describe("bounded cross-run Mining trends", () => {
       asof: `datetime(${asOf})`,
       metric: "'feed'",
       bin_minutes: "5",
+      scoped_run: '""',
+      scoped_module: '""',
     });
     expect(prepared.maximumRows).toBe(1000);
     expect(prepared.responseLimit).toBe(1001);

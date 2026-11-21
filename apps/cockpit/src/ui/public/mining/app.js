@@ -3,7 +3,6 @@ import {
   buildupObservation,
   diagnosticAssets,
   investigationPrompt,
-  orePaths,
   plantEvidence,
   possibleBuildup,
 } from "./supervisor.js";
@@ -19,6 +18,7 @@ import {
   refreshedIncidentSelection,
   sameScope,
   moduleStatus,
+  lineOperatingState,
   validOverview,
   validAsOf,
   currentIncidentQuery,
@@ -48,13 +48,6 @@ import {
 } from "./appearance.js";
 
 const $ = (id) => document.getElementById(id);
-const workbench = $("plant-workbench");
-const workspace = document.querySelector(".mining-workspace");
-const rail = document.createElement("div");
-rail.className = "mining-investigation-rail";
-rail.append(document.querySelector(".mining-incidents"), $("asset-detail"));
-workspace.append(rail);
-workbench.append(document.querySelector(".mining-kpis"), workspace);
 const text = (id, value) => {
   $(id).textContent = value;
 };
@@ -97,8 +90,9 @@ let appearanceBundlePromise = null;
 let appearanceController = null;
 let appearanceGeneration = 0;
 let answerController = null;
+let contextualGeneration = 0;
 const lines = new Set(["A", "B", "C", "shared"]);
-const polling = new MiningPolling((scope) => refresh(scope));
+const polling = new MiningPolling((scope) => refreshAll(scope));
 const kpis = ["throughput", "runningLines", "grossProcessWaterIntensity", "energyIntensity"];
 const units = ["t/h", "lines", "m³/t", "kWh/t"];
 
@@ -172,7 +166,21 @@ function drawPlant() {
   const statuses = new Map(
     catalog.modules.map((module) => [
       module.id,
-      moduleStatus(statusOverview, module.id, context?.mode, catalog),
+      context?.mode !== "continuous" &&
+      mode === "live" &&
+      incidentAssessment &&
+      validIncidentAssessment(incidentAssessment) &&
+      incidents.some((incident) => incident.moduleId === module.id && incident.severity === "high")
+        ? "high"
+        : context?.mode !== "continuous" &&
+            mode === "live" &&
+            incidentAssessment &&
+            validIncidentAssessment(incidentAssessment) &&
+            incidents.some(
+              (incident) => incident.moduleId === module.id && incident.severity === "warning",
+            )
+          ? "warning"
+          : moduleStatus(statusOverview, module.id, context?.mode, catalog),
     ]),
   );
   const topology = new Set(selectedIncident?.affectedModuleIds ?? []);
@@ -190,7 +198,13 @@ function drawPlant() {
         number,
         selected,
       )
-    : undefined;
+    : { readings: new Map(), measuredRoutes: new Map() };
+  evidence.lineStates = new Map(
+    ["A", "B", "C"].map((line) => [
+      line,
+      lineOperatingState(statusOverview, line, context?.mode, Date.now(), mode === "replay"),
+    ]),
+  );
   renderTop(
     $("plant-top"),
     catalog,
@@ -507,68 +521,11 @@ function drawIncidentEvidence() {
   );
 }
 let buildup = [];
-let flowPaths = [];
-
-function openAsset(id) {
-  select(id);
-  $("asset-detail").focus();
-}
-
-function buildShift() {
-  flowPaths = orePaths(catalog);
-  for (const { line, modules } of flowPaths) {
-    const row = node("div");
-    row.className = "flow-line";
-    row.append(node("strong", `Line ${line}`));
-    for (const [index, module] of modules.entries()) {
-      const step = node("div");
-      const button = node("button", module.label.replace(/^Line [ABC]\s*/i, ""));
-      button.setAttribute("aria-label", `Line ${line}, stage ${index + 1}: ${button.textContent}`);
-      button.type = "button";
-      button.className = "secondary";
-      button.dataset.flowAsset = module.id;
-      step.append(button);
-      if (module.kind === "crusher" || module.kind === "sorter") {
-        const rate = node("small", "Rate unknown");
-        rate.id = `rate-${module.id}`;
-        step.append(rate);
-      }
-      row.append(step);
-    }
-    $("flow-lines").append(row);
-  }
-  document.querySelectorAll("[data-flow-asset]").forEach((button) => {
-    button.addEventListener("click", () => openAsset(button.dataset.flowAsset));
-  });
-}
 
 function drawShift() {
   if (!catalog) return;
   const continuous = context?.mode === "continuous";
   const data = continuous ? continuousOverview : overview;
-  const reading = (id) =>
-    continuous
-      ? continuousTagReading(data, id)
-      : data?.latest?.readings?.find((row) => row.tagId === id);
-  const describe = (id, label) => {
-    const value = reading(id);
-    return usable(value) &&
-      Number.isFinite(value.ageSeconds) &&
-      (continuous || overview?.quality === "good")
-      ? `${label} ${number(value.value)} ${value.unit} · ${Math.round(value.ageSeconds)}s old at read`
-      : `${label} unknown`;
-  };
-  text("flow-hopper", describe("D01.shared.hopper.level", "Inventory"));
-  text("flow-water", describe("D01.shared.water.level", "Tank level"));
-  for (const { modules } of flowPaths) {
-    for (const module of modules) {
-      if (!["crusher", "sorter"].includes(module.kind)) continue;
-      text(
-        `rate-${module.id}`,
-        describe(`${module.id}.ore_flow`, module.kind === "crusher" ? "Feed" : "Sorter feed"),
-      );
-    }
-  }
   const observation =
     !continuous &&
     mode === "live" &&
@@ -592,21 +549,24 @@ function drawShift() {
   );
 }
 
-function configureDiagnostic(preferred) {
+function configureDiagnostic(preferred, strict = false) {
   const metric = $("diagnostic").value;
   const assets = diagnosticAssets(catalog, metric);
   const picker = $("diagnostic-asset");
-  const id = [preferred, picker.value, assets[0]?.id].find((candidate) =>
+  const id = (strict ? [preferred] : [preferred, picker.value, assets[0]?.id]).find((candidate) =>
     assets.some((asset) => asset.id === candidate),
   );
   picker.replaceChildren(
+    ...(!id && strict
+      ? [Object.assign(node("option", "Selected equipment has no supported trend"), { value: "" })]
+      : []),
     ...assets.map((asset) => {
       const option = node("option", asset.label);
       option.value = asset.id;
       return option;
     }),
   );
-  picker.disabled = !id;
+  picker.disabled = !assets.length;
   if (id) picker.value = id;
   drawDiagnosticScope();
 }
@@ -648,6 +608,7 @@ function drawDrawer() {
           : "Select an equipment module to inspect its readings.",
       ),
     );
+    $("latest-readings").replaceChildren();
     for (const direction of ["upstream", "downstream"])
       $(direction).replaceChildren(node("p", "No single module is associated."));
     drawIncidentEvidence();
@@ -685,6 +646,8 @@ function drawDrawer() {
   );
   const readings = $("readings");
   readings.replaceChildren();
+  const latestReadings = $("latest-readings");
+  latestReadings.replaceChildren();
   const tags = relevantTags(catalog, selected);
   if (continuous && !continuousOverview?.detail)
     readings.append(
@@ -697,6 +660,7 @@ function drawDrawer() {
     readings.append(
       node("p", "No numeric sensor is authored for this equipment. No value is inferred."),
     );
+  if (!tags.length) latestReadings.append(node("p", "No direct sensor readings."));
   for (const tag of tags) {
     const reading = continuous
       ? continuousTagReading(continuousOverview, tag.id)
@@ -713,6 +677,12 @@ function drawDrawer() {
         usable(reading) &&
         reading.sampleTime &&
         Number.isFinite(Date.parse(reading.sampleTime));
+    latestReadings.append(
+      node(
+        "p",
+        `${tag.metric.replaceAll("_", " ")}: ${good ? `${number(reading.value)} ${tag.unit}` : `Unknown ${tag.unit}`}`,
+      ),
+    );
     const article = node("article");
     article.append(node("h3", tag.metric.replaceAll("_", " ")));
     const details = node("dl");
@@ -763,20 +733,27 @@ function select(id, incident = null) {
   selected = id;
   selectedIncident = incident;
   const module = catalog.modules.find((item) => item.id === id);
+  if (["A", "B", "C"].includes(module.line)) $("line-scope").value = module.line;
   lines.add(module.line);
   document.querySelectorAll('input[name="line"]').forEach((input) => {
     input.checked = lines.has(input.value);
   });
   if (incident?.metric)
     $("diagnostic").value = incident.metric === "feed" ? "vibration" : incident.metric;
-  else if (["dms", "water", "crusher"].includes(module.kind))
+  else if (["dms", "water", "crusher", "sorter"].includes(module.kind))
     $("diagnostic").value =
-      module.kind === "dms" ? "density" : module.kind === "water" ? "water-energy" : "vibration";
-  configureDiagnostic(id);
+      module.kind === "dms"
+        ? "density"
+        : module.kind === "water"
+          ? "water-energy"
+          : module.kind === "sorter"
+            ? "sorter-feed"
+            : "vibration";
+  configureDiagnostic(id, true);
   chart($("diagnostic-chart"), null);
   drawPlant();
   drawDrawer();
-  if (context?.readAvailable && context?.approvedRun && !document.hidden) refresh("diagnostic");
+  if (!document.hidden) refreshAll("diagnostic");
 }
 function selectIncident(incident) {
   if (incident.moduleId) {
@@ -985,11 +962,11 @@ function chart(container, data) {
   container.append(
     node(
       "p",
-      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins${data.crossRun ? " · observed bin averages; runs remain separate" : ""}. Gaps and non-good-quality samples are not connected.${data.crossRun ? " Within the selected window, missing rows mean no bin was returned, not zero or an unrequested interval." : ""}`,
+      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins`,
     ),
   );
   const details = node("details"),
-    summary = node("summary", "Read chart data"),
+    summary = node("summary", "Chart data and provenance"),
     wrap = node("div"),
     table = node("table");
   wrap.className = "mining-chart-table";
@@ -1024,10 +1001,18 @@ function chart(container, data) {
   }
   table.append(tbody);
   wrap.append(table);
-  details.append(summary, wrap);
+  details.append(
+    summary,
+    node(
+      "p",
+      `${data.crossRun ? "Observed bin averages; runs remain separate. " : ""}Gaps and non-good-quality samples are not connected.${data.crossRun ? " Within the selected window, missing rows mean no bin was returned, not zero or an unrequested interval." : ""}`,
+    ),
+    wrap,
+  );
   container.append(details);
 }
 function clearReadState(message) {
+  contextualGeneration++;
   buildup = [];
   overview = null;
   continuousOverview = null;
@@ -1043,6 +1028,150 @@ function clearReadState(message) {
   drawContinuousAdvisories("Unknown — bounded rolling advisory evidence is unavailable.");
   chart($("feed-chart"), null);
   chart($("diagnostic-chart"), null);
+  $("line-chart").replaceChildren();
+  $("diagnostic-extra").replaceChildren();
+}
+async function refreshContextualTrends(scope) {
+  if (!["all", "detail", "diagnostic"].includes(scope)) return;
+  const generation = ++contextualGeneration;
+  const epoch = requestEpoch;
+  const line = $("line-scope").value;
+  const asset = $("diagnostic-asset").value;
+  const family = $("diagnostic").value;
+  const owner = context?.approvedRun;
+  const continuous = context?.mode === "continuous";
+  $("feed-chart").hidden = line !== "all";
+  $("line-chart").hidden = line === "all";
+  text(
+    "feed-heading",
+    line === "all" ? "A / B / C crusher feed" : `Line ${line} · crusher feed and sorter input`,
+  );
+  $("diagnostic-extra").replaceChildren();
+  if (line !== "all") $("line-chart").replaceChildren(node("p", "Loading line readings…"));
+  if (
+    !owner ||
+    !context?.readAvailable ||
+    document.hidden ||
+    (continuous && context.capabilities?.trends !== true)
+  ) {
+    if (line !== "all")
+      $("line-chart").replaceChildren(
+        node("p", "Line trend unavailable. Retry when readings are available."),
+      );
+    return;
+  }
+  let params;
+  try {
+    params = query();
+  } catch {
+    return;
+  }
+  const current = () =>
+    generation === contextualGeneration &&
+    epoch === requestEpoch &&
+    !document.hidden &&
+    context?.approvedRun?.runId === owner.runId &&
+    context?.approvedRun?.generation === owner.generation &&
+    $("line-scope").value === line &&
+    $("diagnostic-asset").value === asset &&
+    $("diagnostic").value === family;
+  const load = async (metric, moduleId) => {
+    if (continuous) {
+      const request = {
+        plantId: "D01",
+        start: params.start,
+        end: params.end,
+        metric,
+        binMinutes: params.binMinutes,
+      };
+      const data = await reads.read("cross-run-trends", request);
+      const result = crossRunChartData(data, request, catalogVersion, catalog, owner);
+      if (!result) throw new Error("Trend evidence unavailable.");
+      result.rows = result.rows.filter((row) => row.moduleId === moduleId);
+      return result;
+    }
+    const request = seriesQuery(params, metric, moduleId);
+    const data = await reads.read("trends", request);
+    if (!validSeries(data, { ...params, metric, moduleId }, catalogVersion, catalog))
+      throw new Error("Trend evidence unavailable.");
+    return data;
+  };
+  const tasks = [];
+  if (line !== "all")
+    tasks.push(
+      (async () => {
+        try {
+          const [feed, sorter] = await Promise.all([
+            load("feed", `D01.${line}.crusher`),
+            load("sorter-feed", `D01.${line}.sorter`),
+          ]);
+          if (!current()) return;
+          // The legacy finite feed is already run-scoped. Preserve gaps when combining it
+          // with segmented validated sorter points on the same t/h axis.
+          const rows = [feed, sorter].flatMap((data) =>
+            data.crossRun
+              ? data.rows
+              : data.rows.map((row) => ({
+                  ...row,
+                  runId: params.runId,
+                  status: usable(row) ? "OBSERVED" : "GAP",
+                  segmentId: usable(row) ? `${params.runId}:${row.seriesId}:finite` : null,
+                })),
+          );
+          const target = $("line-chart");
+          chart(target, {
+            crossRun: true,
+            rows,
+            binMinutes: Number(params.binMinutes),
+            windowStart: params.start,
+            windowEnd: params.end,
+          });
+          target.prepend(node("p", "Crusher feed and sorter input · t/h"));
+        } catch (error) {
+          if (current())
+            $("line-chart").replaceChildren(node("p", "Line trend unavailable. Try again."));
+        }
+      })(),
+    );
+  const extras = !asset
+    ? []
+    : family === "vibration"
+      ? [
+          ["Crusher feed", "feed"],
+          ["Bearing temperature", "bearing-temperature"],
+          ["Motor current", "motor-current"],
+        ]
+      : family === "density"
+        ? [
+            ["Feed pressure", "feed-pressure"],
+            ["Motor current", "motor-current"],
+          ]
+        : family === "sorter-feed"
+          ? [["Motor current", "motor-current"]]
+          : [];
+  tasks.push(
+    ...extras.map(async ([label, metric]) => {
+      try {
+        const data = await load(metric, asset);
+        return { label, data };
+      } catch {
+        return { label, data: null };
+      }
+    }),
+  );
+  const results = await Promise.all(tasks);
+  if (!current()) return;
+  for (const result of results.filter(Boolean)) {
+    const section = node("section");
+    section.append(node("h3", result.label));
+    const plot = node("div");
+    section.append(plot);
+    $("diagnostic-extra").append(section);
+    chart(plot, result.data);
+  }
+}
+async function refreshAll(scope = "all") {
+  await Promise.all([refresh(scope), refreshContextualTrends(scope)]);
 }
 async function refresh(scope = "all") {
   if (context?.mode === "continuous") {
@@ -1281,6 +1410,7 @@ async function refresh(scope = "all") {
           selectedIncident = refreshedIncidentSelection(selectedIncident, incidents);
           drawIncidents();
           drawDrawer();
+          drawPlant();
         } catch (error) {
           if (current()) {
             incidents = [];
@@ -1289,6 +1419,7 @@ async function refresh(scope = "all") {
             selectedIncident = null;
             drawIncidents(error.message);
             drawDrawer();
+            drawPlant();
           }
         }
       })(),
@@ -1407,13 +1538,11 @@ async function loadContext() {
         context.unavailableReason ??
           "No approved mining run is available. The catalog is viewable; telemetry, incidents and KPIs are unknown.",
       );
-    else await refresh();
+    else await refreshAll();
   } catch (error) {
     if (epoch === requestEpoch) {
       context = null;
-      clearReadState(
-        `${error.message} Configure the mining backend and approved run; no live twin is claimed.`,
-      );
+      clearReadState(error.message);
     }
   }
   configurePolling();
@@ -1648,7 +1777,7 @@ function drawStreamWindow() {
       ? "Overdue · expected Fabric batch not observed"
       : window.state === "arriving"
         ? "Window closed · awaiting Fabric receipt"
-        : `${window.last ? "Between batches" : "First window filling"} · next sample in ${window.remaining}s`,
+        : `Collecting readings · next batch in ${window.remaining}s`,
   );
 }
 
@@ -1722,7 +1851,9 @@ function drawArrival() {
           ? "Complete"
           : demoRun?.publisherStatus === "stopping" || demoRun?.stopRequested
             ? "Stopping / stopped"
-            : "Ready to start",
+            : demoRun
+              ? "Ready to start"
+              : "Status unavailable",
   );
   const hasReceipt = timing.lagSeconds !== null;
   if (hasReceipt && requestedSimulation && requestedSimulation.runId === demoRun?.runId) {
@@ -1750,7 +1881,7 @@ function drawArrival() {
     hasReceipt
       ? `Latest observed sample is ${seconds(timing.sampleAgeSeconds)} old. Delay measures its sample-to-Eventhouse receipt, not browser refresh time.${first}`
       : timing.active
-        ? "Publishing does not prove ingestion. Waiting for this run's confirmed Fabric receipts; readings refresh every 30 seconds."
+        ? "Waiting for this run's confirmed Fabric receipts; readings refresh every 30 seconds."
         : "Start a simulation to measure real data-arrival delay. Missing data is never shown as zero.",
   );
 }
@@ -1768,7 +1899,7 @@ function drawDemoRunStatus(notice = "") {
   }
   text(
     "run-control-help",
-    "A shared ten-minute simulation sends synthetic D01 data through Fabric. One run at a time; reopening this page never starts another. Publisher completion is not ingestion completion.",
+    "A shared ten-minute simulation sends synthetic D01 data through Fabric. Reopening this page never starts another run.",
   );
   const status = demoRun
     ? `Publisher: ${demoRun.publisherStatus.replaceAll("_", " ")}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion: ${verifiedRunIngestion(overview, demoRun)}. Shared by all visitors.`
@@ -1788,8 +1919,25 @@ async function demoRequest(path, body) {
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message ?? "Demo request failed.");
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("Simulation status unavailable. Retry.");
+  }
+  if (!response.ok) {
+    const messages = {
+      mining_demo_busy: "A simulation is active or cooling down.",
+      mining_demo_rate_limited: "Too many requests. Try again later.",
+      mining_demo_disabled: "Simulation controls are not enabled.",
+      mining_demo_configuration: "Simulation controls are not configured.",
+    };
+    const code = data?.error?.code;
+    throw new Error(
+      (Object.hasOwn(messages, code) && messages[code]) ||
+        "Simulation request unavailable. Check status and retry.",
+    );
+  }
   return data;
 }
 async function updateDemoStatus(notice = "") {
@@ -1917,7 +2065,7 @@ $("mode").addEventListener("change", async () => {
   clearReadState("Loading selected time mode…");
   drawDiagnosticScope();
   drawStream();
-  await refresh();
+  await refreshAll();
   configurePolling();
 });
 $("replay-time").addEventListener("change", async () => {
@@ -1926,7 +2074,7 @@ $("replay-time").addEventListener("change", async () => {
   replayTime = Number.isFinite(value) ? new Date(value).toISOString() : null;
   clearReadState("Loading replay time…");
   drawDiagnosticScope();
-  await refresh();
+  await refreshAll();
   configurePolling();
 });
 $("window").addEventListener("change", () => {
@@ -1936,24 +2084,33 @@ $("window").addEventListener("change", () => {
     $("feed-chart").replaceChildren(node("p", "Loading cross-run trend…"));
     $("diagnostic-chart").replaceChildren(node("p", "Loading cross-run trend…"));
   }
-  refresh("detail");
+  refreshAll("detail");
   configurePolling();
 });
 $("diagnostic").addEventListener("change", () => {
   configureDiagnostic(selected);
   chart($("diagnostic-chart"), null);
-  refresh("diagnostic");
+  refreshAll("diagnostic");
 });
 $("diagnostic-asset").addEventListener("change", () => {
+  if ($("diagnostic-asset").value) {
+    select($("diagnostic-asset").value);
+    return;
+  }
   drawDiagnosticScope();
   chart($("diagnostic-chart"), null);
-  refresh("diagnostic");
+  refreshAll("diagnostic");
 });
 $("view").addEventListener("change", () => {
   $("plant-top").toggleAttribute("hidden", $("view").value !== "top");
   $("plant-3d").hidden = $("view").value !== "3d";
   if ($("view").value === "list") $("object-disclosure").open = true;
   configurePolling();
+});
+$("line-scope").addEventListener("change", () => {
+  const line = $("line-scope").value;
+  if (line !== "all") select(`D01.${line}.crusher`);
+  else refreshAll("detail");
 });
 $("plant-fit").addEventListener("click", () => plant3d?.fit());
 $("appearance-mode").addEventListener("change", () => {
@@ -1979,7 +2136,7 @@ document.addEventListener("visibilitychange", () => {
   configurePolling();
   if (!document.hidden) {
     clearReadState("Refreshing after hidden-tab pause…");
-    if (context) refresh();
+    if (context) refreshAll();
     else loadContext();
   }
 });
@@ -2012,7 +2169,6 @@ try {
     throw new Error("Invalid canonical plant package.");
   drawPlant();
   selected = catalog.modules.find((module) => module.kind === "dms")?.id;
-  buildShift();
   configureDiagnostic(selected);
   drawDrawer();
   await loadContext();

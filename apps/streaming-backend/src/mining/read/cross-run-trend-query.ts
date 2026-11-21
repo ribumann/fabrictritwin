@@ -6,7 +6,15 @@ import {
 } from "@triathlon-twin/simulator/mining";
 import { MiningQueryError } from "./bounded-query.js";
 
-export type MiningCrossRunMetric = "feed" | "density" | "vibration" | "water-energy";
+export type MiningCrossRunMetric =
+  | "feed"
+  | "density"
+  | "vibration"
+  | "water-energy"
+  | "sorter-feed"
+  | "motor-current"
+  | "bearing-temperature"
+  | "feed-pressure";
 export type MiningCrossRunBinMinutes = 1 | 5;
 
 export interface MiningCrossRunTrendRequest {
@@ -15,6 +23,9 @@ export interface MiningCrossRunTrendRequest {
   asOf: string;
   metric: MiningCrossRunMetric;
   binMinutes: MiningCrossRunBinMinutes;
+  /** Internal, authorized finite-run scope; never accepted by the cross-run route. */
+  runId?: string;
+  moduleId?: string;
 }
 
 export interface PreparedMiningCrossRunTrendQuery {
@@ -28,28 +39,54 @@ const sourceContractVersion = "d01-validated-source-v1";
 const maximumWindowMs = 86_400_000;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const utc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const metrics: readonly MiningCrossRunMetric[] = ["feed", "density", "vibration", "water-energy"];
+export const miningTrendMetrics: readonly MiningCrossRunMetric[] = [
+  "feed",
+  "density",
+  "vibration",
+  "water-energy",
+  "sorter-feed",
+  "motor-current",
+  "bearing-temperature",
+  "feed-pressure",
+];
 const quote = (value: string) => JSON.stringify(value);
+
+export function miningTrendFamily(
+  tag: (typeof D01_PLANT_CATALOG.telemetry_tags)[number],
+): MiningCrossRunMetric | null {
+  const line = tag.module_id.split(".")[1];
+  if (!["A", "B", "C", "shared"].includes(line)) return null;
+  if (line !== "shared" && tag.module_id.endsWith(".crusher") && tag.metric === "ore_flow")
+    return "feed";
+  if (line !== "shared" && tag.module_id.endsWith(".sorter") && tag.metric === "ore_flow")
+    return "sorter-feed";
+  if (line !== "shared" && tag.module_id.endsWith(".dms") && tag.metric === "medium_density")
+    return "density";
+  if (line !== "shared" && tag.module_id.endsWith(".crusher") && tag.metric === "vibration_rms")
+    return "vibration";
+  if (
+    line !== "shared" &&
+    tag.module_id.endsWith(".crusher") &&
+    tag.metric === "bearing_temperature"
+  )
+    return "bearing-temperature";
+  if (line !== "shared" && tag.module_id.endsWith(".dms") && tag.metric === "feed_pressure")
+    return "feed-pressure";
+  if (
+    line !== "shared" &&
+    [".crusher", ".dms", ".sorter"].some((suffix) => tag.module_id.endsWith(suffix)) &&
+    tag.metric === "motor_current"
+  )
+    return "motor-current";
+  if (tag.module_id === "D01.shared.water" && ["level", "water_flow"].includes(tag.metric))
+    return "water-energy";
+  if (tag.module_id === "D01.shared.control" && tag.metric === "power") return "water-energy";
+  return null;
+}
 
 const tagRows = D01_PLANT_CATALOG.telemetry_tags
   .flatMap((tag) => {
-    const line = tag.module_id.split(".")[1];
-    const family =
-      tag.metric === "ore_flow" && line !== "shared" && tag.module_id.endsWith(".crusher")
-        ? "feed"
-        : tag.metric === "medium_density"
-          ? "density"
-          : tag.metric === "vibration_rms" && tag.module_id.endsWith(".crusher")
-            ? "vibration"
-            : line === "shared" &&
-                tag.module_id === "D01.shared.water" &&
-                ["level", "water_flow"].includes(tag.metric)
-              ? "water-energy"
-              : line === "shared" &&
-                  tag.module_id === "D01.shared.control" &&
-                  tag.metric === "power"
-                ? "water-energy"
-                : null;
+    const family = miningTrendFamily(tag);
     if (!family) return [];
     return [
       `    ${[
@@ -70,7 +107,7 @@ const tagRows = D01_PLANT_CATALOG.telemetry_tags
 /** Cross-run window read; uses the existing fixed source-readiness contract. */
 export const miningCrossRunTrendQuery = `
 declare query_parameters(plant:string, start:datetime, end:datetime, asof:datetime,
-    metric:string, bin_minutes:int);
+    metric:string, bin_minutes:int, scoped_run:string, scoped_module:string);
 let source_status = toscalar(mining_SourceReadiness() | project status);
 let tags = datatable(tag_id:string, expected_module_id:string, expected_equipment_id:string,
     expected_metric:string, expected_unit:string, cadence_seconds:long, metric_family:string,
@@ -78,7 +115,7 @@ let tags = datatable(tag_id:string, expected_module_id:string, expected_equipmen
 ${tagRows}
 ];
 let selected_tags = tags
-    | where metric_family == metric
+    | where metric_family == metric and (scoped_module == "" or expected_module_id == scoped_module)
     | project tag_id, expected_module_id, expected_equipment_id, expected_metric,
         expected_unit, cadence_seconds, metric_family,
         tags_catalog_version=catalog_version, tags_profile_version=profile_version;
@@ -86,6 +123,7 @@ let epoch = datetime(1970-01-01T00:00:00Z);
 let raw = materialize(
     mining_ValidatedTelemetry
     | where source_status == "READY" and plant_id == plant and received_at <= asof
+        and (scoped_run == "" or run_id == scoped_run)
         and timestamp >= start and timestamp < end
         and tag_id in (selected_tags | project tag_id)
     | project plant_id, run_id, event_id, sequence, timestamp, received_at, module_id,
@@ -93,7 +131,7 @@ let raw = materialize(
         profile_version, source_contract_version, payload_fingerprint
 );
 let identities = mining_ValidatedTelemetry
-    | where plant_id == plant and received_at <= asof
+    | where plant_id == plant and received_at <= asof and (scoped_run == "" or run_id == scoped_run)
     | join kind=leftsemi (raw | distinct run_id, event_id) on run_id, event_id
     | summarize fingerprints=make_set(payload_fingerprint, 2), tags=make_set(tag_id, 2),
         times=make_set(tostring(timestamp), 2), sequences=make_set(sequence, 2),
@@ -253,7 +291,11 @@ export function prepareMiningCrossRunTrendQuery(
   const end = requestTime(input.end, current);
   const asOf = requestTime(input.asOf, current);
   if (
-    !metrics.includes(input.metric) ||
+    !miningTrendMetrics.includes(input.metric) ||
+    (input.runId !== undefined && !isMiningRunId(input.runId)) ||
+    (input.moduleId !== undefined &&
+      (!input.runId ||
+        !D01_PLANT_CATALOG.modules.some((module) => module.id === input.moduleId))) ||
     (input.binMinutes !== 1 && input.binMinutes !== 5) ||
     end <= start ||
     end - start > maximumWindowMs ||
@@ -271,6 +313,8 @@ export function prepareMiningCrossRunTrendQuery(
       asof: `datetime(${input.asOf})`,
       metric: `'${input.metric}'`,
       bin_minutes: String(input.binMinutes),
+      scoped_run: quote(input.runId ?? ""),
+      scoped_module: quote(input.moduleId ?? ""),
     },
     maximumRows: 1000,
     responseLimit: 1001,

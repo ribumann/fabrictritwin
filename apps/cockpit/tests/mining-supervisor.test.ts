@@ -27,7 +27,7 @@ const at = (sample: number, level: number, feed: number) =>
   buildupObservation(readings(sample, level, feed), new Date(sample).toISOString());
 
 describe("Mining supervisor evidence", () => {
-  it("emphasizes only instrumented feed routes with positive evidence", () => {
+  it("scales only measured inlet routes, including zero, without assigning water to branches", () => {
     const records = new Map([
       ["D01.A.crusher.ore_flow", { value: 42 }],
       ["D01.B.crusher.ore_flow", { value: 0 }],
@@ -43,6 +43,20 @@ describe("Mining supervisor evidence", () => {
     expect(evidence.readings.get("D01.C.crusher")?.label).toContain("unknown");
     expect(evidence.readings.has("D01.A.dms")).toBe(false);
     expect(evidence.readings.has("D01.B.dms")).toBe(true);
+    const measured = catalog.streams.filter((route) => evidence.measuredRoutes.has(route.id));
+    expect(measured.map((route) => route.target.module_id)).toEqual([
+      "D01.A.crusher",
+      "D01.B.crusher",
+      "D01.C.sorter",
+    ]);
+    expect(evidence.measuredRoutes.get(measured[1].id)).toMatchObject({
+      value: 0,
+      unit: "t/h",
+      width: 0.18,
+    });
+    expect(evidence.measuredRoutes.get(measured[0].id)!.width).toBeGreaterThan(0.18);
+    const invalid = plantEvidence(catalog, () => ({ value: -1 }), String, null);
+    expect(invalid.measuredRoutes.size).toBe(0);
   });
 
   it("drafts a bounded investigation from the selected asset and evidence timestamp", () => {

@@ -177,6 +177,16 @@ export function validSeries(data, params, catalogVersion, catalog) {
     data.rows.length > Math.min(1000, Number(params.maxRows))
   )
     return false;
+  if (
+    ["sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"].includes(params.metric)
+  ) {
+    const checked = crossRunChartData(data, params, catalogVersion, catalog, null, Date.now(), {
+      runId: params.runId,
+      moduleId: params.moduleId,
+      asOf: params.asOf,
+    });
+    return !!checked && JSON.stringify(checked.rows) === JSON.stringify(data.rows);
+  }
   const binMs = data.binMinutes * 60_000;
   const firstBin = Math.floor(Date.parse(params.start) / binMs) * binMs;
   return data.rows.every((row) => {
@@ -198,7 +208,15 @@ export function validSeries(data, params, catalogVersion, catalog) {
   });
 }
 
-export function crossRunChartData(data, params, catalogVersion, catalog, owner, now = Date.now()) {
+export function crossRunChartData(
+  data,
+  params,
+  catalogVersion,
+  catalog,
+  owner,
+  now = Date.now(),
+  scoped = null,
+) {
   const start = Date.parse(params.start);
   const end = Date.parse(params.end);
   const asOf = Date.parse(data?.asOf);
@@ -214,10 +232,14 @@ export function crossRunChartData(data, params, catalogVersion, catalog, owner, 
     "GAP",
   ]);
   if (
-    !owner ||
-    data?.owner?.runId !== owner.runId ||
-    data.owner.generation !== owner.generation ||
-    !(Date.parse(data.owner.authorityUntil) > now + continuousClockSkewMs) ||
+    (scoped
+      ? !sameScope(data, scoped.runId, catalogVersion) ||
+        data.moduleId !== scoped.moduleId ||
+        Date.parse(data.asOf) !== Date.parse(scoped.asOf)
+      : !owner ||
+        data?.owner?.runId !== owner.runId ||
+        data.owner.generation !== owner.generation ||
+        !(Date.parse(data.owner.authorityUntil) > now + continuousClockSkewMs)) ||
     data.catalogVersion !== catalogVersion ||
     data.profileVersion !== "d01-publish-profile-v1" ||
     data.metric !== params.metric ||
@@ -228,7 +250,7 @@ export function crossRunChartData(data, params, catalogVersion, catalog, owner, 
     end - start > 86_400_000 ||
     Date.parse(data.start) !== start ||
     Date.parse(data.end) !== end ||
-    !continuousRequestCurrent(data.asOf, now) ||
+    (!scoped && !continuousRequestCurrent(data.asOf, now)) ||
     asOf < end ||
     !Array.isArray(data.points) ||
     data.points.length > 1000
@@ -246,16 +268,28 @@ export function crossRunChartData(data, params, catalogVersion, catalog, owner, 
           ? tag?.metric === "medium_density"
           : params.metric === "vibration"
             ? tag?.metric === "vibration_rms" && tag.module_id.endsWith(".crusher")
-            : params.metric === "water-energy" &&
-              [
-                "D01.shared.water.level",
-                "D01.shared.water.water_flow",
-                "D01.shared.control.power",
-              ].includes(tag?.id);
+            : params.metric === "sorter-feed"
+              ? tag?.metric === "ore_flow" && tag.module_id.endsWith(".sorter")
+              : params.metric === "bearing-temperature"
+                ? tag?.metric === "bearing_temperature" && tag.module_id.endsWith(".crusher")
+                : params.metric === "feed-pressure"
+                  ? tag?.metric === "feed_pressure" && tag.module_id.endsWith(".dms")
+                  : params.metric === "motor-current"
+                    ? tag?.metric === "motor_current" &&
+                      [".crusher", ".dms", ".sorter"].some((suffix) =>
+                        tag.module_id.endsWith(suffix),
+                      )
+                    : params.metric === "water-energy" &&
+                      [
+                        "D01.shared.water.level",
+                        "D01.shared.water.water_flow",
+                        "D01.shared.control.power",
+                      ].includes(tag?.id);
     const key = `${point?.runId}:${point?.seriesId}:${time}`;
     if (
       !tag ||
       !family ||
+      (scoped && (point.runId !== scoped.runId || point.moduleId !== scoped.moduleId)) ||
       tag.unit !== point.unit ||
       tag.module_id !== point.moduleId ||
       tag.equipment_id !== point.equipmentId ||
@@ -332,12 +366,42 @@ export function moduleStatus(
     }
     return "sensor evidence incomplete";
   }
-  if (!overview || overview.quality !== "good") return "unknown";
-  const module = overview.latest?.modules?.find((item) => item.moduleId === moduleId);
+  if (!overview) return "unknown";
   const readings = overview.latest?.readings?.filter((item) => item.moduleId === moduleId);
-  if (readings?.some((reading) => !usable(reading))) return "unknown";
-  const status = module?.status;
-  return ["normal", "warning", "high", "stopped"].includes(status) ? status : "unknown";
+  if (!readings?.length) return "not directly reported";
+  if (readings.some((reading) => !usable(reading))) return "unknown";
+  return "sensor evidence current";
+}
+
+// A line controller observation is not an individual machine health signal.
+export function lineOperatingState(overview, line, mode, now = Date.now(), replay = false) {
+  const states =
+    mode === "continuous" ? overview?.detail?.lineStates : overview?.latest?.lineStates;
+  if (!["A", "B", "C"].includes(line) || !Array.isArray(states)) return "unknown";
+  const matching = states.filter((item) => item?.scopeId === line);
+  if (matching.length !== 1) return "unknown";
+  const state = matching[0];
+  const at = Date.parse(overview?.asOf);
+  const sampled = Date.parse(state.sampleTime);
+  const reference = replay ? at : now;
+  if (
+    !Number.isFinite(at) ||
+    !Number.isFinite(sampled) ||
+    !Number.isFinite(reference) ||
+    sampled > at ||
+    at - sampled > 195_000 ||
+    reference - sampled > 195_000 ||
+    sampled > reference + continuousClockSkewMs ||
+    (mode === "continuous" &&
+      (state.quality !== "good" ||
+        !continuousOwnerCurrent(overview, now) ||
+        now + continuousClockSkewMs - sampled > 195_000)) ||
+    typeof state.scheduledRunning !== "boolean"
+  )
+    return "unknown";
+  if (state.state === "running" && state.scheduledRunning) return "running";
+  if (state.state === "stopped") return "stopped";
+  return "unknown";
 }
 
 export function validOverview(data, runId, catalogVersion, asOf, replay, now = Date.now()) {
@@ -878,9 +942,28 @@ export function continuousThroughputUsable(data, now = Date.now()) {
   );
 }
 
-export function seriesQuery({ plantId, runId, start, end, binMinutes, maxRows }, metric, moduleId) {
-  return { plantId, runId, start, end, binMinutes, maxRows, metric, moduleId };
+export function seriesQuery(
+  { plantId, runId, start, end, binMinutes, maxRows, asOf },
+  metric,
+  moduleId,
+) {
+  const request = { plantId, runId, start, end, binMinutes, maxRows, metric, moduleId };
+  if (["sorter-feed", "motor-current", "bearing-temperature", "feed-pressure"].includes(metric))
+    request.asOf = asOf;
+  return request;
 }
+
+const safeReadErrors = {
+  mining_demo_run_not_found: ["no_sample", "No public simulation is available yet."],
+  mining_run_not_found: ["no_sample", "No approved run is available yet."],
+  mining_admission_unavailable: ["waiting", "Waiting for run admission."],
+  mining_read_configuration: ["not_configured", "Mining readings are not configured."],
+  mining_demo_configuration: ["not_configured", "Mining readings are not configured."],
+  mining_demo_read_disabled: ["not_configured", "Mining readings are not enabled."],
+  mining_demo_disabled: ["not_configured", "The mining demo is not enabled."],
+  mining_read_timeout: ["service_failed", "The readings request timed out."],
+  mining_demo_timeout: ["service_failed", "The readings request timed out."],
+};
 
 export class MiningReads {
   constructor(fetchImpl = fetch, now = Date.now) {
@@ -902,7 +985,23 @@ export class MiningReads {
     const timeout = setTimeout(() => controller.abort(), 10_000);
     const promise = this.fetch(url, { signal: controller.signal, credentials: "same-origin" })
       .then(async (response) => {
-        if (!response.ok) throw new Error(`Mining read unavailable (HTTP ${response.status}).`);
+        if (!response.ok) {
+          let envelope;
+          try {
+            envelope = await response.json();
+          } catch {
+            /* No trusted error envelope. */
+          }
+          const code = envelope?.error?.code;
+          const [category, message] = (Object.hasOwn(safeReadErrors, code) &&
+            safeReadErrors[code]) || [
+            "service_failed",
+            "Live readings unavailable. Plant layout still works. Retry.",
+          ];
+          const error = new Error(message);
+          error.category = category;
+          throw error;
+        }
         const data = await response.json();
         if (!data || typeof data !== "object" || data.error)
           throw new Error("Invalid mining response.");

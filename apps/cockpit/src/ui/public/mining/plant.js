@@ -1,7 +1,7 @@
 const svgNs = "http://www.w3.org/2000/svg";
 const routeColors = { process: 0x64748b, water: 0x2563a6, observed: 0x08765c };
 function routeStyle(stream, evidence) {
-  return evidence?.activeRoutes.has(stream.id)
+  return evidence?.measuredRoutes?.has(stream.id)
     ? "observed"
     : stream.material.includes("water")
       ? "water"
@@ -86,6 +86,7 @@ export function renderTop(
         points: stream.route_points_m.map(([x, , z]) => `${x},${z}`).join(" "),
         "marker-end": "url(#flow-arrow)",
         "data-route": routeStyle(stream, evidence),
+        "stroke-width": evidence?.measuredRoutes?.get(stream.id)?.width ?? 0.18,
       }),
     );
   }
@@ -108,10 +109,24 @@ export function renderTop(
     const label = svg("text", { "text-anchor": "middle", y: 0.5 });
     label.textContent = module.kind;
     group.append(label);
+    if (module.kind === "crusher" && evidence?.lineStates?.has(module.line)) {
+      const state = evidence.lineStates.get(module.line);
+      const marker = svg("circle", {
+        cx: -width / 2,
+        cy: -depth / 2,
+        r: 0.75,
+        class: "plant-line-marker",
+        "data-line-state": state,
+      });
+      const markerTitle = svg("title");
+      markerTitle.textContent = `Line ${module.line}: ${state} (line controller, not equipment health)`;
+      marker.append(markerTitle);
+      group.append(marker);
+    }
     group.addEventListener("click", () => select(module.id));
     container.append(group);
     const reading = evidence?.readings.get(module.id);
-    if (reading) {
+    if (reading && (reading.current || module.id === selected)) {
       const badge = svg("text", {
         x,
         y: z - depth / 2 - 1,
@@ -187,6 +202,29 @@ export async function createPlant3D(container, catalog, select) {
         new THREE.LineBasicMaterial({ color: 0x64748b }),
       ),
     );
+    const measured = new THREE.Group();
+    for (let i = 1; i < points.length; i++) {
+      const length = points[i].distanceTo(points[i - 1]);
+      if (length < 0.01) continue;
+      const segment = new THREE.Mesh(
+        new THREE.CylinderGeometry(1, 1, length, 8),
+        new THREE.MeshBasicMaterial({ color: routeColors.observed }),
+      );
+      segment.position
+        .copy(points[i - 1])
+        .add(points[i])
+        .multiplyScalar(0.5);
+      segment.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        points[i]
+          .clone()
+          .sub(points[i - 1])
+          .normalize(),
+      );
+      measured.add(segment);
+    }
+    measured.visible = false;
+    group.add(measured);
     const last = points.at(-1),
       previous = [...points].reverse().find((point) => point.distanceTo(last) > 0.01);
     if (previous)
@@ -201,7 +239,7 @@ export async function createPlant3D(container, catalog, select) {
         ),
       );
     scene.add(group);
-    streams.push({ stream, group });
+    streams.push({ stream, group, measured });
   }
   const selection = new THREE.BoxHelper(undefined, 0x4f46e5);
   selection.visible = false;
@@ -458,8 +496,6 @@ export async function createPlant3D(container, catalog, select) {
         warning: 0xb45309,
         high: 0xdc2626,
         stopped: 0x5b6479,
-        "sensor evidence stale": 0xb45309,
-        "sensor evidence flagged": 0x7c3aed,
       };
       box.visible =
         visible && (!!colors[status] || topology.has(module.id) || selectedModuleId === module.id);
@@ -472,18 +508,31 @@ export async function createPlant3D(container, catalog, select) {
       );
       if (box.visible) box.setFromObject(target);
     }
-    for (const { stream, group } of streams) {
+    for (const { stream, group, measured } of streams) {
       group.visible =
         (utilities || stream.visible_by_default) &&
         targets.get(stream.source.module_id).visible &&
         targets.get(stream.target.module_id).visible;
       const color = routeColors[routeStyle(stream, evidence)];
       group.children[0].material.color.setHex(color);
-      group.children[1]?.setColor(color);
+      group.children[2]?.setColor(color);
+      const rate = evidence?.measuredRoutes?.get(stream.id);
+      measured.visible = !!rate;
+      for (const segment of measured.children) {
+        segment.scale.set(rate ? rate.width / 2 : 1, 1, rate ? rate.width / 2 : 1);
+      }
     }
     badges.clear();
     overlay?.replaceChildren();
-    const labels = [...(evidence?.readings ?? [])];
+    const labels = [...(evidence?.readings ?? [])].filter(
+      ([id, reading]) => reading.current || id === moduleId,
+    );
+    for (const [line, state] of evidence?.lineStates ?? []) {
+      const id = `D01.${line}.crusher`;
+      const existing = labels.find(([key]) => key === id);
+      if (existing) existing[1] = { ...existing[1], line, state };
+      else labels.push([id, { line, state, current: false, label: "" }]);
+    }
     if (labels.length && !overlay) {
       overlay = document.createElement("div");
       overlay.className = "plant-overlays";
@@ -495,7 +544,10 @@ export async function createPlant3D(container, catalog, select) {
       const badge = document.createElement("span");
       badge.className = "plant-reading";
       badge.dataset.current = String(reading.current);
-      badge.textContent = reading.label;
+      if (reading.line) badge.dataset.lineState = reading.state;
+      badge.textContent = reading.line
+        ? `Line ${reading.line} ${reading.state}${reading.label ? ` · ${reading.label}` : ""}`
+        : reading.label;
       badges.set(id, badge);
       overlay.append(badge);
     }

@@ -4,7 +4,7 @@ const overlayMetric = {
   hopper: "level",
   crusher: "ore_flow",
   sorter: "ore_flow",
-  water: "level",
+  water: "water_flow",
   dms: "medium_density",
 };
 
@@ -24,6 +24,7 @@ export function plantEvidence(catalog, getReading, number, selected) {
     });
   }
   const activeRoutes = new Set();
+  const measuredRoutes = new Map();
   for (const route of catalog.streams) {
     const id = route.target.module_id;
     if (!(
@@ -31,9 +32,20 @@ export function plantEvidence(catalog, getReading, number, selected) {
       (route.material === "concentrate" && id.endsWith(".sorter"))
     ))
       continue;
-    if (getReading(`${id}.ore_flow`)?.value > 0) activeRoutes.add(route.id);
+    const tag = catalog.telemetry_tags.find(
+      (item) => item.id === `${id}.ore_flow` && item.unit === "t/h",
+    );
+    const value = tag && getReading(tag.id)?.value;
+    if (!Number.isFinite(value) || value < 0) continue;
+    measuredRoutes.set(route.id, {
+      value,
+      unit: tag.unit,
+      // The demo scale is capped at 150 t/h; this is not an operating limit.
+      width: 0.18 + 0.55 * Math.min(value / 150, 1),
+    });
+    if (value > 0) activeRoutes.add(route.id);
   }
-  return { readings, activeRoutes };
+  return { readings, activeRoutes, measuredRoutes };
 }
 
 export function investigationPrompt({ moduleId, incident, asOf }) {
@@ -59,7 +71,12 @@ const processMaterials = new Set([
   "sinks",
   "concentrate",
 ]);
-const diagnosticKinds = { density: "dms", vibration: "crusher", "water-energy": "water" };
+const diagnosticKinds = {
+  density: "dms",
+  vibration: "crusher",
+  "sorter-feed": "sorter",
+  "water-energy": "water",
+};
 
 export function diagnosticAssets(catalog, metric) {
   const kind = diagnosticKinds[metric];
