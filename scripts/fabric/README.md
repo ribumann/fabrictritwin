@@ -217,8 +217,8 @@ remain explicitly filtered by the v2 `entityType` values `PlantTelemetry` and
 | Owned object                                                 | Purpose and retention                                                                 |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | `mining_TelemetryRaw`, `mining_PlantStateEvents`             | Full v2 JSON and a separate `timestamp_raw` string projection; 7-day soft-delete      |
-| `mining_PlantCatalog`, `mining_PublishProfile`               | Versioned catalog/profile inputs; no added retention policy                           |
-| `mining_SourceContract`                                      | Version and readiness evidence, including timestamp-shape and exclusive-writer gates  |
+| `mining_PlantCatalog`, `mining_PublishProfile`               | Versioned catalog/profile inputs; explicit 36,500-day retention                       |
+| `mining_SourceContract`                                      | Version and readiness evidence; explicit 36,500-day retention                         |
 | `mining_ValidatedTelemetry`, `mining_ValidatedState`         | Typed curated rows; empty while source and writer gates are closed; 7-day soft-delete |
 | `mining_Quarantine`                                          | Raw event, timestamp projection, disposition and reason codes; 7-day soft-delete      |
 | `mining_AlertTransitions`, `mining_IncidentLedger`           | Separate alert-transition and approved incident sources; 30-day soft-delete           |
@@ -234,6 +234,10 @@ read-only and return `ACCEPTED`, `QUARANTINED` or `BLOCKED`. The separate
 `infra/fabric/eventhouse/MiningMaterialization.kql` defines mining-only update
 policies: accepted events go to the corresponding validated table, and
 quarantined events go to the quarantine table. Blocked events remain in raw.
+
+The three static metadata tables need explicit long-term retention: without it
+they inherit the database policy and can expire, blocking all validated reads.
+Their 36,500-day table policies do not change the seven-day telemetry retention.
 
 The classifiers join static tables, so the file disables streaming ingestion on
 the two mining raw tables as required by Fabric. The update policies are

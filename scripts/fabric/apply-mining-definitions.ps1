@@ -250,12 +250,14 @@ foreach ($tableName in @('mining_TelemetryRaw', 'mining_PlantStateEvents')) {
     }
 }
 
+$metadataRetentionPath = Join-Path $root 'MiningMetadataRetention.kql'
+$retentionText = $schemaText + "`n" + (Get-Content -LiteralPath $metadataRetentionPath -Raw)
 $retentionCommands = @([regex]::Matches(
-        $schemaText, '(?m)^\.alter-merge table (mining_\w+) policy retention softdelete = (\d+)d\r?$'
+        $retentionText, '(?m)^\.alter-merge table (mining_\w+) policy retention softdelete = (\d+)d\r?$'
     ) | ForEach-Object {
         [pscustomobject]@{ Name = $_.Groups[1].Value; Days = [int]$_.Groups[2].Value }
     })
-if ($retentionCommands.Count -ne 7) { throw 'MiningSchema.kql has an unexpected retention policy inventory.' }
+if ($retentionCommands.Count -ne 10) { throw 'Mining retention definitions have an unexpected policy inventory.' }
 
 $functionRows = Get-KustoRows -Command '.show functions | project Name'
 $existingFunctions = @($functionRows | ForEach-Object { $_[0] })
@@ -283,7 +285,7 @@ if ($WhatIfPreference) {
 }
 
 $sourceHashes = @{}
-foreach ($path in @($schemaPath, $validationPath, $queriesPath)) {
+foreach ($path in @($schemaPath, $metadataRetentionPath, $validationPath, $queriesPath)) {
     $relative = [IO.Path]::GetRelativePath((Resolve-Path (Join-Path $PSScriptRoot '..\..\')).Path, $path).Replace('\', '/')
     $sourceHashes[$relative] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
 }

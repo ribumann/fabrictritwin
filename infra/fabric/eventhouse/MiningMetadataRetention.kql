@@ -1,0 +1,3 @@
+.alter-merge table mining_PlantCatalog policy retention softdelete = 36500d
+.alter-merge table mining_PublishProfile policy retention softdelete = 36500d
+.alter-merge table mining_SourceContract policy retention softdelete = 36500d

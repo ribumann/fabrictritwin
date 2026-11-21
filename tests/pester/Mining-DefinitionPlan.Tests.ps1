@@ -163,6 +163,11 @@ Describe 'Mining KQL ownership ledger' {
         @($commands | Where-Object { $_ -match 'ingestion json mapping .*\$\W' }) | Should -HaveCount 2
         @($commands | Where-Object { $_ -match 'policy retention softdelete = 7d$' }) | Should -HaveCount 5
         @($commands | Where-Object { $_ -match 'policy retention softdelete = 30d$' }) | Should -HaveCount 2
+        $metadataPolicies = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\infra\fabric\eventhouse\MiningMetadataRetention.kql') | Where-Object { $_ -match '^\.' })
+        foreach ($table in @('mining_PlantCatalog', 'mining_PublishProfile', 'mining_SourceContract')) {
+            $metadataPolicies | Should -Contain ".alter-merge table $table policy retention softdelete = 36500d"
+        }
+        $metadataPolicies | Should -HaveCount 3
         $script:SchemaText | Should -Match 'timestamp_raw:string'
     }
 
