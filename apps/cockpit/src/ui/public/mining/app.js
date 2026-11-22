@@ -639,7 +639,10 @@ function drawDrawer() {
   const module = catalog.modules.find((item) => item.id === selected);
   const next = {
     crusher: "Compare feed across lines, then check vibration against operating load.",
-    dms: "Check the density trend with feed pressure before interpreting a change.",
+    dms:
+      context?.capabilities?.connectionFlow === true
+        ? "Compare feed pressure and upstream flows. Density is not simulated in this profile."
+        : "Check the density trend with feed pressure before interpreting a change.",
     water: "Compare tank level and delivered flow, then check whether multiple lines slowed.",
     hopper: "Compare inventory and line feed before treating a rise as congestion.",
     sorter:
@@ -684,6 +687,8 @@ function drawDrawer() {
     );
   if (!tags.length) latestReadings.append(node("p", "No direct sensor readings."));
   for (const tag of tags) {
+    const notSimulated =
+      context?.capabilities?.connectionFlow === true && tag.metric === "medium_density";
     const reading = continuous
       ? continuousTagReading(continuousOverview, tag.id)
       : overview?.latest?.readings?.find(
@@ -703,14 +708,21 @@ function drawDrawer() {
     latestReadings.append(
       node(
         "p",
-        `${tag.metric.replaceAll("_", " ")}: ${good ? `${number(reading.value)} ${tag.unit}` : `Unknown ${tag.unit}`}`,
+        `${tag.metric.replaceAll("_", " ")}: ${notSimulated ? "Not simulated" : good ? `${number(reading.value)} ${tag.unit}` : `Unknown ${tag.unit}`}`,
       ),
     );
     const article = node("article");
     article.append(node("h3", tag.metric.replaceAll("_", " ")));
     const details = node("dl");
     for (const [label, value] of [
-      ["Reading", good ? `${number(reading.value)} ${tag.unit}` : `Unknown ${tag.unit}`],
+      [
+        "Reading",
+        notSimulated
+          ? "Not simulated"
+          : good
+            ? `${number(reading.value)} ${tag.unit}`
+            : `Unknown ${tag.unit}`,
+      ],
       [
         "Quality",
         continuous
@@ -1610,7 +1622,17 @@ async function refresh(scope = "all") {
       })(),
     );
   const incidentQuery = currentIncidentQuery(mode, params);
-  if ((scope === "all" || scope === "detail") && incidentQuery)
+  const flowProfile = context?.capabilities?.connectionFlow === true;
+  if ((scope === "all" || scope === "detail") && incidentQuery && flowProfile) {
+    incidents = [];
+    incidentAsOf = null;
+    incidentAssessment = null;
+    selectedIncident = null;
+    drawIncidents("Incident assessments are not available for this flow simulation.");
+    drawDrawer();
+    drawPlant();
+  }
+  if ((scope === "all" || scope === "detail") && incidentQuery && !flowProfile)
     tasks.push(
       (async () => {
         try {
@@ -1695,24 +1717,29 @@ async function refresh(scope = "all") {
       metric = $("diagnostic").value;
     const diagnosticCurrent = () =>
       current() && $("diagnostic-asset").value === moduleId && $("diagnostic").value === metric;
-    tasks.push(
-      (async () => {
-        try {
-          const data = await reads.read("trends", seriesQuery(params, metric, moduleId));
-          if (!validSeries(data, { ...params, moduleId, metric }, catalogVersion, catalog))
-            throw new Error(
-              "Trend response does not match the requested module, time, metric or catalog.",
-            );
-          if (diagnosticCurrent()) chart($("diagnostic-chart"), data);
-          if (diagnosticCurrent()) drawDiagnosticScope();
-        } catch (error) {
-          if (diagnosticCurrent()) {
-            chart($("diagnostic-chart"), null);
-            $("diagnostic-chart").append(node("p", error.message));
+    if (flowProfile && metric === "density") {
+      chart($("diagnostic-chart"), null);
+      $("diagnostic-chart").append(node("p", "Density is not simulated in this flow profile."));
+      drawDiagnosticScope();
+    } else
+      tasks.push(
+        (async () => {
+          try {
+            const data = await reads.read("trends", seriesQuery(params, metric, moduleId));
+            if (!validSeries(data, { ...params, moduleId, metric }, catalogVersion, catalog))
+              throw new Error(
+                "Trend response does not match the requested module, time, metric or catalog.",
+              );
+            if (diagnosticCurrent()) chart($("diagnostic-chart"), data);
+            if (diagnosticCurrent()) drawDiagnosticScope();
+          } catch (error) {
+            if (diagnosticCurrent()) {
+              chart($("diagnostic-chart"), null);
+              $("diagnostic-chart").append(node("p", error.message));
+            }
           }
-        }
-      })(),
-    );
+        })(),
+      );
   }
   await Promise.all(tasks);
 }

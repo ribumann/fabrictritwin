@@ -1200,7 +1200,7 @@ describe("cross-run chart validation", () => {
         },
       });
     const tag = (metric: string) => ({ id: metric, metric, equipment_id: "e", unit: "t/h" });
-    const tags = [tag("ore_flow"), tag("stale_flow")];
+    const tags = [tag("ore_flow"), tag("stale_flow"), tag("medium_density")];
     const sandbox: any = {
       catalog: { modules: [{ id: "D01.A.crusher", kind: "crusher", label: "Crusher" }] },
       selected: "D01.A.crusher",
@@ -1253,6 +1253,7 @@ describe("cross-run chart validation", () => {
     expect(elements["latest-readings"].children.map((item: any) => item.value)).toEqual([
       "ore flow: 42 t/h",
       "stale flow: Unknown t/h",
+      "medium density: Unknown t/h",
     ]);
     sandbox.context.capabilities = { connectionFlow: true };
     sandbox.overview.quality = "missing";
@@ -1265,10 +1266,12 @@ describe("cross-run chart validation", () => {
     expect(elements["latest-readings"].children.map((item: any) => item.value)).toEqual([
       "ore flow: 42 t/h",
       "stale flow: Unknown t/h",
+      "medium density: Not simulated",
     ]);
     sandbox.context.capabilities.connectionFlow = false;
     runInNewContext(`${fn.getText(tree)}; drawDrawer();`, sandbox);
     expect(elements["latest-readings"].children[0].value).toBe("ore flow: Unknown t/h");
+    expect(elements["latest-readings"].children[2].value).toBe("medium density: Unknown t/h");
   });
   it("accepts observed evidence and fails closed on foreign ownership, samples and statuses", () => {
     const catalog = readCatalog();
@@ -1851,6 +1854,62 @@ describe("mining request lifecycle", () => {
     expect(read).toHaveBeenCalledWith("compare-lines", seriesQuery(params, "feed"));
     expect(read.mock.calls.some(([path]) => path === "incidents")).toBe(mode === "live");
     expect(chart).toHaveBeenCalledWith("feed-chart", comparison);
+  });
+  it("explains unsupported density and incidents without reporting an outage for flow runs", async () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const refresh = tree.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "refresh",
+    );
+    if (!refresh) throw new Error("Missing mining refresh function");
+    const read = vi.fn(async (_path: string) => ({}));
+    const diagnostic = { value: "density" };
+    const asset = { value: "D01.A.dms" };
+    const graph = { append: vi.fn() };
+    const context = {
+      mode: "live",
+      incidents: [],
+      incidentAsOf: null,
+      incidentAssessment: null,
+      selectedIncident: null,
+      requestEpoch: 0,
+      document: { hidden: false },
+      context: {
+        readAvailable: true,
+        approvedRun: { runId: "approved" },
+        capabilities: { connectionFlow: true },
+      },
+      query: () => ({ plantId: "D01", runId: "approved" }),
+      reads: { read },
+      currentIncidentQuery,
+      seriesQuery,
+      validSeries: () => true,
+      catalog: {},
+      catalogVersion: "pinned",
+      drawIncidents: vi.fn(),
+      drawDrawer: vi.fn(),
+      drawPlant: vi.fn(),
+      drawContinuousAdvisories: vi.fn(),
+      drawDiagnosticScope: vi.fn(),
+      chart: vi.fn(),
+      node: (_tag: string, value: string) => value,
+      $: (id: string) =>
+        id === "diagnostic" ? diagnostic : id === "diagnostic-asset" ? asset : graph,
+      refresh: undefined as undefined | ((scope: string) => Promise<void>),
+    };
+    runInNewContext(`${refresh.getText(tree)}; this.refresh = refresh;`, context);
+    await context.refresh!("detail");
+    expect(read.mock.calls.map(([path]) => path)).toEqual(["compare-lines"]);
+    expect(graph.append).toHaveBeenCalledWith("Density is not simulated in this flow profile.");
+    expect(context.drawIncidents).toHaveBeenCalledWith(
+      "Incident assessments are not available for this flow simulation.",
+    );
   });
   it("distinguishes freshly rechecked reconciled event time from live assessment freshness", () => {
     const now = Date.parse("2026-01-01T12:10:00.000Z");
