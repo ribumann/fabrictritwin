@@ -949,6 +949,7 @@ export function createMiningDemoRouter(options: Options): Router {
       ]);
       let runId: string;
       let evidence: unknown;
+      let modelEvidence: unknown;
       let groundedOn: string[];
       let continuousOwner: ContinuousIncidentOwner | undefined;
       let flowOwner: Awaited<ReturnType<typeof currentConnectionOwner>>;
@@ -1108,6 +1109,70 @@ export function createMiningDemoRouter(options: Options): Router {
             requestSignal,
           );
           evidence = { ...overview, connectionFlow, connectionFlowOrigin: "synthetic" };
+          modelEvidence = {
+            runId: status.runId,
+            asOf,
+            source: "Synthetic demo observations read from Fabric; not physical measurements.",
+            summary: overview.summary,
+            sensors: {
+              columns: [
+                "tagId",
+                "equipmentId",
+                "value",
+                "unit",
+                "quality",
+                "sampleTime",
+                "ageSeconds",
+                "normalBand",
+              ],
+              rows: overview.latest.readings.map((item) => [
+                item.tagId,
+                item.equipmentId,
+                item.value,
+                item.unit,
+                item.quality,
+                item.sampleTime,
+                item.ageSeconds,
+                item.normalBand,
+              ]),
+            },
+            connectionFlow: {
+              columns: [
+                "streamId",
+                "sourceModule",
+                "sourcePort",
+                "targetModule",
+                "targetPort",
+                "quantity",
+                "basis",
+                "value",
+                "unit",
+                "quality",
+                "status",
+                "sampleTime",
+                "receiptTime",
+                "duplicates",
+                "conflicts",
+              ],
+              rows: connectionFlow.readings.map((item) => [
+                item.streamId,
+                item.source.module_id,
+                item.source.port_id,
+                item.target.module_id,
+                item.target.port_id,
+                item.quantity,
+                item.basis,
+                item.value,
+                item.unit,
+                item.quality,
+                item.status,
+                item.sampleTime,
+                item.receiptTime,
+                item.duplicates,
+                item.conflicts,
+              ]),
+            },
+          };
         } else {
           evidence = overview;
         }
@@ -1137,7 +1202,12 @@ export function createMiningDemoRouter(options: Options): Router {
       if (answerBudget <= 0) {
         throw new Error("The evidence read left no bounded time for an assistant answer.");
       }
-      const text = await answer(body.question.trim(), evidenceText, requestSignal, answerBudget);
+      const text = await answer(
+        body.question.trim(),
+        modelEvidence ? JSON.stringify(modelEvidence) : evidenceText,
+        requestSignal,
+        answerBudget,
+      );
       await assertCurrentFlowOwner();
       if (continuousMode) {
         const status = await currentContinuousStatus(requestSignal, continuousOwner);
@@ -1169,7 +1239,20 @@ export function createMiningDemoRouter(options: Options): Router {
         });
       }
     } catch (cause) {
-      fail(res, cause, "mining_assistant_unavailable");
+      if (
+        cause &&
+        typeof cause === "object" &&
+        "status" in cause &&
+        cause.status === 429 &&
+        !res.headersSent &&
+        !res.destroyed
+      ) {
+        console.warn("[mining-demo] Assistant model rate limit reached.");
+        res.setHeader("Retry-After", "60");
+        error(res, 429, "mining_assistant_busy", "The assistant model is busy; try again later.");
+      } else {
+        fail(res, cause, "mining_assistant_unavailable");
+      }
     } finally {
       answering = false;
     }

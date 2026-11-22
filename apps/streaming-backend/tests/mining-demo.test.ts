@@ -723,13 +723,17 @@ describe("public mining demo service boundary", () => {
     expect(response.body.groundedOn).not.toContain("event-ID reconciliation");
     expect(answer).toHaveBeenCalledWith(
       "Explain the flow.",
-      expect.stringContaining('"connectionFlowOrigin":"synthetic"'),
+      expect.stringContaining("Synthetic demo observations read from Fabric"),
       expect.any(AbortSignal),
       expect.any(Number),
     );
     connectionFlow.latest.mockRejectedValueOnce(new Error("Fabric offline"));
     expect((await ask()).status).toBe(503);
     expect(answer).toHaveBeenCalledTimes(1);
+    answer.mockRejectedValueOnce(Object.assign(new Error("Model throttled"), { status: 429 }));
+    const throttled = await ask();
+    expect(throttled.status).toBe(429);
+    expect(throttled.body.error.code).toBe("mining_assistant_busy");
     answer.mockImplementationOnce(async () => {
       await coordinator.requestStop(runId);
       return "This answer must not be returned.";
