@@ -12,6 +12,8 @@ import type { createMiningCrossRunTrendProvider } from "../src/mining/read/cross
 import type { MiningCrossRunTrendRequest } from "../src/mining/read/cross-run-trend-query.js";
 import type { createContinuousIncidentProvider } from "../src/mining-incidents/continuous-provider.js";
 import type { ContinuousIncidentSnapshot } from "../src/mining-incidents/continuous-replay.js";
+import type { createMiningConnectionFlowProvider } from "../src/mining/read/connection-flow-provider.js";
+import { D01_CONNECTION_PROFILE_VERSION } from "@triathlon-twin/simulator/mining";
 
 const principal = "11111111-1111-4111-8111-111111111111";
 const tenant = "22222222-2222-4222-8222-222222222222";
@@ -37,6 +39,8 @@ function setup(
   continuous?: ReturnType<typeof createMiningContinuousProvider>,
   crossRunTrends?: ReturnType<typeof createMiningCrossRunTrendProvider>,
   continuousAdvisories?: ReturnType<typeof createContinuousIncidentProvider>,
+  connectionFlow?: ReturnType<typeof createMiningConnectionFlowProvider>,
+  connectionEvidence?: { start(runId: string): Promise<void> },
 ) {
   const documents = new Map<string, StoredDocument>();
   const leases = new Set<string>();
@@ -98,12 +102,175 @@ function setup(
       continuous,
       crossRunTrends,
       continuousAdvisories,
+      connectionFlow,
+      connectionEvidence,
     }),
   );
   return { app, start, verifyClaims, documents, store };
 }
 
 describe("public mining demo service boundary", () => {
+  it("only selects shared flow for public starts when both server gates are enabled", async () => {
+    const incidents = { start: vi.fn(async () => {}) };
+    const gated = setup({ ...env, MINING_PUBLIC_DEMO_CONNECTION_FLOW_ENABLED: "true" }, incidents);
+    expect(
+      (await request(gated.app).post("/demo/runs/start").send({ plantId: "D01" })).status,
+    ).toBe(503);
+    expect(gated.start).not.toHaveBeenCalled();
+    const enabled = setup(
+      {
+        ...env,
+        MINING_PUBLIC_DEMO_CONNECTION_FLOW_ENABLED: "true",
+        MINING_CONNECTION_FLOW_ENABLED: "true",
+      },
+      incidents,
+    );
+    expect(
+      (await request(enabled.app).post("/demo/runs/start").send({ plantId: "D01" })).status,
+    ).toBe(202);
+    expect(enabled.start).toHaveBeenCalledWith(
+      expect.objectContaining({ profileVersion: D01_CONNECTION_PROFILE_VERSION }),
+      expect.any(AbortSignal),
+      undefined,
+      expect.any(Function),
+      undefined,
+      expect.any(Function),
+    );
+    expect(incidents.start).not.toHaveBeenCalled();
+  });
+
+  it.each(["publisher_complete", "failed"] as const)(
+    "starts flow evidence only when the shared publisher finishes successfully (%s)",
+    async (phase) => {
+      const evidence = { start: vi.fn(async () => {}) };
+      const { app, start } = setup(
+        {
+          ...env,
+          MINING_PUBLIC_DEMO_CONNECTION_FLOW_ENABLED: "true",
+          MINING_CONNECTION_FLOW_ENABLED: "true",
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        evidence,
+      );
+      start.mockImplementationOnce((input) => {
+        const status = {
+          runId: input.requestId,
+          admission: "accepted" as const,
+          phase,
+          stopRequested: false,
+        };
+        return {
+          admission: Promise.resolve({ kind: "started", status }),
+          completion: Promise.resolve(status),
+        };
+      });
+      await request(app).post("/demo/runs/start").send({ plantId: "D01" });
+      if (phase === "publisher_complete") expect(evidence.start).toHaveBeenCalledOnce();
+      else expect(evidence.start).not.toHaveBeenCalled();
+    },
+  );
+
+  it("only exposes flow evidence for a marked, current shared-flow run and withdraws changed authority", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let stopDuringRead = false;
+    let coordinator: MiningRunCoordinator;
+    const connectionFlow = {
+      latest: vi.fn(async (input: { runId: string; runStartedAt: string; asOf: string }) => {
+        if (stopDuringRead) await coordinator.requestStop(input.runId);
+        return { plantId: "D01" as const, catalogVersion: "test", ...input, readings: [] };
+      }),
+      trend: vi.fn(),
+    };
+    const { app, store } = setup(
+      { ...env, MINING_CONNECTION_FLOW_READ_ENABLED: "true" },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      connectionFlow,
+    );
+    let now = Date.now() - 135_000;
+    coordinator = new MiningRunCoordinator(
+      store,
+      { now: () => now, monotonic: () => now },
+      { finalFlushMilliseconds: 2_000 },
+    );
+    const runId = "44444444-4444-4444-8444-444444444444";
+    const admission = await coordinator.start({
+      plantId: "D01",
+      requestId: runId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner");
+    await admission.owner.activatePreparedRun();
+    for (let elapsed = 10_000; elapsed <= 120_000; elapsed += 10_000) {
+      now = Date.parse(admission.run.admittedAt!) + elapsed;
+      await admission.owner.heartbeat();
+    }
+    now = Date.parse(admission.run.startedAt);
+    expect(await admission.owner.beginScheduledRun()).toBe(true);
+    const query = { plantId: "D01", runId };
+    const disabled = setup(env);
+    expect((await request(disabled.app).get("/demo/connection-latest").query(query)).status).toBe(
+      503,
+    );
+    expect((await request(app).get("/demo/connection-latest").query(query)).status).toBe(403);
+    await store.create(`public-demo/${runId}.json`, { version: 1, runId });
+    expect((await request(app).get("/demo/context")).body.capabilities.connectionFlow).toBe(true);
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse(admission.run.startedAt) + 2_000);
+    const pending = await request(app).get("/demo/connection-latest").query(query);
+    clock.mockRestore();
+    expect(pending.status).toBe(503);
+    expect(pending.body.error.code).toBe("mining_flow_pending");
+    expect(connectionFlow.latest).not.toHaveBeenCalled();
+    const before = Date.now();
+    const result = await request(app).get("/demo/connection-latest").query(query);
+    expect(result.status).toBe(200);
+    expect(Date.parse(connectionFlow.latest.mock.calls[0][0].asOf)).toBeLessThanOrEqual(
+      Date.now() - 5_000,
+    );
+    expect(Date.parse(connectionFlow.latest.mock.calls[0][0].asOf)).toBeGreaterThanOrEqual(
+      before - 5_000,
+    );
+    expect(connectionFlow.latest).toHaveBeenCalledWith(
+      expect.objectContaining({ runId, runStartedAt: admission.run.startedAt, streamIds: [] }),
+      expect.any(AbortSignal),
+    );
+    expect(
+      (
+        await request(app)
+          .get("/demo/connection-latest")
+          .query({ ...query, runId: "55555555-5555-4555-8555-555555555555" })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(app)
+          .get("/demo/connection-trend")
+          .query({
+            ...query,
+            streamIds: "unknown-stream",
+            start: new Date(Date.now() - 10_000).toISOString(),
+            end: new Date().toISOString(),
+            windowSeconds: "30",
+          })
+      ).status,
+    ).toBe(400);
+    expect(connectionFlow.trend).not.toHaveBeenCalled();
+    stopDuringRead = true;
+    const stopped = await request(app).get("/demo/connection-latest").query(query);
+    expect(stopped.status).toBe(503);
+    expect(stopped.body).not.toHaveProperty("readings");
+    await admission.owner.finish("failed");
+  });
   const continuousEnv = {
     ...env,
     MINING_CONTINUOUS_READ_ENABLED: "true",
@@ -470,6 +637,106 @@ describe("public mining demo service boundary", () => {
     const disabled = setup(env, undefined, { answer, curated });
     expect((await request(disabled.app).post("/demo/assistant").send(question)).status).toBe(503);
   });
+
+  it("grounds shared-flow assistant answers in the current synthetic flow and withdraws changed authority", async () => {
+    const metric = {
+      value: null,
+      unit: "t/h",
+      coverage: null,
+      quality: "missing" as const,
+      windowStart: "2026-01-01T11:00:00.000Z",
+      windowEnd: "2026-01-01T11:05:00.000Z",
+    };
+    const curated = vi.fn<MiningCuratedProvider>().mockImplementation(async (input) => ({
+      plantId: "D01",
+      runId: input.run.runId,
+      catalogVersion: "test",
+      asOf: input.asOf,
+      refreshedAt: input.asOf,
+      quality: "stale",
+      latest: { modules: [], readings: [] },
+      summary: {
+        throughput: metric,
+        runningLines: metric,
+        grossProcessWaterIntensity: metric,
+        energyIntensity: metric,
+      },
+    }));
+    const answer = vi.fn<MiningAnswer>().mockResolvedValue("The modeled flow is available.");
+    const connectionFlow = {
+      latest: vi.fn(async (input: { runId: string; runStartedAt: string; asOf: string }) => ({
+        plantId: "D01" as const,
+        catalogVersion: "test",
+        ...input,
+        readings: [],
+      })),
+      trend: vi.fn(),
+    };
+    const enabled = {
+      ...env,
+      MINING_CONNECTION_FLOW_READ_ENABLED: "true",
+      MINING_PUBLIC_DEMO_ASSISTANT_ENABLED: "true",
+      MINING_INGESTION_RECONCILIATION_ENABLED: "true",
+      FOUNDRY_PROJECT_ENDPOINT: "https://example.services.ai.azure.com/api/projects/mining",
+      ATHLETE_ASSISTANT_MODEL_DEPLOYMENT_NAME: "demo-model",
+    };
+    const { app, store } = setup(
+      enabled,
+      undefined,
+      { answer, curated },
+      undefined,
+      undefined,
+      undefined,
+      connectionFlow,
+    );
+    let now = Date.now() - 135_000;
+    const coordinator = new MiningRunCoordinator(
+      store,
+      { now: () => now, monotonic: () => now },
+      { finalFlushMilliseconds: 2_000 },
+    );
+    const runId = "44444444-4444-4444-8444-444444444444";
+    const admission = await coordinator.start({
+      plantId: "D01",
+      requestId: runId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+    });
+    if (admission.kind !== "started") throw new Error("Missing owner");
+    await admission.owner.activatePreparedRun();
+    for (let elapsed = 10_000; elapsed <= 120_000; elapsed += 10_000) {
+      now = Date.parse(admission.run.admittedAt!) + elapsed;
+      await admission.owner.heartbeat();
+    }
+    now = Date.parse(admission.run.startedAt);
+    await admission.owner.beginScheduledRun();
+    await store.create(`public-demo/${runId}.json`, { version: 1, runId });
+    const ask = () =>
+      request(app).post("/demo/assistant").send({ plantId: "D01", question: "Explain the flow." });
+    const response = await ask();
+    expect(response.status).toBe(200);
+    expect(response.body.evidence).toMatchObject({
+      runId,
+      connectionFlowOrigin: "synthetic",
+      connectionFlow: { runId },
+    });
+    expect(response.body.groundedOn).toContain("synthetic connection-flow readings");
+    expect(response.body.groundedOn).not.toContain("event-ID reconciliation");
+    expect(answer).toHaveBeenCalledWith(
+      "Explain the flow.",
+      expect.stringContaining('"connectionFlowOrigin":"synthetic"'),
+      expect.any(AbortSignal),
+      expect.any(Number),
+    );
+    connectionFlow.latest.mockRejectedValueOnce(new Error("Fabric offline"));
+    expect((await ask()).status).toBe(503);
+    expect(answer).toHaveBeenCalledTimes(1);
+    answer.mockImplementationOnce(async () => {
+      await coordinator.requestStop(runId);
+      return "This answer must not be returned.";
+    });
+    expect((await ask()).status).toBe(503);
+    await admission.owner.finish("failed");
+  });
   it.each(["publisher_complete", "running"] as const)(
     "activates reconciliation only after %s completion, never from a GET",
     async (phase) => {
@@ -612,6 +879,8 @@ describe("public mining demo service boundary", () => {
       .send({ plantId: "D01", runId: started.body.runId });
     expect(cancelled.status).toBe(202);
     expect(cancelled.body).toMatchObject({ stopRequested: true, ingestionStatus: "unknown" });
-    expect((await request(app).get("/demo/runs/status")).body.run).not.toHaveProperty("simulatorPreview");
+    expect((await request(app).get("/demo/runs/status")).body.run).not.toHaveProperty(
+      "simulatorPreview",
+    );
   });
 });

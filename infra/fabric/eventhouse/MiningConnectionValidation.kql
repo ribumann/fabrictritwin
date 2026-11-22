@@ -1,0 +1,217 @@
+// Read-only classifier for the separate ConnectionMeasurement v1 family.
+// The exact raw JSON remains in mining_ConnectionMeasurementRaw. Joins are
+// deliberate: policies using this function must stay queued, with streaming
+// ingestion disabled on all source/dimension tables (see schema file).
+.create-or-alter function with (folder = "Mining/Connection/Validation")
+mining_ClassifyConnectionMeasurementV1()
+{
+    let expected_fields = dynamic([
+        "entityType", "schema_version", "run_id", "event_id", "sequence",
+        "sample_time", "sample_interval_seconds", "plant_id", "catalog_version",
+        "measurement_catalog_version", "profile_version", "stream_id",
+        "measurement_tag_id", "source_module_id", "source_port_id",
+        "source_equipment_id", "source_equipment_port_id", "target_module_id",
+        "target_port_id", "target_equipment_id", "target_equipment_port_id",
+        "quantity", "basis", "value", "unit", "quality", "origin"
+    ]);
+    let allowed_fields = dynamic([
+        "entityType", "schema_version", "run_id", "event_id", "sequence",
+        "sample_time", "sample_interval_seconds", "plant_id", "catalog_version",
+        "measurement_catalog_version", "profile_version", "stream_id",
+        "measurement_tag_id", "source_module_id", "source_port_id",
+        "source_equipment_id", "source_equipment_port_id", "target_module_id",
+        "target_port_id", "target_equipment_id", "target_equipment_port_id",
+        "quantity", "basis", "value", "unit", "quality", "origin",
+        "EventProcessedUtcTime", "PartitionId", "EventEnqueuedUtcTime"
+    ]);
+    let profile_rows = toscalar(
+        mining_ConnectionMeasurementProfile
+        | where plant_id == "D01" and
+            catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            measurement_catalog_version == "d01-connection-measurements-v1" and
+            profile_version == "d01-shared-flow-v1" and
+            entity_type == "ConnectionMeasurement" and schema_version == 1 and
+            sample_interval_seconds == 5
+        | count);
+    let bindings =
+        mining_ConnectionMeasurementBinding
+        | where plant_id == "D01" and
+            catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            measurement_catalog_version == "d01-connection-measurements-v1" and
+            profile_version == "d01-shared-flow-v1"
+        | summarize binding_rows=count(),
+            binding_stream_id=take_any(stream_id),
+            binding_source_module_id=take_any(source_module_id),
+            binding_source_port_id=take_any(source_port_id),
+            binding_source_equipment_id=take_any(source_equipment_id),
+            binding_source_equipment_port_id=take_any(source_equipment_port_id),
+            binding_target_module_id=take_any(target_module_id),
+            binding_target_port_id=take_any(target_port_id),
+            binding_target_equipment_id=take_any(target_equipment_id),
+            binding_target_equipment_port_id=take_any(target_equipment_port_id),
+            binding_endpoint_granularity=take_any(endpoint_granularity),
+            binding_quantity=take_any(quantity),
+            binding_basis=take_any(basis),
+            binding_unit=take_any(unit),
+            binding_capacity=take_any(nominal_capacity),
+            binding_capacity_unit=take_any(nominal_capacity_unit),
+            binding_capacity_purpose=take_any(nominal_capacity_purpose),
+            binding_interval=take_any(sample_interval_seconds),
+            binding_origin=take_any(origin)
+            by measurement_tag_id;
+    let run_profiles =
+        mining_ConnectionRunProfile
+        | where plant_id == "D01"
+        | summarize run_profile_rows=count(),
+            pinned_catalog_version=take_any(catalog_version),
+            pinned_measurement_catalog_version=take_any(measurement_catalog_version),
+            pinned_profile_version=take_any(profile_version),
+            pinned_started_at=take_any(started_at),
+            run_profile_received_at=take_any(ingestion_time())
+            by run_id;
+    mining_ConnectionMeasurementRaw
+    | extend received_at = ingestion_time()
+    | extend event_type=tostring(event["entityType"]),
+        schema_version=toint(event["schema_version"]),
+        run_id=tostring(event["run_id"]),
+        event_id=tostring(event["event_id"]),
+        sequence=tolong(event["sequence"]),
+        event_time=todatetime(sample_time_raw),
+        sample_interval_seconds=toint(event["sample_interval_seconds"]),
+        plant_id=tostring(event["plant_id"]),
+        catalog_version=tostring(event["catalog_version"]),
+        measurement_catalog_version=tostring(event["measurement_catalog_version"]),
+        profile_version=tostring(event["profile_version"]),
+        stream_id=tostring(event["stream_id"]),
+        measurement_tag_id=tostring(event["measurement_tag_id"]),
+        source_module_id=tostring(event["source_module_id"]),
+        source_port_id=tostring(event["source_port_id"]),
+        source_equipment_id=tostring(event["source_equipment_id"]),
+        source_equipment_port_id=tostring(event["source_equipment_port_id"]),
+        target_module_id=tostring(event["target_module_id"]),
+        target_port_id=tostring(event["target_port_id"]),
+        target_equipment_id=tostring(event["target_equipment_id"]),
+        target_equipment_port_id=tostring(event["target_equipment_port_id"]),
+        quantity=tostring(event["quantity"]),
+        basis=tostring(event["basis"]),
+        value=toreal(event["value"]),
+        unit=tostring(event["unit"]),
+        quality=tostring(event["quality"]),
+        origin=tostring(event["origin"])
+    | extend actual_fields=bag_keys(event),
+        envelope_field_count=
+            toint(bag_has_key(event, "EventProcessedUtcTime")) +
+            toint(bag_has_key(event, "PartitionId")) +
+            toint(bag_has_key(event, "EventEnqueuedUtcTime"))
+    | extend shape_ok=gettype(event) == "dictionary" and
+        array_length(set_difference(expected_fields, actual_fields)) == 0 and
+        array_length(set_difference(actual_fields, allowed_fields)) == 0 and
+        array_length(actual_fields) in (27, 30) and envelope_field_count in (0, 3)
+    | extend types_ok=gettype(event["entityType"]) == "string" and
+        gettype(event["schema_version"]) in ("int", "long") and
+        gettype(event["run_id"]) in ("string", "guid") and
+        gettype(event["event_id"]) == "string" and
+        gettype(event["sequence"]) in ("int", "long") and
+        gettype(event["sample_time"]) in ("string", "datetime") and
+        gettype(event["sample_interval_seconds"]) in ("int", "long") and
+        gettype(event["plant_id"]) == "string" and
+        gettype(event["catalog_version"]) == "string" and
+        gettype(event["measurement_catalog_version"]) == "string" and
+        gettype(event["profile_version"]) == "string" and
+        gettype(event["stream_id"]) == "string" and
+        gettype(event["measurement_tag_id"]) == "string" and
+        gettype(event["source_module_id"]) == "string" and
+        gettype(event["source_port_id"]) == "string" and
+        gettype(event["source_equipment_id"]) == "null" and
+        gettype(event["source_equipment_port_id"]) == "null" and
+        gettype(event["target_module_id"]) == "string" and
+        gettype(event["target_port_id"]) == "string" and
+        gettype(event["target_equipment_id"]) == "null" and
+        gettype(event["target_equipment_port_id"]) == "null" and
+        gettype(event["quantity"]) == "string" and gettype(event["basis"]) == "string" and
+        gettype(event["value"]) in ("int", "long", "real", "double") and
+        gettype(event["unit"]) == "string" and gettype(event["quality"]) == "string" and
+        gettype(event["origin"]) == "string"
+    | extend identity_ok=event_type == "ConnectionMeasurement" and schema_version == 1 and
+        run_id matches regex @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        sequence > 0 and toreal(sequence) <= 9007199254740991.0 and
+        toreal(sequence) == bin(toreal(sequence), 1.0) and
+        event_id matches regex @"^[0-9a-f]{64}$" and
+        event_id == hash_sha256(strcat(run_id, ":connection:", tostring(sequence))) and
+        plant_id == "D01"
+    | extend value_ok=isfinite(value) and value >= 0.0,
+        quality_ok=quality in ("good", "uncertain", "bad")
+    | join kind=leftouter (bindings) on measurement_tag_id
+    | join kind=leftouter (run_profiles) on run_id
+    | extend profile_row_count=profile_rows,
+        timestamp_ok=sample_time_raw matches regex
+            @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$" and
+            isnotnull(event_time) and
+            event_time == todatetime(tostring(event["sample_time"])) and
+            run_profile_rows == 1 and isnotnull(pinned_started_at) and
+            event_time > pinned_started_at and
+            datetime_diff("millisecond", event_time, pinned_started_at) % 5000 == 0 and
+            sample_interval_seconds == 5 and event_time <= received_at,
+        binding_ok=binding_rows == 1 and
+            catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            measurement_catalog_version == "d01-connection-measurements-v1" and
+            profile_version == "d01-shared-flow-v1" and
+            stream_id == binding_stream_id and
+            source_module_id == binding_source_module_id and source_port_id == binding_source_port_id and
+            source_equipment_id == binding_source_equipment_id and
+            source_equipment_port_id == binding_source_equipment_port_id and
+            target_module_id == binding_target_module_id and target_port_id == binding_target_port_id and
+            target_equipment_id == binding_target_equipment_id and
+            target_equipment_port_id == binding_target_equipment_port_id and
+            binding_endpoint_granularity == "module-port" and
+            quantity == binding_quantity and basis == binding_basis and unit == binding_unit and
+            binding_capacity > 0.0 and binding_capacity_unit == unit and
+            binding_capacity_purpose == "visualization_scale_only" and
+            binding_interval == 5 and binding_origin == origin and
+            origin == "synthetic_sensor_observation" and
+            ((quantity == "dry_solids_mass_flow" and basis == "dry_solids" and unit == "t/h") or
+             (quantity == "water_volume_flow" and basis == "water" and unit == "m3/h") or
+             (quantity == "medium_volume_flow" and basis == "ferrosilicon_medium" and unit == "m3/h")) and
+            quantity in ("dry_solids_mass_flow", "water_volume_flow", "medium_volume_flow")
+    | extend run_pin_ok=run_profile_rows == 1 and
+        pinned_catalog_version == catalog_version and
+        pinned_measurement_catalog_version == measurement_catalog_version and
+        pinned_profile_version == profile_version and
+        isnotnull(pinned_started_at) and
+        isnotnull(run_profile_received_at) and
+        run_profile_received_at < received_at
+    | extend structurally_valid=shape_ok and types_ok and identity_ok and timestamp_ok and
+        value_ok and quality_ok
+    | extend disposition=case(
+        not(structurally_valid), "QUARANTINED",
+        profile_row_count != 1, "BLOCKED",
+        not(binding_ok), "QUARANTINED",
+        not(run_pin_ok), "QUARANTINED",
+        "ACCEPTED")
+    | extend reason_codes=set_difference(pack_array(
+        iff(not(shape_ok), "invalid_or_unexpected_root_fields", ""),
+        iff(not(types_ok), "invalid_root_types", ""),
+        iff(not(identity_ok), "invalid_event_identity_or_run", ""),
+        iff(not(timestamp_ok), "invalid_sample_time_or_cadence", ""),
+        iff(not(value_ok), "non_finite_or_negative_value", ""),
+        iff(not(quality_ok), "invalid_quality", ""),
+        iff(profile_row_count != 1, "connection_profile_missing_or_ambiguous", ""),
+        iff(profile_row_count == 1 and not(binding_ok), "unknown_or_mismatched_measurement_binding", ""),
+        iff(profile_row_count == 1 and binding_ok and
+            isnotnull(run_profile_received_at) and run_profile_received_at >= received_at,
+            "run_pin_receipt_not_prior_to_event", ""),
+        iff(profile_row_count == 1 and binding_ok and not(run_pin_ok), "run_version_not_pinned_uniquely", "")
+    ), dynamic([""]))
+    | extend payload_fingerprint=hash_sha256(tostring(pack_array(
+        event_type, schema_version, run_id, event_id, sequence, sample_time_raw,
+        sample_interval_seconds, plant_id, catalog_version, measurement_catalog_version,
+        profile_version, stream_id, measurement_tag_id, source_module_id, source_port_id,
+        source_equipment_id, source_equipment_port_id, target_module_id, target_port_id,
+        target_equipment_id, target_equipment_port_id, quantity, basis, value, unit, quality, origin)))
+    | project disposition, reason_codes, raw_event=event, sample_time_raw, received_at,
+        plant_id, run_id, event_id, sequence, event_time, stream_id, measurement_tag_id,
+        source_module_id, source_port_id, source_equipment_id, source_equipment_port_id,
+        target_module_id, target_port_id, target_equipment_id, target_equipment_port_id,
+        quantity, basis, value, unit, quality, origin, schema_version, sample_interval_seconds,
+        catalog_version, measurement_catalog_version, profile_version, payload_fingerprint;
+}

@@ -2,15 +2,30 @@ import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { MiningCoordinationError, type MiningStore } from "./store.js";
 import {
+  D01_CONNECTION_PROFILE_VERSION,
+  D01_CONNECTION_REQUIRED_DRAIN_DOWN_SECONDS,
+  D01_CATALOG_VERSION,
+  D01_PUBLISH_PROFILE_VERSION,
+  D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
+  D01_LEGACY_FLOW_PROJECTION_PROFILE_VERSION,
+} from "@triathlon-twin/simulator/mining";
+import {
   assertD01RunContract,
   createD01RunContract,
+  createD01SharedFlowRunContract,
   type D01RunContract,
+  type D01SharedFlowRunContract,
 } from "../mining-incidents/catalog.js";
 
 const PLANT = "D01";
 const PLANT_PATH = "plants/D01.json";
 const AUTHORITY_MS = 45_000; // Conservative margin inside the service's 60-second lease.
 const MAX_DURATION_SECONDS = 1_800;
+export const SHARED_FLOW_PIN_TIMEOUT_MS = 120_000;
+export const SHARED_FLOW_ACTIVATION_MARGIN_MS = 5_000;
+export const SHARED_FLOW_PREPARE_LEAD_MS =
+  SHARED_FLOW_PIN_TIMEOUT_MS + SHARED_FLOW_ACTIVATION_MARGIN_MS;
+export const MINING_OWNER_HEARTBEAT_INTERVAL_MS = 10_000;
 const SCENARIOS = [
   "normal",
   "bearing-b",
@@ -20,7 +35,14 @@ const SCENARIOS = [
 ] as const;
 export type MiningScenario = (typeof SCENARIOS)[number];
 export type RunPhase =
-  "running" | "stopping" | "stopped" | "publisher_complete" | "failed" | "interrupted";
+  | "preparing"
+  | "scheduled"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "publisher_complete"
+  | "failed"
+  | "interrupted";
 
 export interface StartMiningRun {
   plantId: "D01";
@@ -29,6 +51,10 @@ export interface StartMiningRun {
   durationSeconds?: number;
   scenario?: MiningScenario;
   seed?: number;
+  /** Omit to keep the legacy run profile. Shared-flow is never selected by default. */
+  profileVersion?: typeof D01_PUBLISH_PROFILE_VERSION | typeof D01_CONNECTION_PROFILE_VERSION;
+  shutdownAtSeconds?: number;
+  drainDownSeconds?: number;
 }
 
 interface CommonRunSpec {
@@ -38,10 +64,23 @@ interface CommonRunSpec {
   seed: number;
 }
 
-interface BoundedRunSpec extends CommonRunSpec {
+interface LegacyBoundedRunSpec extends CommonRunSpec {
+  profileVersion: typeof D01_PUBLISH_PROFILE_VERSION;
   durationSeconds: number;
+  shutdownAtSeconds?: never;
+  drainDownSeconds?: never;
   lifetime?: never;
 }
+
+interface SharedFlowBoundedRunSpec extends CommonRunSpec {
+  profileVersion: typeof D01_CONNECTION_PROFILE_VERSION;
+  durationSeconds: number;
+  shutdownAtSeconds: number;
+  drainDownSeconds: number;
+  lifetime?: never;
+}
+
+type BoundedRunSpec = LegacyBoundedRunSpec | SharedFlowBoundedRunSpec;
 
 interface ContinuousRunSpec extends CommonRunSpec {
   lifetime: { kind: "continuous"; generation: string };
@@ -51,17 +90,30 @@ type RunSpec = BoundedRunSpec | ContinuousRunSpec;
 
 interface RunLifecycle {
   startedAt: string;
+  /** Present only on the version-4 shared-flow prepare/activate contract. */
+  admittedAt?: string;
+  /** Absolute deadline for exact shared-flow pin confirmation. */
+  pinDeadlineAt?: string;
   authorityUntil: string;
   phase: RunPhase;
   /** Absent on legacy schema-1 records; never inferred from the current catalog. */
   contract?: D01RunContract;
+  /** Separate versioned contract keeps legacy consumers source-compatible. */
+  connectionProfileContract?: D01SharedFlowRunContract;
 }
 
-export interface BoundedMiningRunRecord extends BoundedRunSpec, RunLifecycle {
-  stopAt: string;
-  /** Explicit optional final-batch budget; never beyond 1800s from startedAt. */
-  finalFlushUntil?: string;
-}
+export type BoundedMiningRunRecord = BoundedRunSpec &
+  RunLifecycle & {
+    stopAt: string;
+    /** Explicit optional final-batch deadline, bounded from startedAt (legacy) or admittedAt (v4). */
+    finalFlushUntil?: string;
+  };
+export type PreparedSharedFlowRunRecord = BoundedMiningRunRecord & {
+  profileVersion: typeof D01_CONNECTION_PROFILE_VERSION;
+  admittedAt: string;
+  pinDeadlineAt: string;
+  finalFlushUntil: string;
+};
 
 export interface ContinuousMiningRunRecord extends ContinuousRunSpec, RunLifecycle {
   contract: D01RunContract;
@@ -71,6 +123,17 @@ export type MiningRunRecord = BoundedMiningRunRecord | ContinuousMiningRunRecord
 
 export function isContinuousMiningRun(run: RunSpec): run is ContinuousRunSpec {
   return run.lifetime?.kind === "continuous";
+}
+
+export function isPreparedSharedFlowRun(run: MiningRunRecord): run is PreparedSharedFlowRunRecord {
+  return (
+    !isContinuousMiningRun(run) &&
+    "profileVersion" in run &&
+    run.profileVersion === D01_CONNECTION_PROFILE_VERSION &&
+    typeof run.admittedAt === "string" &&
+    typeof run.pinDeadlineAt === "string" &&
+    typeof run.finalFlushUntil === "string"
+  );
 }
 
 export function assertBoundedMiningRun(
@@ -101,6 +164,43 @@ export interface MiningRunStatus {
   phase: RunPhase | "admission_unknown" | "rejected";
   stopRequested: boolean;
   run?: MiningRunRecord;
+}
+
+export interface MiningConnectionRunProfilePin {
+  plant_id: "D01";
+  run_id: string;
+  catalog_version: typeof D01_CATALOG_VERSION;
+  measurement_catalog_version: typeof D01_CONNECTION_MEASUREMENT_CATALOG_VERSION;
+  profile_version: typeof D01_CONNECTION_PROFILE_VERSION;
+  started_at: string;
+}
+
+/** Candidate row for an external immutable Fabric pin; pinned_at belongs to the writer. */
+export function createMiningConnectionRunProfilePin(
+  run: MiningRunRecord,
+): MiningConnectionRunProfilePin {
+  if (
+    !("profileVersion" in run) ||
+    run.profileVersion !== D01_CONNECTION_PROFILE_VERSION ||
+    !run.connectionProfileContract ||
+    run.connectionProfileContract.profileVersion !== D01_CONNECTION_PROFILE_VERSION ||
+    run.connectionProfileContract.measurementCatalogVersion !==
+      D01_CONNECTION_MEASUREMENT_CATALOG_VERSION ||
+    run.connectionProfileContract.legacyProjectionProfileVersion !==
+      D01_LEGACY_FLOW_PROJECTION_PROFILE_VERSION ||
+    run.connectionProfileContract.catalogVersion !== D01_CATALOG_VERSION
+  ) {
+    invalid("A Fabric profile pin requires a verified shared-flow run record.");
+  }
+  return {
+    plant_id: run.plantId,
+    run_id: run.runId,
+    catalog_version: run.connectionProfileContract.catalogVersion as typeof D01_CATALOG_VERSION,
+    measurement_catalog_version: run.connectionProfileContract
+      .measurementCatalogVersion as typeof D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
+    profile_version: run.connectionProfileContract.profileVersion,
+    started_at: run.startedAt,
+  };
 }
 
 export interface MiningClock {
@@ -172,6 +272,7 @@ function spec(input: StartMiningRun): BoundedRunSpec {
   const durationSeconds = input.durationSeconds ?? 1_200;
   const scenario = input.scenario ?? "normal";
   const seed = input.seed ?? 1;
+  const profileVersion = input.profileVersion ?? D01_PUBLISH_PROFILE_VERSION;
   if (
     !Number.isInteger(durationSeconds) ||
     durationSeconds < 5 ||
@@ -184,7 +285,50 @@ function spec(input: StartMiningRun): BoundedRunSpec {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff_ffff) {
     invalid("Mining seed must be an unsigned 32-bit integer.");
   }
-  return { plantId: PLANT, runId: uuid(input.requestId), durationSeconds, scenario, seed };
+  if (profileVersion === D01_PUBLISH_PROFILE_VERSION) {
+    if (input.shutdownAtSeconds !== undefined || input.drainDownSeconds !== undefined) {
+      invalid("Shutdown and drain-down settings are valid only for the shared-flow profile.");
+    }
+    return {
+      plantId: PLANT,
+      runId: uuid(input.requestId),
+      profileVersion,
+      durationSeconds,
+      scenario,
+      seed,
+    };
+  }
+  if (profileVersion !== D01_CONNECTION_PROFILE_VERSION) {
+    invalid("Unsupported mining profileVersion.");
+  }
+  if (scenario !== "normal" || (input.seed !== undefined && seed !== 1)) {
+    invalid("The shared-flow profile supports only its fixed normal scenario.");
+  }
+  const drainDownSeconds = input.drainDownSeconds ?? D01_CONNECTION_REQUIRED_DRAIN_DOWN_SECONDS;
+  const shutdownAtSeconds = input.shutdownAtSeconds ?? durationSeconds - drainDownSeconds;
+  if (
+    !Number.isSafeInteger(drainDownSeconds) ||
+    drainDownSeconds < D01_CONNECTION_REQUIRED_DRAIN_DOWN_SECONDS ||
+    drainDownSeconds % 5 !== 0 ||
+    !Number.isSafeInteger(shutdownAtSeconds) ||
+    shutdownAtSeconds < 5 ||
+    shutdownAtSeconds % 5 !== 0 ||
+    shutdownAtSeconds + drainDownSeconds !== durationSeconds
+  ) {
+    invalid(
+      `Shared-flow durationSeconds must equal shutdownAtSeconds plus at least ${D01_CONNECTION_REQUIRED_DRAIN_DOWN_SECONDS} seconds of five-second drain-down.`,
+    );
+  }
+  return {
+    plantId: PLANT,
+    runId: uuid(input.requestId),
+    profileVersion,
+    durationSeconds,
+    shutdownAtSeconds,
+    drainDownSeconds,
+    scenario,
+    seed,
+  };
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -201,6 +345,9 @@ function parseSpec(value: unknown): RunSpec {
     if (
       Object.keys(lifetime).sort().join() !== "generation,kind" ||
       lifetime.kind !== "continuous" ||
+      "profileVersion" in record ||
+      "shutdownAtSeconds" in record ||
+      "drainDownSeconds" in record ||
       "durationSeconds" in record ||
       "stopAt" in record ||
       "finalFlushUntil" in record
@@ -214,6 +361,9 @@ function parseSpec(value: unknown): RunSpec {
       seed: record.seed,
       durationSeconds: 1200,
     });
+    if (isContinuousMiningRun(bounded) || bounded.profileVersion !== D01_PUBLISH_PROFILE_VERSION) {
+      invalid("Continuous Mining must retain the legacy profile.");
+    }
     return {
       plantId: bounded.plantId,
       runId: bounded.runId,
@@ -231,12 +381,27 @@ function parseSpec(value: unknown): RunSpec {
     typeof record.seed !== "number"
   )
     invalid("Invalid persisted mining run identity.");
+  if (
+    record.profileVersion === D01_CONNECTION_PROFILE_VERSION &&
+    (!("shutdownAtSeconds" in record) || !("drainDownSeconds" in record))
+  ) {
+    invalid("Shared-flow run schedule is incomplete.");
+  }
   return spec({
     plantId: record.plantId,
     requestId: record.runId,
     durationSeconds: record.durationSeconds,
     scenario: record.scenario as MiningScenario,
     seed: record.seed,
+    ...(record.profileVersion !== undefined
+      ? { profileVersion: record.profileVersion as StartMiningRun["profileVersion"] }
+      : {}),
+    ...(record.shutdownAtSeconds !== undefined
+      ? { shutdownAtSeconds: record.shutdownAtSeconds as number }
+      : {}),
+    ...(record.drainDownSeconds !== undefined
+      ? { drainDownSeconds: record.drainDownSeconds as number }
+      : {}),
   });
 }
 
@@ -248,18 +413,21 @@ function parseAdmission(value: unknown): Admission {
   return { spec: parseSpec(record.spec), admission: record.admission as Admission["admission"] };
 }
 
-function parseRun(value: unknown, version: 1 | 2 | 3): MiningRunRecord {
+function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
   const record = object(value);
   if (version !== 3 && "lifetime" in record) {
     invalid("Continuous Mining requires coordination schema 3.");
   }
   if (version === 1 && "contract" in record)
     invalid("Legacy mining records cannot claim a run contract.");
-  if (version === 2 || version === 3) {
+  if (version === 2 || version === 3 || version === 4) {
     const keys = new Set([
       "plantId",
       "runId",
+      "profileVersion",
       "durationSeconds",
+      "shutdownAtSeconds",
+      "drainDownSeconds",
       "scenario",
       "seed",
       "startedAt",
@@ -268,21 +436,54 @@ function parseRun(value: unknown, version: 1 | 2 | 3): MiningRunRecord {
       "authorityUntil",
       "phase",
       "contract",
+      "connectionProfileContract",
       ...(version === 3 ? ["lifetime"] : []),
+      ...(version === 4 ? ["admittedAt", "pinDeadlineAt"] : []),
     ]);
     if (Object.keys(record).some((key) => !keys.has(key)))
       invalid("Unexpected persisted mining run field.");
-    try {
-      assertD01RunContract(record.contract);
-    } catch (cause) {
-      throw new MiningCoordinationError("invalid", "Invalid persisted mining run contract.", {
-        cause,
-      });
+    for (const persistedContract of [record.contract, record.connectionProfileContract]) {
+      if (persistedContract === undefined) continue;
+      try {
+        assertD01RunContract(persistedContract);
+      } catch (cause) {
+        throw new MiningCoordinationError("invalid", "Invalid persisted mining run contract.", {
+          cause,
+        });
+      }
     }
   }
   const identity = parseSpec(value);
+  const identityProfileVersion =
+    !isContinuousMiningRun(identity) && "profileVersion" in identity
+      ? identity.profileVersion
+      : D01_PUBLISH_PROFILE_VERSION;
+  const persistedProfileContract =
+    identityProfileVersion === D01_CONNECTION_PROFILE_VERSION
+      ? record.connectionProfileContract
+      : record.contract;
+  if (
+    version === 4 &&
+    (isContinuousMiningRun(identity) || identityProfileVersion !== D01_CONNECTION_PROFILE_VERSION)
+  ) {
+    invalid("Coordination schema 4 is reserved for prepared shared-flow runs.");
+  }
+  if (
+    (version === 1 && identityProfileVersion !== D01_PUBLISH_PROFILE_VERSION) ||
+    (version !== 1 &&
+      ((persistedProfileContract as Record<string, unknown> | undefined)?.profileVersion !==
+        identityProfileVersion ||
+        (identityProfileVersion === D01_CONNECTION_PROFILE_VERSION
+          ? record.contract !== undefined
+          : record.connectionProfileContract !== undefined)))
+  ) {
+    invalid("Mining run profile does not match its durable profile contract.");
+  }
   if (version === 3 && !isContinuousMiningRun(identity)) {
     invalid("Mining schema 3 requires a continuous lifetime.");
+  }
+  if (version === 4 && isContinuousMiningRun(identity)) {
+    invalid("Mining schema 4 cannot contain a continuous lifetime.");
   }
   if (isContinuousMiningRun(identity)) {
     if (
@@ -302,42 +503,84 @@ function parseRun(value: unknown, version: 1 | 2 | 3): MiningRunRecord {
     };
   }
   const dates = [record.startedAt, record.stopAt, record.authorityUntil];
+  const lifecyclePhases = [
+    "running",
+    "stopping",
+    "stopped",
+    "publisher_complete",
+    "failed",
+    "interrupted",
+    ...(version === 4 ? ["preparing", "scheduled"] : []),
+  ];
   if (
     !dates.every((date) => typeof date === "string" && Number.isFinite(Date.parse(date))) ||
-    !["running", "stopping", "stopped", "publisher_complete", "failed", "interrupted"].includes(
-      String(record.phase),
-    )
+    !lifecyclePhases.includes(String(record.phase))
   )
     invalid("Invalid persisted mining lifecycle.");
   const startedAt = record.startedAt as string;
   const stopAt = record.stopAt as string;
+  const admittedAt = record.admittedAt;
+  const pinDeadlineAt = record.pinDeadlineAt;
+  if (version === 4) {
+    if (
+      typeof admittedAt !== "string" ||
+      typeof pinDeadlineAt !== "string" ||
+      !Number.isFinite(Date.parse(admittedAt)) ||
+      !Number.isFinite(Date.parse(pinDeadlineAt))
+    ) {
+      invalid("Prepared shared-flow runs require valid admission and pin deadlines.");
+    }
+    const admittedAtMs = Date.parse(admittedAt);
+    const pinDeadlineAtMs = Date.parse(pinDeadlineAt);
+    const startedAtMs = Date.parse(startedAt);
+    if (
+      ![30_000, SHARED_FLOW_PIN_TIMEOUT_MS].includes(pinDeadlineAtMs - admittedAtMs) ||
+      startedAtMs - pinDeadlineAtMs !== SHARED_FLOW_ACTIVATION_MARGIN_MS
+    ) {
+      invalid("Prepared shared-flow schedule violates its bounded pin lead.");
+    }
+  }
   if (Date.parse(stopAt) - Date.parse(startedAt) !== identity.durationSeconds * 1_000) {
     invalid("Persisted mining deadline does not match the bounded run.");
   }
   const finalFlushUntil = record.finalFlushUntil;
+  const totalLifetimeAnchor =
+    version === 4 ? Date.parse(admittedAt as string) : Date.parse(startedAt);
   if (
-    finalFlushUntil !== undefined &&
-    (typeof finalFlushUntil !== "string" ||
-      !Number.isFinite(Date.parse(finalFlushUntil)) ||
-      Date.parse(finalFlushUntil) <= Date.parse(stopAt) ||
-      Date.parse(finalFlushUntil) >
-        Math.min(Date.parse(stopAt) + 5_000, Date.parse(startedAt) + 1_800_000))
+    (version === 4 && typeof finalFlushUntil !== "string") ||
+    (finalFlushUntil !== undefined &&
+      (typeof finalFlushUntil !== "string" ||
+        !Number.isFinite(Date.parse(finalFlushUntil)) ||
+        Date.parse(finalFlushUntil) <= Date.parse(stopAt) ||
+        Date.parse(finalFlushUntil) >
+          Math.min(Date.parse(stopAt) + 5_000, totalLifetimeAnchor + 1_800_000)))
   )
     invalid("Invalid persisted mining final-flush deadline.");
   return {
     ...identity,
     startedAt,
+    ...(version === 4
+      ? {
+          admittedAt: admittedAt as string,
+          pinDeadlineAt: pinDeadlineAt as string,
+        }
+      : {}),
     stopAt,
     ...(typeof finalFlushUntil === "string" ? { finalFlushUntil } : {}),
     authorityUntil: record.authorityUntil as string,
     phase: record.phase as RunPhase,
-    ...(version === 2 ? { contract: createD01RunContract() } : {}),
+    ...((version === 2 || version === 4) && record.contract !== undefined
+      ? { contract: record.contract as D01RunContract }
+      : {}),
+    ...((version === 2 || version === 4) && record.connectionProfileContract !== undefined
+      ? { connectionProfileContract: record.connectionProfileContract as D01SharedFlowRunContract }
+      : {}),
   };
 }
 
 function parsePlant(value: unknown): MiningRunRecord | null {
   const record = object(value);
-  if (record.version !== 1 && record.version !== 2 && record.version !== 3)
+  if (record.version !== 1 && record.version !== 2 && record.version !== 3 && record.version !== 4)
     invalid("Unsupported mining coordination document version.");
   if (Object.keys(record).sort().join() !== "run,version")
     invalid("Invalid mining coordination document.");
@@ -348,7 +591,7 @@ function parseHistory(value: unknown): MiningRunRecord {
   const record = object(value);
   if ("version" in record) {
     if (
-      (record.version !== 2 && record.version !== 3) ||
+      (record.version !== 2 && record.version !== 3 && record.version !== 4) ||
       Object.keys(record).sort().join() !== "run,version"
     )
       invalid("Unsupported mining history document version.");
@@ -360,13 +603,15 @@ function parseHistory(value: unknown): MiningRunRecord {
 function history(run: MiningRunRecord): unknown {
   return isContinuousMiningRun(run)
     ? { version: 3, run }
-    : run.contract
-      ? { version: 2, run }
-      : run;
+    : run.admittedAt
+      ? { version: 4, run }
+      : run.contract || run.connectionProfileContract
+        ? { version: 2, run }
+        : run;
 }
 
 const plantDocument = (run: MiningRunRecord) => ({
-  version: isContinuousMiningRun(run) ? 3 : 2,
+  version: isContinuousMiningRun(run) ? 3 : run.admittedAt ? 4 : 2,
   run,
 });
 
@@ -383,7 +628,7 @@ async function saveHistory(store: MiningStore, run: MiningRunRecord): Promise<vo
 }
 
 function terminal(phase: RunPhase): boolean {
-  return !["running", "stopping"].includes(phase);
+  return !["preparing", "scheduled", "running", "stopping"].includes(phase);
 }
 
 export class MiningRunCoordinator {
@@ -462,7 +707,23 @@ export class MiningRunCoordinator {
   }
 
   async start(input: StartMiningRun) {
-    return this.admit(spec(input));
+    const identity = spec(input);
+    if (identity.profileVersion === D01_CONNECTION_PROFILE_VERSION) {
+      if (this.finalFlushMilliseconds <= 0) {
+        invalid("Shared-flow Mining requires a positive final-flush budget from 1 to 5000ms.");
+      }
+      if (
+        identity.durationSeconds * 1_000 +
+          SHARED_FLOW_PREPARE_LEAD_MS +
+          this.finalFlushMilliseconds >
+        MAX_DURATION_SECONDS * 1_000
+      ) {
+        invalid(
+          "Shared-flow prepare lead, duration, and final-flush budget must fit within 1800 seconds from admission.",
+        );
+      }
+    }
+    return this.admit(identity);
   }
 
   /** Source-only capability. No startup or HTTP boundary activates continuous publication. */
@@ -489,7 +750,12 @@ export class MiningRunCoordinator {
     | { kind: "started"; run: MiningRunRecord; owner: MiningRunOwner }
     | { kind: "observed"; status: MiningRunStatus }
   > {
-    const contract = createD01RunContract();
+    const sharedFlow =
+      !isContinuousMiningRun(identity) &&
+      identity.profileVersion === D01_CONNECTION_PROFILE_VERSION;
+    const legacyContract = createD01RunContract();
+    const contract = sharedFlow ? undefined : legacyContract;
+    const connectionProfileContract = sharedFlow ? createD01SharedFlowRunContract() : undefined;
     if (
       isContinuousMiningRun(identity) &&
       (await generationHeld(this.store, identity.lifetime.generation))
@@ -565,23 +831,35 @@ export class MiningRunCoordinator {
           "Mining acquisition exceeded its safe lease window.",
         );
       }
+      const preparedSharedFlow = sharedFlow;
+      const admittedAt = new Date(acquiredAt).toISOString();
+      const startedAtMs = acquiredAt + (preparedSharedFlow ? SHARED_FLOW_PREPARE_LEAD_MS : 0);
       const lifecycle = {
-        startedAt: new Date(acquiredAt).toISOString(),
+        startedAt: new Date(startedAtMs).toISOString(),
         authorityUntil: new Date(acquiredAt + AUTHORITY_MS).toISOString(),
-        phase: "running" as const,
-        contract,
+        phase: (preparedSharedFlow ? "preparing" : "running") as RunPhase,
+        ...(preparedSharedFlow
+          ? {
+              admittedAt,
+              pinDeadlineAt: new Date(acquiredAt + SHARED_FLOW_PIN_TIMEOUT_MS).toISOString(),
+            }
+          : {}),
       };
       const run: MiningRunRecord = isContinuousMiningRun(identity)
-        ? { ...identity, ...lifecycle }
+        ? { ...identity, ...lifecycle, contract: legacyContract }
         : {
             ...identity,
             ...lifecycle,
-            stopAt: new Date(acquiredAt + identity.durationSeconds * 1_000).toISOString(),
+            ...(contract ? { contract } : {}),
+            ...(connectionProfileContract ? { connectionProfileContract } : {}),
+            stopAt: new Date(startedAtMs + identity.durationSeconds * 1_000).toISOString(),
           };
       if (!isContinuousMiningRun(run)) {
         const flushBudget = Math.min(
           this.finalFlushMilliseconds,
-          (MAX_DURATION_SECONDS - run.durationSeconds) * 1_000,
+          MAX_DURATION_SECONDS * 1_000 -
+            (Date.parse(run.startedAt) - Date.parse(run.admittedAt ?? run.startedAt)) -
+            run.durationSeconds * 1_000,
         );
         if (flushBudget > 0) {
           run.finalFlushUntil = new Date(Date.parse(run.stopAt) + flushBudget).toISOString();
@@ -730,8 +1008,10 @@ export class MiningRunOwner {
 
   private durationElapsed(): boolean {
     if (isContinuousMiningRun(this.run)) return false;
+    const admissionAnchor = Date.parse(this.run.admittedAt ?? this.run.startedAt);
+    const scheduledStartTick = this.startTick + Date.parse(this.run.startedAt) - admissionAnchor;
     return (
-      this.clock.monotonic() >= this.startTick + this.run.durationSeconds * 1_000 ||
+      this.clock.monotonic() >= scheduledStartTick + this.run.durationSeconds * 1_000 ||
       this.clock.now() >= Date.parse(this.run.stopAt)
     );
   }
@@ -739,9 +1019,19 @@ export class MiningRunOwner {
   private lifetimeElapsed(): boolean {
     if (isContinuousMiningRun(this.run)) return false;
     const deadline = Date.parse(this.run.finalFlushUntil ?? this.run.stopAt);
+    const anchor = Date.parse(this.run.admittedAt ?? this.run.startedAt);
     return (
-      this.clock.now() >= deadline ||
-      this.clock.monotonic() >= this.startTick + deadline - Date.parse(this.run.startedAt)
+      this.clock.now() >= deadline || this.clock.monotonic() >= this.startTick + deadline - anchor
+    );
+  }
+
+  private pinDeadlineElapsed(): boolean {
+    return (
+      isPreparedSharedFlowRun(this.run) &&
+      this.run.phase === "preparing" &&
+      (this.clock.now() >= Date.parse(this.run.pinDeadlineAt) ||
+        this.clock.monotonic() >=
+          this.startTick + Date.parse(this.run.pinDeadlineAt) - Date.parse(this.run.admittedAt))
     );
   }
 
@@ -770,9 +1060,20 @@ export class MiningRunOwner {
         : [
             this.startTick +
               Date.parse(this.run.finalFlushUntil ?? this.run.stopAt) -
-              Date.parse(this.run.startedAt) -
+              Date.parse(this.run.admittedAt ?? this.run.startedAt) -
               this.clock.monotonic(),
             Date.parse(this.run.finalFlushUntil ?? this.run.stopAt) - this.clock.now(),
+          ]),
+      ...(this.cancellationReason ||
+      !isPreparedSharedFlowRun(this.run) ||
+      this.run.phase !== "preparing"
+        ? []
+        : [
+            this.startTick +
+              Date.parse(this.run.pinDeadlineAt) -
+              Date.parse(this.run.admittedAt) -
+              this.clock.monotonic(),
+            Date.parse(this.run.pinDeadlineAt) - this.clock.now(),
           ]),
     );
     this.deadline = setTimeout(
@@ -791,6 +1092,7 @@ export class MiningRunOwner {
               : "publisher_complete",
           );
         }
+        if (this.pinDeadlineElapsed()) this.cancel("failed");
         this.armDeadline();
       },
       Math.max(1, remaining),
@@ -846,6 +1148,7 @@ export class MiningRunOwner {
         this.cancel("stopped");
         this.run = { ...this.run, phase: "stopping" };
       }
+      if (this.pinDeadlineElapsed()) this.cancel("failed");
       if (this.lifetimeElapsed()) {
         this.cancel(
           !isContinuousMiningRun(this.run) && this.run.finalFlushUntil
@@ -864,6 +1167,72 @@ export class MiningRunOwner {
     return this.exclusive(async () => {
       await this.refresh();
       if (this.signal.aborted) await this.complete("publisher_complete");
+    });
+  }
+
+  /** Immutable shared-flow start anchor; only the injected profile-pin path can activate it. */
+  get scheduledStartAt(): string {
+    if (!isPreparedSharedFlowRun(this.run)) {
+      throw new MiningCoordinationError("invalid", "Run has no prepared shared-flow start.");
+    }
+    return this.run.startedAt;
+  }
+
+  get scheduledStartMonotonic(): number {
+    if (!isPreparedSharedFlowRun(this.run)) {
+      throw new MiningCoordinationError("invalid", "Run has no prepared shared-flow start.");
+    }
+    return this.startTick + Date.parse(this.run.startedAt) - Date.parse(this.run.admittedAt);
+  }
+
+  /** Transition preparing -> scheduled only after exact external pin readback has returned. */
+  async activatePreparedRun(): Promise<void> {
+    return this.exclusive(async () => {
+      await this.refresh();
+      if (this.signal.aborted) {
+        await this.complete("publisher_complete");
+        throw new MiningCoordinationError("cancelled", "Prepared Mining run was cancelled.");
+      }
+      if (!isPreparedSharedFlowRun(this.run) || this.run.phase !== "preparing") {
+        throw new MiningCoordinationError(
+          "conflict",
+          "Only an unexpired prepared shared-flow run can be activated.",
+        );
+      }
+      if (this.pinDeadlineElapsed()) {
+        this.cancel("failed");
+        await this.persist();
+        await this.complete("failed");
+        throw new MiningCoordinationError("cancelled", "Shared-flow profile pin timed out.");
+      }
+      this.run = { ...this.run, phase: "scheduled" };
+      await this.persist();
+    });
+  }
+
+  /** Transition scheduled -> running at, never before, the durable future start anchor. */
+  async beginScheduledRun(): Promise<boolean> {
+    return this.exclusive(async () => {
+      await this.refresh();
+      if (this.signal.aborted) {
+        await this.complete("publisher_complete");
+        return false;
+      }
+      if (!isPreparedSharedFlowRun(this.run) || this.run.phase !== "scheduled") {
+        throw new MiningCoordinationError(
+          "conflict",
+          "Mining run is not awaiting scheduled start.",
+        );
+      }
+      if (
+        this.clock.now() < Date.parse(this.run.startedAt) ||
+        this.clock.monotonic() < this.scheduledStartMonotonic
+      ) {
+        return false;
+      }
+      this.run = { ...this.run, phase: "running" };
+      await this.persist();
+      return true;
     });
   }
 
@@ -914,6 +1283,12 @@ export class MiningRunOwner {
         throw new MiningCoordinationError(
           "cancelled",
           "Mining sender is cancelled; finish after draining.",
+        );
+      }
+      if (this.run.phase !== "running") {
+        throw new MiningCoordinationError(
+          "conflict",
+          "Mining batches are unavailable before the run is active.",
         );
       }
       // This is the batch-admission linearization point; no later batch can bypass stop intent.

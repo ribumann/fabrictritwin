@@ -10,6 +10,7 @@ const MAX_ROWS = 1000;
 const DEADLINE_MS = 9_000;
 const METADATA_BYTES = 16_384;
 const RESOURCE = "https://kusto.kusto.windows.net";
+export const MINING_FLOW_CUTOFF_MARGIN_MS = 5_000;
 export type MiningTokenResource = typeof RESOURCE | "https://api.fabric.microsoft.com";
 
 type Family = "feed" | "density" | "vibration" | "water-energy";
@@ -19,6 +20,21 @@ interface Scope {
 }
 type Query =
   | (MiningCrossRunTrendRequest & { kind: "cross-run-trend"; maxRows: 1000 })
+  | (Scope & { kind: "connection-run-pin"; maxRows: 2 })
+  | (Scope & { kind: "connection-run-row-totals"; asOf: string; maxRows: 1 })
+  | (Scope & {
+      kind: "connection-expected-set";
+      asOf: string;
+      expectedEventIds: readonly string[];
+    })
+  | (Scope & { kind: "connection-latest"; asOf: string; streamIds: readonly string[] })
+  | (Scope & {
+      kind: "connection-trend";
+      start: string;
+      end: string;
+      streamIds: readonly string[];
+      windowSeconds: 30 | 60;
+    })
   | (Scope & { kind: "latest"; asOf: string })
   | (Scope & { kind: "continuous-throughput"; asOf: string })
   | (Scope & {
@@ -376,6 +392,95 @@ async function prepare(
   properties.setParameter("plant", "'D01'");
   properties.setParameter("run", `'${input.runId}'`);
   const head = "declare query_parameters(plant:string, run:string";
+  if (input.kind === "connection-run-pin") {
+    if (input.maxRows !== 2) {
+      throw new MiningQueryError("invalid", "Connection pin reads require the two-row limit.");
+    }
+    return `${head}); mining_ConnectionRunProfile | where run_id == run | project plant_id, run_id, catalog_version, measurement_catalog_version, profile_version, started_at, pinned_at, received_at=ingestion_time() | take 3`;
+  }
+  if (input.kind === "connection-run-row-totals") {
+    if (input.maxRows !== 1) {
+      throw new MiningQueryError("invalid", "Connection row totals require the one-row limit.");
+    }
+    properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
+    return `${head}, asof:datetime); MiningConnectionRunRowTotalsV1(run, asof)`;
+  }
+  if (input.kind === "connection-expected-set") {
+    if (
+      !Array.isArray(input.expectedEventIds) ||
+      input.expectedEventIds.length < 1 ||
+      input.expectedEventIds.length > 200 ||
+      input.maxRows !== input.expectedEventIds.length ||
+      new Set(input.expectedEventIds).size !== input.expectedEventIds.length ||
+      input.expectedEventIds.some((id) => typeof id !== "string" || !/^[0-9a-f]{64}$/.test(id))
+    ) {
+      throw new MiningQueryError("invalid", "Invalid mining connection expected event set.");
+    }
+    const {
+      D01_CATALOG_VERSION,
+      D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
+      D01_CONNECTION_PROFILE_VERSION,
+    } = await import("@triathlon-twin/simulator/mining");
+    properties.setParameter("catalog", `'${D01_CATALOG_VERSION}'`);
+    properties.setParameter(
+      "measurement_catalog",
+      `'${D01_CONNECTION_MEASUREMENT_CATALOG_VERSION}'`,
+    );
+    properties.setParameter("profile", `'${D01_CONNECTION_PROFILE_VERSION}'`);
+    properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
+    properties.setParameter("expected_ids", `dynamic(${JSON.stringify(input.expectedEventIds)})`);
+    return `${head}, catalog:string, measurement_catalog:string, profile:string, asof:datetime, expected_ids:dynamic); MiningConnectionExpectedSetReconciliationV1(run, catalog, measurement_catalog, profile, asof, expected_ids)`;
+  }
+  if (input.kind === "connection-latest" || input.kind === "connection-trend") {
+    const {
+      D01_CATALOG_VERSION,
+      D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
+      D01_CONNECTION_PROFILE_VERSION,
+      D01_PLANT_CATALOG,
+      toD01ConnectionMeasurementBindingRecords,
+    } = await import("@triathlon-twin/simulator/mining");
+    const knownStreams = new Set(D01_PLANT_CATALOG.streams.map((stream) => stream.id));
+    if (
+      !Array.isArray(input.streamIds) ||
+      input.streamIds.length > knownStreams.size ||
+      new Set(input.streamIds).size !== input.streamIds.length ||
+      input.streamIds.some((id) => typeof id !== "string" || !knownStreams.has(id))
+    ) {
+      throw new MiningQueryError("invalid", "Invalid mining connection stream selection.");
+    }
+    if (
+      input.kind === "connection-latest" &&
+      input.maxRows > toD01ConnectionMeasurementBindingRecords().length
+    ) {
+      throw new MiningQueryError("invalid", "Mining connection latest exceeds the binding count.");
+    }
+    properties.setParameter("catalog", `'${D01_CATALOG_VERSION}'`);
+    properties.setParameter(
+      "measurement_catalog",
+      `'${D01_CONNECTION_MEASUREMENT_CATALOG_VERSION}'`,
+    );
+    properties.setParameter("profile", `'${D01_CONNECTION_PROFILE_VERSION}'`);
+    properties.setParameter("streams", `dynamic(${JSON.stringify(input.streamIds)})`);
+    properties.setParameter("limit", String(input.maxRows));
+    const connectionHead = `${head}, catalog:string, measurement_catalog:string, profile:string, streams:dynamic`;
+    if (input.kind === "connection-latest") {
+      properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
+      return `${connectionHead}, asof:datetime, limit:long); MiningConnectionLatestV1(run, catalog, measurement_catalog, profile, streams, asof, 1d, limit)`;
+    }
+    const start = canonicalUtc(input.start, now);
+    const end = canonicalUtc(input.end, now);
+    if (
+      Date.parse(end) <= Date.parse(start) ||
+      Date.parse(end) - Date.parse(start) > 86_400_000 ||
+      ![30, 60].includes(input.windowSeconds)
+    ) {
+      throw new MiningQueryError("invalid", "Invalid mining connection trend window.");
+    }
+    properties.setParameter("start", `datetime(${start})`);
+    properties.setParameter("end", `datetime(${end})`);
+    properties.setParameter("window", `${input.windowSeconds}s`);
+    return `${connectionHead}, start:datetime, end:datetime, window:timespan, limit:long); MiningConnectionTrendV1(run, catalog, measurement_catalog, profile, streams, start, end, window, limit)`;
+  }
   if (input.kind === "continuous-incident-partition") {
     if (input.maxRows !== MAX_ROWS || typeof input.includeEnd !== "boolean") {
       throw new MiningQueryError("invalid", "Continuous incident partitions require 1000 rows.");

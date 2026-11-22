@@ -76,6 +76,128 @@ function fixture(result: unknown = frames(), targetUri = uri) {
 }
 
 describe("bounded mining query transport", () => {
+  it("reads at most two connection run-pin rows for a parameterized run", async () => {
+    const f = fixture();
+    await f.query({ kind: "connection-run-pin", runId: input.runId, maxRows: 2 });
+    const body = JSON.parse(String(f.request.mock.calls[2][1]?.body));
+    expect(body.csl).toContain("mining_ConnectionRunProfile");
+    expect(body.csl).toContain("received_at=ingestion_time()");
+    expect(body.csl).toContain("take 3");
+    expect(body.csl).not.toContain(input.runId);
+    expect(body.properties.Parameters.run).toBe(`'${input.runId}'`);
+  });
+
+  it("parameterizes a bounded expected set for connection reconciliation", async () => {
+    const f = fixture();
+    const expectedEventIds = ["a".repeat(64), "b".repeat(64)];
+    await f.query({
+      kind: "connection-expected-set",
+      runId: input.runId,
+      asOf: input.end,
+      expectedEventIds,
+      maxRows: expectedEventIds.length,
+    });
+    const body = JSON.parse(String(f.request.mock.calls[2][1]?.body));
+    expect(body.csl).toContain("MiningConnectionExpectedSetReconciliationV1");
+    expect(body.csl).not.toContain(expectedEventIds[0]);
+    expect(body.properties.Parameters).toMatchObject({
+      run: `'${input.runId}'`,
+      asof: `datetime(${input.end})`,
+      expected_ids: `dynamic(${JSON.stringify(expectedEventIds)})`,
+    });
+  });
+
+  it("rejects malformed, duplicate and oversized expected sets before network access", async () => {
+    const f = fixture();
+    const base = {
+      kind: "connection-expected-set" as const,
+      runId: input.runId,
+      asOf: input.end,
+    };
+    const id = "a".repeat(64);
+    for (const [expectedEventIds, maxRows] of [
+      [[], 1],
+      [[id, id], 2],
+      [["A".repeat(64)], 1],
+      [[id], 2],
+      [Array.from({ length: 201 }, (_, n) => n.toString(16).padStart(64, "0")), 201],
+    ] as const) {
+      await expect(f.query({ ...base, expectedEventIds, maxRows })).rejects.toThrow();
+    }
+    expect(f.request).not.toHaveBeenCalled();
+  });
+
+  it("uses fixed run-scoped, bounded connection-flow queries", async () => {
+    const f = fixture();
+    const streamIds = ["process-A-feed", "utility-A-fines"];
+    await f.query({
+      kind: "connection-latest",
+      runId: input.runId,
+      asOf: input.end,
+      streamIds,
+      maxRows: 57,
+    });
+    const latest = JSON.parse(String(f.request.mock.calls[2][1]?.body));
+    expect(latest.csl).toContain("MiningConnectionLatestV1(run, catalog, measurement_catalog");
+    expect(latest.csl).not.toContain(streamIds[0]);
+    expect(latest.properties.Parameters).toMatchObject({
+      run: `'${input.runId}'`,
+      profile: "'d01-shared-flow-v1'",
+      streams: `dynamic(${JSON.stringify(streamIds)})`,
+      asof: `datetime(${input.end})`,
+      limit: "57",
+    });
+    await f.query({
+      kind: "connection-trend",
+      runId: input.runId,
+      start: input.start,
+      end: input.end,
+      streamIds,
+      windowSeconds: 30,
+      maxRows: 1000,
+    });
+    const trend = JSON.parse(String(f.request.mock.calls[5][1]?.body));
+    expect(trend.csl).toContain("MiningConnectionTrendV1(run, catalog, measurement_catalog");
+    expect(trend.properties.Parameters).toMatchObject({
+      streams: `dynamic(${JSON.stringify(streamIds)})`,
+      start: `datetime(${input.start})`,
+      end: `datetime(${input.end})`,
+      window: "30s",
+      limit: "1000",
+    });
+  });
+
+  it("rejects unknown, duplicate or unbounded connection scopes before network access", async () => {
+    const f = fixture();
+    const latest = {
+      kind: "connection-latest" as const,
+      runId: input.runId,
+      asOf: input.end,
+      maxRows: 57,
+    };
+    await expect(f.query({ ...latest, streamIds: ["unknown'); print 1; //"] })).rejects.toThrow(
+      "stream selection",
+    );
+    await expect(
+      f.query({ ...latest, streamIds: ["process-A-feed", "process-A-feed"] }),
+    ).rejects.toThrow("stream selection");
+    await expect(f.query({ ...latest, streamIds: [], maxRows: 58 })).rejects.toThrow(
+      "binding count",
+    );
+    await expect(
+      f.query({
+        kind: "connection-trend",
+        runId: input.runId,
+        start: "2025-12-30T12:00:00.000Z",
+        end: input.end,
+        streamIds: [],
+        windowSeconds: 30,
+        maxRows: 1000,
+      }),
+    ).rejects.toThrow("trend window");
+    expect(f.request).not.toHaveBeenCalled();
+  });
+
   it("uses the fixed parameterized cross-run query without a run filter", async () => {
     const f = fixture();
     await f.query({

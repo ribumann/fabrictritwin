@@ -2,3 +2,8 @@ export * from "./catalog.js";
 export * from "./events.js";
 export * from "./simulator.js";
 export * from "./publisher.js";
+export * from "./connection-catalog.js";
+export * from "./connection-events.js";
+export * from "./connection-pin-publisher.js";
+export * from "./connection-publisher.js";
+export * from "./connection-simulator.js";

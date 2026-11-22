@@ -5,6 +5,9 @@ import {
   toD01PublishProfileRecords,
   type D01Publisher,
   type D01TransportBody,
+  type D01ConnectionMeasurementEvent,
+  type D01ConnectionPublisher,
+  D01_CONNECTION_PROFILE_VERSION,
 } from "@triathlon-twin/simulator/mining";
 import {
   createD01IncidentRun,
@@ -17,7 +20,10 @@ import {
   type MiningPublisherIncidents,
   type MiningScheduler,
 } from "../src/mining/publisher-runtime.js";
-import { MiningRunCoordinator } from "../src/mining/run-coordinator.js";
+import {
+  MiningRunCoordinator,
+  type MiningConnectionRunProfilePin,
+} from "../src/mining/run-coordinator.js";
 import { MiningPublisherHost } from "../src/mining/publisher-host.js";
 import {
   MiningCoordinationError,
@@ -54,11 +60,15 @@ class Store implements MiningStore {
   }
   async create(path: string, value: unknown) {
     if (this.documents.has(path)) return false;
-    this.documents.set(path, {
-      value: structuredClone(value),
-      etag: String(++this.revision),
-      leased: false,
-    });
+    this.documents.set(
+      path,
+      {
+        value: structuredClone(value),
+        etag: String(++this.revision),
+        leased: false,
+      },
+      15_000,
+    );
     return true;
   }
   async write(path: string, value: unknown, etag: string, lease?: string) {
@@ -66,11 +76,15 @@ class Store implements MiningStore {
       throw new MiningCoordinationError("lease_lost", "Fence rejected.");
     }
     const next = String(++this.revision);
-    this.documents.set(path, {
-      value: structuredClone(value),
-      etag: next,
-      leased: Boolean(this.lease),
-    });
+    this.documents.set(
+      path,
+      {
+        value: structuredClone(value),
+        etag: next,
+        leased: Boolean(this.lease),
+      },
+      15_000,
+    );
     return next;
   }
   async acquire(_path: string, lease: string) {
@@ -186,6 +200,589 @@ describe("D01 real-clock publisher", () => {
     await admission.owner.finish("failed");
   });
 
+  it("pins the shared profile before either publisher starts and sends separate batches from one run", async () => {
+    const order: string[] = [];
+    const traceLogs: string[] = [];
+    vi.spyOn(console, "info").mockImplementation((message) => traceLogs.push(String(message)));
+    const connectionEvents: D01ConnectionMeasurementEvent[] = [];
+    const legacyBatches: D01TransportBody[][] = [];
+    const connectionPublish = vi.fn(async (events: readonly D01ConnectionMeasurementEvent[]) => {
+      order.push("connection-send");
+      connectionEvents.push(...events);
+    });
+    const legacyPublish = vi.fn(async (events: readonly D01TransportBody[]) => {
+      order.push("legacy-send");
+      legacyBatches.push([...events]);
+    });
+    const legacyFactory = vi.fn(() => {
+      order.push("legacy-created");
+      return {
+        prepare: vi.fn(async () => {}),
+        publish: legacyPublish,
+        close: vi.fn(async () => {}),
+      };
+    });
+    const connectionFactory = vi.fn((): D01ConnectionPublisher => {
+      order.push("connection-created");
+      return {
+        prepare: vi.fn(async () => {}),
+        publish: connectionPublish,
+        close: vi.fn(async () => {}),
+      };
+    });
+    let confirmPin!: () => void;
+    const profilePin = vi.fn(async (pin: { run_id: string; started_at: string }) => {
+      order.push("profile-pin");
+      await new Promise<void>((resolve) => {
+        confirmPin = resolve;
+      });
+      expect(pin).toMatchObject({
+        run_id: requestId,
+        profile_version: D01_CONNECTION_PROFILE_VERSION,
+        started_at: "2026-01-01T00:02:05.000Z",
+      });
+    });
+    const sharedRuntime = new MiningPublisherRuntime(
+      coordinator,
+      legacyFactory,
+      clock,
+      scheduler,
+      connectionFactory,
+      profilePin,
+    );
+    const execution = sharedRuntime.run(
+      {
+        plantId: "D01",
+        requestId,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 185,
+      },
+      undefined,
+      undefined,
+      () => {
+        expect(store.documents.get(`requests/${requestId}.json`)?.value).toMatchObject({
+          admission: "accepted",
+        });
+        expect(store.documents.get("plants/D01.json")?.value).toMatchObject({
+          version: 4,
+          run: { phase: "preparing" },
+        });
+        order.push("admission-notified");
+      },
+    );
+    await settle();
+    expect(order.slice(0, 2)).toEqual(["admission-notified", "profile-pin"]);
+    expect(await coordinator.currentStatus()).toMatchObject({
+      phase: "preparing",
+      run: { admittedAt: "2026-01-01T00:00:00.000Z", startedAt: "2026-01-01T00:02:05.000Z" },
+    });
+    await vi.advanceTimersByTimeAsync(50_000);
+    confirmPin();
+    await settle();
+    expect(await coordinator.currentStatus()).toMatchObject({ phase: "scheduled" });
+    expect(legacyFactory).toHaveBeenCalledOnce();
+    expect(connectionFactory).toHaveBeenCalledOnce();
+    const renew = vi.spyOn(store, "renew");
+    await vi.advanceTimersByTimeAsync(75_000);
+    await settle();
+    expect(renew.mock.calls.length).toBeLessThanOrEqual(17);
+    expect(await coordinator.currentStatus()).toMatchObject({ phase: "running" });
+    expect(connectionPublish).not.toHaveBeenCalled();
+    expect(order.slice(0, 4)).toEqual([
+      "admission-notified",
+      "profile-pin",
+      "legacy-created",
+      "connection-created",
+    ]);
+
+    await vi.advanceTimersByTimeAsync(185_000);
+    await expect(execution).resolves.toMatchObject({ phase: "publisher_complete" });
+    expect(connectionEvents).toHaveLength(37 * 57);
+    expect(connectionEvents[0]?.sample_time).toBe("2026-01-01T00:02:10.000Z");
+    expect(connectionPublish.mock.calls.every(([events]) => events.length <= 200)).toBe(true);
+    expect(legacyBatches.length).toBeGreaterThan(0);
+    expect(legacyBatches.length).toBeLessThan(37);
+    expect(
+      legacyBatches
+        .flat()
+        .every((event) => ["PlantTelemetry", "PlantStateEvent"].includes(event.entityType)),
+    ).toBe(true);
+    const firstTrace = JSON.parse(traceLogs[0]!) as {
+      legacyEventCount: number;
+      connectionEventCount: number;
+    };
+    expect(firstTrace.legacyEventCount).toBeGreaterThan(0);
+    expect(firstTrace.connectionEventCount).toBe(57);
+    expect(order.filter((entry) => entry === "profile-pin")).toHaveLength(1);
+    expect(await coordinator.currentStatus()).toMatchObject({
+      run: {
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        connectionProfileContract: {
+          profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        },
+      },
+      phase: "publisher_complete",
+    });
+  }, 15_000);
+
+  it("fails an admitted shared-flow run without constructing publishers when pin confirmation fails", async () => {
+    const connectionFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    const legacyFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    const profilePin = vi.fn(async () => {
+      throw new Error("Pin confirmation unavailable.");
+    });
+    const sharedRuntime = new MiningPublisherRuntime(
+      coordinator,
+      legacyFactory,
+      clock,
+      scheduler,
+      connectionFactory,
+      profilePin,
+    );
+
+    await expect(
+      sharedRuntime.run({
+        plantId: "D01",
+        requestId,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 185,
+      }),
+    ).rejects.toThrow("Pin confirmation unavailable");
+    expect(profilePin).toHaveBeenCalledOnce();
+    expect(legacyFactory).not.toHaveBeenCalled();
+    expect(connectionFactory).not.toHaveBeenCalled();
+    expect(await coordinator.currentStatus()).toMatchObject({
+      phase: "failed",
+      run: { profileVersion: D01_CONNECTION_PROFILE_VERSION },
+    });
+  });
+
+  it("fails closed and closes both transports if sender preparation fails", async () => {
+    const legacyClose = vi.fn(async () => {});
+    const connectionClose = vi.fn(async () => {});
+    const legacyPublish = vi.fn(async () => {});
+    const connectionPublish = vi.fn(async () => {});
+    const runtime = new MiningPublisherRuntime(
+      coordinator,
+      () => ({
+        prepare: vi.fn(async () => {}),
+        publish: legacyPublish,
+        close: legacyClose,
+      }),
+      clock,
+      scheduler,
+      () => ({
+        prepare: vi.fn(async () => {
+          throw new Error("Sender preparation failed.");
+        }),
+        publish: connectionPublish,
+        close: connectionClose,
+      }),
+      vi.fn(async () => {}),
+    );
+    await expect(
+      runtime.run({
+        plantId: "D01",
+        requestId,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 185,
+      }),
+    ).rejects.toThrow("Sender preparation failed");
+    expect(legacyPublish).not.toHaveBeenCalled();
+    expect(connectionPublish).not.toHaveBeenCalled();
+    expect(legacyClose).toHaveBeenCalledOnce();
+    expect(connectionClose).toHaveBeenCalledOnce();
+    expect(await coordinator.currentStatus()).toMatchObject({ phase: "failed" });
+  });
+
+  it("aborts pending sender preparation on stop and joins it before closing", async () => {
+    let preparationSignal!: AbortSignal;
+    let settlePreparation!: () => void;
+    const prepare = vi.fn(
+      async (signal: AbortSignal) =>
+        new Promise<void>((resolve) => {
+          preparationSignal = signal;
+          settlePreparation = resolve;
+        }),
+    );
+    const legacyClose = vi.fn(async () => {});
+    const connectionClose = vi.fn(async () => {});
+    const legacyPublish = vi.fn(async () => {});
+    const connectionPublish = vi.fn(async () => {});
+    const runtime = new MiningPublisherRuntime(
+      coordinator,
+      () => ({ prepare, publish: legacyPublish, close: legacyClose }),
+      clock,
+      scheduler,
+      () => ({
+        prepare: vi.fn(async () => {}),
+        publish: connectionPublish,
+        close: connectionClose,
+      }),
+      vi.fn(async () => {}),
+    );
+    const execution = runtime.run({
+      plantId: "D01",
+      requestId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    await settle();
+    expect(prepare).toHaveBeenCalledOnce();
+    await runtime.requestStop(requestId);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(preparationSignal.aborted).toBe(true);
+    expect(legacyClose).not.toHaveBeenCalled();
+    expect(connectionClose).not.toHaveBeenCalled();
+    settlePreparation();
+    await expect(execution).resolves.toMatchObject({ phase: "stopped" });
+    expect(legacyClose).toHaveBeenCalledOnce();
+    expect(connectionClose).toHaveBeenCalledOnce();
+    expect(legacyPublish).not.toHaveBeenCalled();
+    expect(connectionPublish).not.toHaveBeenCalled();
+  });
+
+  it("reports a transport preparation failure that occurs after stop", async () => {
+    let rejectPreparation!: (error: Error) => void;
+    const runtime = new MiningPublisherRuntime(
+      coordinator,
+      () => ({
+        prepare: () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectPreparation = reject;
+          }),
+        publish: vi.fn(async () => {}),
+        close: vi.fn(async () => {}),
+      }),
+      clock,
+      scheduler,
+      () => ({
+        prepare: vi.fn(async () => {}),
+        publish: vi.fn(async () => {}),
+        close: vi.fn(async () => {}),
+      }),
+      vi.fn(async () => {}),
+    );
+    const execution = runtime.run({
+      plantId: "D01",
+      requestId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    const failed = expect(execution).rejects.toThrow("Unexpected preparation failure");
+    await settle();
+    await runtime.requestStop(requestId);
+    await vi.advanceTimersByTimeAsync(10_000);
+    rejectPreparation(new Error("Unexpected preparation failure"));
+    await failed;
+  });
+
+  it("returns preparing admission before queued pin work and detaches the request lifetime", async () => {
+    let confirmPin!: () => void;
+    let pinSignal: AbortSignal | undefined;
+    const profilePin = vi.fn(
+      async (_profile: MiningConnectionRunProfilePin, signal: AbortSignal) =>
+        new Promise<void>((resolve) => {
+          pinSignal = signal;
+          confirmPin = resolve;
+        }),
+    );
+    const connectionPublish = vi.fn(async () => {});
+    const legacyPublish = vi.fn(async () => {});
+    const connectionFactory = vi.fn(() => ({
+      prepare: vi.fn(async () => {}),
+      publish: connectionPublish,
+      close: vi.fn(async () => {}),
+    }));
+    const legacyFactory = vi.fn(() => ({
+      prepare: vi.fn(async () => {}),
+      publish: legacyPublish,
+      close: vi.fn(async () => {}),
+    }));
+    const sharedRuntime = new MiningPublisherRuntime(
+      coordinator,
+      legacyFactory,
+      clock,
+      scheduler,
+      connectionFactory,
+      profilePin,
+    );
+    const host = new MiningPublisherHost(() => sharedRuntime);
+    const request = new AbortController();
+    const execution = host.start(
+      {
+        plantId: "D01",
+        requestId,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 185,
+      },
+      request.signal,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      profilePin,
+    );
+    const admission = await execution.admission;
+    expect(admission.status).toMatchObject({
+      admission: "accepted",
+      phase: "preparing",
+      run: { profileVersion: D01_CONNECTION_PROFILE_VERSION },
+    });
+    await settle();
+    expect(profilePin).toHaveBeenCalledOnce();
+    request.abort();
+    expect(pinSignal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await settle();
+    expect(await coordinator.currentStatus()).toMatchObject({ phase: "preparing" });
+    expect(pinSignal?.aborted).toBe(false);
+    expect(connectionFactory).not.toHaveBeenCalled();
+    expect(legacyFactory).not.toHaveBeenCalled();
+
+    confirmPin();
+    await settle();
+    await vi.advanceTimersByTimeAsync(110_000);
+    await settle();
+    expect(await coordinator.currentStatus()).toMatchObject({ phase: "running" });
+    await sharedRuntime.requestStop(requestId);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(execution.completion).resolves.toMatchObject({ phase: "stopped" });
+    expect(connectionPublish).not.toHaveBeenCalled();
+    expect(legacyPublish).not.toHaveBeenCalled();
+  });
+
+  it("fails a shared-flow run when the bounded pin-preparation deadline expires", async () => {
+    const connectionFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    const legacyFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    let pinSignal: AbortSignal | undefined;
+    const profilePin = vi.fn(
+      async (_profile: MiningConnectionRunProfilePin, signal: AbortSignal) =>
+        new Promise<void>((_resolve, reject) => {
+          pinSignal = signal;
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    );
+    const admitted = vi.fn();
+    const sharedRuntime = new MiningPublisherRuntime(
+      coordinator,
+      legacyFactory,
+      clock,
+      scheduler,
+      connectionFactory,
+      profilePin,
+    );
+
+    const failed = expect(
+      sharedRuntime.run(
+        {
+          plantId: "D01",
+          requestId,
+          profileVersion: D01_CONNECTION_PROFILE_VERSION,
+          durationSeconds: 185,
+        },
+        undefined,
+        undefined,
+        admitted,
+      ),
+    ).rejects.toThrow();
+    await settle();
+    await vi.advanceTimersByTimeAsync(120_001);
+    await failed;
+    expect(pinSignal?.aborted).toBe(true);
+    expect(profilePin).toHaveBeenCalledOnce();
+    expect(admitted).toHaveBeenCalledOnce();
+    expect(legacyFactory).not.toHaveBeenCalled();
+    expect(connectionFactory).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+    expect(await coordinator.currentStatus()).toMatchObject({
+      phase: "failed",
+      run: { profileVersion: D01_CONNECTION_PROFILE_VERSION },
+    });
+  }, 15_000);
+
+  it("observes a preparing run without retrying its pin and honors stop while pin readback is pending", async () => {
+    let pinSignal: AbortSignal | undefined;
+    const profilePin = vi.fn(
+      async (_profile: MiningConnectionRunProfilePin, signal: AbortSignal) =>
+        new Promise<void>((_resolve, reject) => {
+          pinSignal = signal;
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    );
+    const connectionFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    const legacyFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    const sharedRuntime = new MiningPublisherRuntime(
+      coordinator,
+      legacyFactory,
+      clock,
+      scheduler,
+      connectionFactory,
+      profilePin,
+    );
+    const execution = sharedRuntime.run(
+      {
+        plantId: "D01",
+        requestId,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 185,
+      },
+      undefined,
+      undefined,
+      () => {},
+    );
+    await settle();
+    const duplicate = await sharedRuntime.run({
+      plantId: "D01",
+      requestId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    expect(duplicate).toMatchObject({ phase: "preparing" });
+    expect(profilePin).toHaveBeenCalledOnce();
+
+    await sharedRuntime.requestStop(requestId);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(execution).resolves.toMatchObject({ phase: "stopped", stopRequested: true });
+    expect(pinSignal?.aborted).toBe(true);
+    expect(profilePin).toHaveBeenCalledOnce();
+    expect(legacyFactory).not.toHaveBeenCalled();
+    expect(connectionFactory).not.toHaveBeenCalled();
+  });
+
+  it("aborts pending pin work and sends nothing after lease authority is lost", async () => {
+    let pinSignal: AbortSignal | undefined;
+    const profilePin = vi.fn(
+      async (_profile: MiningConnectionRunProfilePin, signal: AbortSignal) =>
+        new Promise<void>((_resolve, reject) => {
+          pinSignal = signal;
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    );
+    const connectionFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    const legacyFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    const sharedRuntime = new MiningPublisherRuntime(
+      coordinator,
+      legacyFactory,
+      clock,
+      scheduler,
+      connectionFactory,
+      profilePin,
+    );
+    const execution = sharedRuntime.run({
+      plantId: "D01",
+      requestId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    const failed = expect(execution).rejects.toThrow();
+    await settle();
+    store.lease = undefined;
+    await vi.advanceTimersByTimeAsync(10_000);
+    await failed;
+    expect(pinSignal?.aborted).toBe(true);
+    expect(legacyFactory).not.toHaveBeenCalled();
+    expect(connectionFactory).not.toHaveBeenCalled();
+    expect(await coordinator.currentStatus()).toMatchObject({ phase: "interrupted" });
+  });
+
+  it("rejects an 1800-second shared-flow run before pinning or constructing transports", async () => {
+    const connectionFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    const legacyFactory = vi.fn(() => ({
+      publish: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+    }));
+    const profilePin = vi.fn(async () => {});
+    const sharedRuntime = new MiningPublisherRuntime(
+      coordinator,
+      legacyFactory,
+      clock,
+      scheduler,
+      connectionFactory,
+      profilePin,
+    );
+
+    await expect(
+      sharedRuntime.run({
+        plantId: "D01",
+        requestId,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 1_800,
+      }),
+    ).rejects.toThrow("fit within 1800 seconds from admission");
+    expect(await coordinator.status(requestId)).toBeUndefined();
+    expect(profilePin).not.toHaveBeenCalled();
+    expect(legacyFactory).not.toHaveBeenCalled();
+    expect(connectionFactory).not.toHaveBeenCalled();
+  });
+
+  it("awaits both shared-flow transports and closes them without retry after an ambiguous send failure", async () => {
+    const legacyClose = vi.fn(async () => {});
+    const connectionClose = vi.fn(async () => {});
+    const legacyPublish = vi.fn(async () => {});
+    const connectionPublish = vi.fn(async () => {
+      throw new Error("Raw connection send ambiguous.");
+    });
+    const sharedRuntime = new MiningPublisherRuntime(
+      coordinator,
+      vi.fn(() => ({ prepare: vi.fn(async () => {}), publish: legacyPublish, close: legacyClose })),
+      clock,
+      scheduler,
+      vi.fn(() => ({
+        prepare: vi.fn(async () => {}),
+        publish: connectionPublish,
+        close: connectionClose,
+      })),
+      vi.fn(async () => {}),
+    );
+    const execution = sharedRuntime.run({
+      plantId: "D01",
+      requestId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    const failed = expect(execution).rejects.toThrow("Raw connection send ambiguous");
+    await settle();
+    await vi.advanceTimersByTimeAsync(130_000);
+
+    await failed;
+    expect(legacyPublish).toHaveBeenCalledOnce();
+    expect(connectionPublish).toHaveBeenCalledOnce();
+    expect(legacyClose).toHaveBeenCalledOnce();
+    expect(connectionClose).toHaveBeenCalledOnce();
+    expect(await coordinator.currentStatus()).toMatchObject({
+      phase: "failed",
+      run: { profileVersion: D01_CONNECTION_PROFILE_VERSION },
+    });
+  });
+
   it("drains ambiguous continuous sends before closing; never retries or claims completion", async () => {
     let rejectSend!: (cause: Error) => void;
     publish.mockImplementation(
@@ -277,7 +874,15 @@ describe("D01 real-clock publisher", () => {
     coordinator = new MiningRunCoordinator(new Store(), clock, { finalFlushMilliseconds: 5_000 });
     runtime = new MiningPublisherRuntime(coordinator, factory, clock, scheduler);
     const ticks = vi.fn();
-    const execution = runtime.run(input, undefined, undefined, undefined, preview, undefined, ticks);
+    const execution = runtime.run(
+      input,
+      undefined,
+      undefined,
+      undefined,
+      preview,
+      undefined,
+      ticks,
+    );
     await settle();
     await vi.advanceTimersByTimeAsync(4_999);
     expect(preview).not.toHaveBeenCalled();

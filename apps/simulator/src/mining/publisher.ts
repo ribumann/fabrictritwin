@@ -3,6 +3,8 @@ import { parseEventHubConnectionString } from "../services/eventstream-client.js
 import type { D01TransportBody } from "./events.js";
 
 export interface D01Publisher {
+  /** Opens the sender without sending an event. Used before shared-flow activation. */
+  prepare?(signal: AbortSignal): Promise<void>;
   /** Resolves only after every SDK send settles; no automatic retry or detached work. */
   publish(events: readonly D01TransportBody[], signal: AbortSignal): Promise<void>;
   close(): Promise<void>;
@@ -14,7 +16,7 @@ type Producer = Pick<EventHubProducerClient, "createBatch" | "sendBatch" | "clos
 export class D01EventstreamPublisher implements D01Publisher {
   private readonly client: Producer;
 
-  constructor(connectionString: string, client?: Producer) {
+  constructor(connectionString: string, client?: Producer, timeoutInMs = 2_000) {
     parseEventHubConnectionString(connectionString);
     if (
       !/SharedAccessKeyName=[^;]+;/i.test(connectionString) ||
@@ -25,8 +27,14 @@ export class D01EventstreamPublisher implements D01Publisher {
     this.client =
       client ??
       new EventHubProducerClient(connectionString, {
-        retryOptions: { maxRetries: 0, timeoutInMs: 2_000 },
+        retryOptions: { maxRetries: 0, timeoutInMs },
       });
+  }
+
+  async prepare(signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    await this.client.createBatch({ abortSignal: signal });
+    signal.throwIfAborted();
   }
 
   async publish(events: readonly D01TransportBody[], signal: AbortSignal): Promise<void> {

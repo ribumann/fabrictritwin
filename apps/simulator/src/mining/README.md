@@ -57,3 +57,84 @@ does not implement escalation, hold timers, startup gating, state-heartbeat
 freshness, or acknowledgment workflows. Its measurements and telemetry gaps
 are not scripted scenario labels, but that does not make the evaluator suitable
 for real observations. Scenario oracles should remain separate from observed data.
+
+## Separate raw connection-flow profile
+
+The connection-flow work is additive and version-isolated. Import
+`createD01ConnectionSimulation`, `createD01SharedFlowSimulation`,
+`toD01ConnectionMeasurementBindingRecords`, and
+`assertD01ConnectionMeasurementEvent` from
+`@triathlon-twin/simulator/mining`. The existing `createD01Simulation`,
+schema-v2 event validators, catalog asset, publish profile, and Eventstream
+publisher remain unchanged.
+
+The new binding set is pinned to the existing plant catalog hash plus
+`measurement_catalog_version: d01-connection-measurements-v1` and
+`profile_version: d01-shared-flow-v1`. It covers every authored stream and
+each separately measured component (57 bindings total). Current catalog
+endpoints are authored at module-port granularity; equipment IDs and
+equipment-port IDs are explicitly null rather than inferred from neighboring
+logical assets. Nominal capacities are visualization scales only.
+
+`createD01ConnectionSimulation(options, now)` retains the standalone connection
+simulation API. For a combined run, call
+`createD01SharedFlowSimulation({ runId, startedAt, shutdownAtSeconds,
+drainDownSeconds?, durationSeconds, scenario? }, now)`. `shutdownAtSeconds`
+stops external ore input and hopper dispatch; `durationSeconds` must equal the
+shutdown boundary plus at least 180 seconds of drain-down, in five-second
+increments. The combined run uses one process state for its raw
+`ConnectionMeasurement` v1 events and a separately versioned legacy projection
+profile (`d01-shared-flow-legacy-projection-v1`). The previous
+`createD01Simulation` behavior remains the default and is unchanged.
+Standalone `createD01ConnectionSimulation` runs remain fixed-duration and can
+finish with material in transit; use the combined factory when shutdown
+acceptance and complete drain-down are required.
+
+Each five-second `D01ConnectionSimulationStep` contains a separate
+`ConnectionMeasurement` v1 event batch. A normal tick has 57 observations and
+fits under the existing 200-event receipt ceiling; the bounded missing-sensor
+scenario reports expected/emitted counts and omits the affected tag rather
+than sending zero. Legacy numeric projections retain their 30/60-second
+intervals; legacy state events are returned separately, and the simulator
+exposes `initial_legacy_state_events` for the starting state. The combined step
+also includes `legacy_transport_events`, containing only `PlantTelemetry` and
+`PlantStateEvent`. Never add raw connection observations to these legacy
+batches. Neither transport is published by this simulator; Fabric/API
+integration must add a separately routed, reversible profile before enabling
+publication.
+
+The simulator accounts for dry solids, water and ferrosilicon medium
+independently using integrated five-second amounts. Boundary input, spill,
+makeup, process loss, recovered product and tailings outflow are exposed beside
+the balances. Its assumptions are illustrative, synthetic process-model
+splits—not calibrated plant measurements, diamond-recovery estimates, or
+engineering setpoints. The existing pinned catalog is not modified.
+
+The versioned model assumptions are explicit in `connection-simulator.ts`:
+nominal line feeds are 42/44/40 t/h with a 60-second startup ramp; external
+ore feed is 132 t/h with a bounded deterministic variation; each stage transit
+queue is 30 seconds; sizing sends 2% to fines; DMS divides the balance 68/32
+between sinks/floats; the medium stage sends 18% to concentrate, 80% to
+washed tailings and 2% to effluent; the sorter split is 0.1% recovered dry
+solids and 99.9% reject (not diamond recovery). Water branch demands are
+55/22/12 m3/h per normalized line load; fixed branch fractions allocate flow
+to fines/effluent or explicit modeled losses. Thickener water is split 75/25
+between delayed return and underflow; the tank is 60 m3 with at most 120 m3/h
+normal makeup. Medium circulation is a disclosed synthetic scale of 2 m3/h
+per t/h processed at the medium stage, with matched 0.5% modeled loss and
+makeup. These
+parameters exist for reproducible demo behavior only and require plant review
+before operational use.
+
+In combined runs, the six serial 30-second dry-solids queues are drained after
+shutdown, and delayed water return is allowed to reach the tank before the
+run completes. Existing ore held in the hopper is explicitly retained rather
+than discarded or processed after dispatch stops. Three legacy density tags,
+three DMS medium-level tags, shared thickener level, shared tailings-water-flow,
+and shared laboratory product-mass are not derivable from this model and are
+listed in `unprojected_legacy_tag_ids`; they are not emitted as invented
+values. The other 47 legacy numeric tags are projections from the combined
+run: flow and supported level values derive from modeled streams/inventories,
+while equipment current, temperature, vibration, and power use synthetic load
+curves rather than calibrated sensor models. The catalog contains no distinct
+rinse stream, so rinse is not represented as a separate connection.

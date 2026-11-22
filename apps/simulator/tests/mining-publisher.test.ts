@@ -30,6 +30,16 @@ function setup(tryAdd = vi.fn(() => true)) {
 }
 
 describe("mining Eventstream transport", () => {
+  it("prepares the sender without publishing and respects cancellation", async () => {
+    const { client, publisher } = setup();
+    const controller = new AbortController();
+    await publisher.prepare(controller.signal);
+    expect(client.createBatch).toHaveBeenCalledWith({ abortSignal: controller.signal });
+    expect(client.sendBatch).not.toHaveBeenCalled();
+    controller.abort();
+    await expect(publisher.prepare(controller.signal)).rejects.toThrow();
+    expect(client.createBatch).toHaveBeenCalledOnce();
+  });
   it("uses the existing flat event body and passes cancellation to create and send", async () => {
     const { client, publisher, tryAdd } = setup();
     const signal = new AbortController().signal;

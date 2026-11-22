@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildupObservation,
   diagnosticAssets,
@@ -8,6 +8,7 @@ import {
   plantEvidence,
   possibleBuildup,
 } from "../src/ui/public/mining/supervisor.js";
+import { renderTop } from "../src/ui/public/mining/plant.js";
 
 const catalog = JSON.parse(
   readFileSync(new URL("../../simulator/src/mining/plant-catalog.json", import.meta.url), "utf8"),
@@ -27,6 +28,166 @@ const at = (sample: number, level: number, feed: number) =>
   buildupObservation(readings(sample, level, feed), new Date(sample).toISOString());
 
 describe("Mining supervisor evidence", () => {
+  it("draws separate labeled solids and water lanes on an inspected connection", () => {
+    class Element {
+      attributes: Record<string, string> = {};
+      children: Element[] = [];
+      textContent = "";
+      constructor(public tag: string) {}
+      setAttribute(key: string, value: string) {
+        this.attributes[key] = String(value);
+      }
+      append(...children: Element[]) {
+        this.children.push(...children);
+      }
+      replaceChildren() {
+        this.children = [];
+      }
+      addEventListener() {}
+    }
+    vi.stubGlobal("document", {
+      createElementNS: (_namespace: string, tag: string) => new Element(tag),
+    });
+    try {
+      const source = catalog.streams.find(
+        (stream: { id: string }) => stream.id === "utility-A-fines",
+      );
+      const moduleIds = new Set([source.source.module_id, source.target.module_id]);
+      const small = {
+        ...catalog,
+        modules: catalog.modules.filter((item: { id: string }) => moduleIds.has(item.id)),
+        streams: [source],
+      };
+      const container = new Element("svg");
+      const evidence = {
+        readings: new Map(),
+        measuredRoutes: new Map([
+          [
+            source.id,
+            {
+              components: [
+                { quantity: "dry_solids_mass_flow", value: 10, unit: "t/h", width: 0.4 },
+                { quantity: "water_volume_flow", value: 20, unit: "m3/h", width: 0.3 },
+              ],
+            },
+          ],
+        ]),
+      };
+      renderTop(
+        container,
+        small,
+        new Set(["A", "shared"]),
+        true,
+        source.source.module_id,
+        () => {},
+        new Map(),
+        new Set(),
+        evidence,
+      );
+      const routes = container.children.filter((item) => item.tag === "polyline");
+      expect(routes.map((item) => item.attributes["data-route"])).toEqual(["observed", "water"]);
+      expect(routes.map((item) => item.attributes["stroke-width"])).toEqual(["0.4", "0.3"]);
+      expect(
+        container.children.some((item) => item.textContent === "solids 10 t/h · water 20 m3/h"),
+      ).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uses separate measured solids and water components without treating missing as zero", () => {
+    const reading = {
+      streamId: "utility-A-fines",
+      status: "OK",
+      quality: "good",
+      stale: false,
+      sampleTime: "2026-01-01T12:00:25.000Z",
+      value: 10,
+      nominalCapacity: 20,
+      quantity: "dry_solids_mass_flow",
+      unit: "t/h",
+    };
+    const water = {
+      ...reading,
+      quantity: "water_volume_flow",
+      unit: "m3/h",
+      value: 0,
+      nominalCapacity: 100,
+    };
+    const now = Date.parse("2026-01-01T12:00:30.000Z");
+    const evidence = plantEvidence(catalog, () => null, String, null, [reading, water], now);
+    expect(evidence.measuredRoutes.get(reading.streamId)?.components).toEqual([
+      {
+        quantity: "dry_solids_mass_flow",
+        value: 10,
+        unit: "t/h",
+        width: 0.455,
+        delayed: false,
+        sampleTime: reading.sampleTime,
+      },
+      {
+        quantity: "water_volume_flow",
+        value: 0,
+        unit: "m3/h",
+        width: 0.18,
+        delayed: false,
+        sampleTime: reading.sampleTime,
+      },
+    ]);
+    expect(evidence.activeRoutes.has(reading.streamId)).toBe(true);
+    expect(
+      plantEvidence(
+        catalog,
+        () => ({ value: 42 }),
+        String,
+        null,
+        [
+          { ...reading, status: "MISSING", value: null },
+          { ...water, stale: true },
+        ],
+        now,
+      ).measuredRoutes.size,
+    ).toBe(0);
+    expect(
+      plantEvidence(catalog, () => null, String, null, [reading, reading], now).measuredRoutes.size,
+    ).toBe(0);
+    expect(
+      plantEvidence(catalog, () => null, String, null, [reading], now + 116_000).measuredRoutes
+        .size,
+    ).toBe(0);
+  });
+
+  it("shows delayed good observations with their sample time but never as current", () => {
+    const now = Date.parse("2026-01-01T12:01:00.000Z");
+    const reading = {
+      streamId: "utility-A-fines",
+      status: "STALE",
+      quality: "good",
+      stale: true,
+      sampleTime: "2026-01-01T12:00:20.000Z",
+      value: 10,
+      nominalCapacity: 20,
+      quantity: "dry_solids_mass_flow",
+      unit: "t/h",
+    };
+    const component = plantEvidence(
+      catalog,
+      () => null,
+      String,
+      null,
+      [reading],
+      now,
+    ).measuredRoutes.get(reading.streamId)?.components[0];
+    expect(component).toMatchObject({ delayed: true, sampleTime: reading.sampleTime, value: 10 });
+    expect(
+      plantEvidence(catalog, () => null, String, null, [reading], now + 80_001).measuredRoutes.size,
+    ).toBe(0);
+    expect(
+      plantEvidence(catalog, () => null, String, null, [{ ...reading, quality: "bad" }], now)
+        .measuredRoutes.size,
+    ).toBe(0);
+  });
+
   it("scales only measured inlet routes, including zero, without assigning water to branches", () => {
     const records = new Map([
       ["D01.A.crusher.ore_flow", { value: 42 }],

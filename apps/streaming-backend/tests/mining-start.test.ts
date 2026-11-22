@@ -6,6 +6,7 @@ import { createMiningStartRouter } from "../src/api/mining-start.js";
 import { MiningCoordinationError } from "../src/mining/store.js";
 import type { MiningPublisherExecution } from "../src/mining/publisher-host.js";
 import type { MiningRunStatus } from "../src/mining/run-coordinator.js";
+import { D01_CONNECTION_PROFILE_VERSION } from "@triathlon-twin/simulator/mining";
 
 const runId = "11111111-1111-4111-8111-111111111111";
 const operator = "33333333-3333-4333-8333-333333333333";
@@ -146,6 +147,36 @@ describe("delegated mining start", () => {
       expect.any(AbortSignal),
     );
     release();
+  });
+
+  it("requires the explicit shared-flow selector and feature gate while preserving legacy omission", async () => {
+    const disabled = setup();
+    const disabledResponse = await request(disabled.app)
+      .post("/api/mining/runs/start")
+      .send({ ...body, profileVersion: D01_CONNECTION_PROFILE_VERSION });
+    expect(disabledResponse.status).toBe(503);
+    expect(disabledResponse.body.error.code).toBe("mining_connection_profile_disabled");
+    expect(disabled.start).not.toHaveBeenCalled();
+
+    const enabled = setup({ ...env, MINING_CONNECTION_FLOW_ENABLED: "true" });
+    const response = await request(enabled.app)
+      .post("/api/mining/runs/start")
+      .send({ ...body, profileVersion: D01_CONNECTION_PROFILE_VERSION });
+    expect(response.status).toBe(202);
+    expect(enabled.start).toHaveBeenCalledExactlyOnceWith(
+      { ...body, profileVersion: D01_CONNECTION_PROFILE_VERSION },
+      expect.any(AbortSignal),
+    );
+
+    const unsupported = setup({ ...env, MINING_CONNECTION_FLOW_ENABLED: "true" });
+    expect(
+      (
+        await request(unsupported.app)
+          .post("/api/mining/runs/start")
+          .send({ ...body, profileVersion: "d01-publish-profile-v1" })
+      ).status,
+    ).toBe(400);
+    expect(unsupported.start).not.toHaveBeenCalled();
   });
 
   it("returns observed admission status for idempotent retry and rejected admissions as unavailable", async () => {

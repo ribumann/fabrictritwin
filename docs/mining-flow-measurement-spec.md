@@ -1,6 +1,9 @@
 # D01 connection-flow telemetry
 
-Status: proposed follow-up, not implemented by the operator-workspace release.
+Status: implementation in progress behind default-off feature gates. The
+baseline and requirements below describe the starting point and the intended
+outcome; see `mining-connection-flow-fabric.md` for current implementation
+details and verification limits.
 
 ## Outcome
 
@@ -15,7 +18,7 @@ rejects, effluent and medium circuits. "Every equipment" means the equipment
 and ports carrying these streams, not invented flows through motors, vibration
 sensors or other logical children.
 
-## Current boundary
+## Starting boundary
 
 - The simulator advances its process model every five seconds. Most existing
   numeric events are simulator-computed 30/60-second averages, sent in

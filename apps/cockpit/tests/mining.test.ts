@@ -20,6 +20,38 @@ function harness(fetchImpl = vi.fn<typeof fetch>()) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("isolated mining BFF", () => {
+  it("only forwards bounded connection requests through the enabled demo boundary", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json({}));
+    const options = {
+      streamingBackendBaseUrl: "https://internal.example",
+      fetchImpl,
+      buildAuthHeaders: async () => ({ authorization: "Bearer service" }),
+    };
+    const app = express();
+    app.use("/api/mining", createMiningRouter(options, false, true, true));
+    const query = new URLSearchParams({
+      plantId: "D01",
+      runId: "00000000-0000-4000-8000-000000000001",
+      streamIds: "utility-A-fines,utility-B-fines",
+      start: "2026-01-01T00:00:00.000Z",
+      end: "2026-01-01T00:15:00.000Z",
+      windowSeconds: "30",
+    });
+    await request(app).get(`/api/mining/connection-trend?${query}`).expect(200);
+    expect(String(fetchImpl.mock.calls[0][0])).toContain("/api/mining/demo/connection-trend?");
+    query.set("streamIds", "utility-A-fines,utility-A-fines");
+    await request(app).get(`/api/mining/connection-trend?${query}`).expect(400);
+    query.set("streamIds", "utility-A-fines");
+    query.set("end", "2026-01-01T00:16:00.000Z");
+    await request(app).get(`/api/mining/connection-trend?${query}`).expect(400);
+    const disabled = express();
+    disabled.use("/api/mining", createMiningRouter(options, false, true, false));
+    await request(disabled)
+      .get("/api/mining/connection-latest?plantId=D01&runId=00000000-0000-4000-8000-000000000001")
+      .expect(503);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("relays a full ten-minute demo signal history but still bounds oversized upstream status", async () => {
     const runId = "00000000-0000-4000-8000-000000000001";
     const simulatorPreview = Array.from({ length: 120 }, (_, i) => ({
