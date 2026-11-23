@@ -29,6 +29,7 @@ function harness() {
       cancelSimulation: field(),
       simulationDiscipline: { ...field(), value: "bike" },
       simulationStatus: field(),
+      simulationWarmup: field(),
       simulationCooldown: field(),
       simulationProgress: field(),
       simulationFeedback: field(),
@@ -71,6 +72,17 @@ function harness() {
 }
 
 describe("Cockpit simulation controls", () => {
+  it("shows the Fabric notice only for the live profile", () => {
+    const context = harness();
+    context.updateSimulationControls?.();
+    expect(context.elements.simulationWarmup.hidden).toBe(true);
+    context.state.synthetic = false;
+    Object.assign(context.state, { stream: { readyState: 1 } });
+    Object.assign(context, { WebSocket: { OPEN: 1 } });
+    context.updateSimulationControls?.();
+    expect(context.elements.simulationWarmup.hidden).toBe(false);
+  });
+
   it("disables starts during an active shared run and during cooldown", () => {
     const context = harness();
     context.state.runtime = { runId: "run", status: "running", progressPct: 50 };

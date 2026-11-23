@@ -2232,6 +2232,7 @@ async function updateDemoStatus(notice = "") {
     fabricDemoSignal = data.fabricSignal === true && data.mode === "bounded";
     drawStartupPreview();
     const managed = data.mode === "continuous";
+    $("run-warmup").hidden = data.mode !== "bounded";
     const active = activePublisher(demoRun);
     $("run-start").disabled = managed || !!active;
     $("run-cancel").disabled = managed || !active || demoRun.stopRequested;
@@ -2268,6 +2269,7 @@ async function updateDemoStatus(notice = "") {
     nativeDemoLive = false;
     fastDemoStatus = false;
     fabricDemoSignal = false;
+    $("run-warmup").hidden = true;
     drawStartupPreview();
     $("run-start").disabled = true;
     $("run-cancel").disabled = true;

@@ -54,6 +54,15 @@ body {
   color: var(--text);
 }
 
+.warmup-notice {
+  margin-block: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--info-soft);
+  color: var(--text);
+}
+
 #simulation-feedback {
   margin-block: 1rem 0;
   overflow-wrap: anywhere;

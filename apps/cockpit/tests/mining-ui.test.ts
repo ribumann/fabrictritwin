@@ -1159,6 +1159,33 @@ describe("cross-run chart validation", () => {
     expect(offsets.every((offset) => offset >= 0)).toBe(true);
     expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
   });
+  it.each(["bounded", "continuous", "unavailable"])(
+    "shows the preparation notice only for a verified bounded status: %s",
+    async (mode) => {
+      const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+      const tree = ts.createSourceFile("app.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+      const update = tree.statements.find(
+        (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "updateDemoStatus",
+      );
+      if (!update) throw new Error("Missing demo status function");
+      const elements: Record<string, { hidden?: boolean; disabled?: boolean }> = {};
+      const sandbox = {
+        demoBusy: false, demoStatusEpoch: 0, demoRun: null,
+        nativeDemoLive: false, fastDemoStatus: false, fabricDemoSignal: false,
+        document: { hidden: false }, context: null, catalog: null,
+        demoRequest: mode === "unavailable"
+          ? vi.fn().mockRejectedValue(new Error("offline"))
+          : vi.fn().mockResolvedValue({ plantId: "D01", mode, run: null }),
+        $: (id: string) => (elements[id] ??= {}),
+        activePublisher: () => false, text: vi.fn(),
+        drawStartupPreview: vi.fn(), drawDemoRunStatus: vi.fn(),
+        updateDemoStatus: undefined as undefined | (() => Promise<void>),
+      };
+      runInNewContext(`${update.getText(tree)}; this.updateDemoStatus = updateDemoStatus;`, sandbox);
+      await sandbox.updateDemoStatus!();
+      expect(elements["run-warmup"].hidden).toBe(mode !== "bounded");
+    },
+  );
   it("keeps compact latest readings before closed provenance and supplemental plots after primary plots", () => {
     const html = readFileSync(
       new URL("../src/ui/public/mining/index.html", import.meta.url),
