@@ -38,6 +38,7 @@ const elements = {
   simulationForm: document.getElementById("simulation-form"),
   simulationStatus: document.getElementById("simulation-status"),
   simulationNote: document.getElementById("simulation-note"),
+  simulationWarmup: document.getElementById("simulation-warmup"),
   simulationFeedback: document.getElementById("simulation-feedback"),
   simulationCooldown: document.getElementById("simulation-cooldown"),
   simulationProgress: document.getElementById("simulation-progress"),
@@ -1199,6 +1200,7 @@ function renderLiveSessionSummary() {
 }
 
 function updateSimulationControls() {
+  elements.simulationWarmup.hidden = state.synthetic;
   const running = state.runtime?.status === "running";
   const retrySeconds = Math.max(0, Math.ceil((state.retryUntil - Date.now()) / 1_000));
   const disabled = state.simulationPending || running || retrySeconds > 0 ||

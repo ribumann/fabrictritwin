@@ -187,6 +187,15 @@ evidence, see [Release architecture](release-architecture.md).
 
 ### Capacity is not source readiness
 
+The Mining control's approximate one-minute preparation notice describes an
+observed bounded-run preparation with Fabric already available; it is not a
+capacity resume estimate or a guarantee of data arrival. The Triathlon live
+publisher starts sending immediately and does not use the Mining preparation
+protocol. Neither start control resumes a paused capacity or recovers paused
+Eventstream routes. The account-free synthetic Triathlon profile does not use
+Fabric. After an operator resumes capacity, verify the relevant Eventstream
+routes and actual ingestion as described in `scripts/fabric/README.md`.
+
 On 15 November 2026, the existing F4 `triatwindevfabriccap` binding was
 verified. Kusto returned HTTP 429 and the model returned
 `PFE_FABRIC_THROTTLED` while ARM reported Active. A controlled pause at
