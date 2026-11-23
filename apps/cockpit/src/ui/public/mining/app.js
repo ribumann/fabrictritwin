@@ -1454,8 +1454,7 @@ async function refreshConnectionFlow(scope) {
         : "Connection flows unavailable. Plant layout remains available.",
     );
   }
-  drawPlant();
-  drawDrawer();
+  drawOverview();
 }
 async function refresh(scope = "all") {
   if (context?.mode === "continuous") {

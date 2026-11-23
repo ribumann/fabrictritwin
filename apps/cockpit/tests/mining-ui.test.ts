@@ -182,8 +182,12 @@ describe("bounded live stream charts", () => {
         text: (id: string, value: string) => labels.set(id, value),
         reads: { read: vi.fn() },
         clearTimeout,
-        drawPlant: vi.fn(),
-        drawDrawer: vi.fn(),
+        drawOverview: vi.fn(),
+        validConnectionFlow: () => true,
+        scheduleFlowExpiry: vi.fn(),
+        connectionFlowStatus: () => "Synthetic flows",
+        catalogVersion: "catalog",
+        catalog: {},
       };
       runInNewContext(`${refresh.getText(tree)}; this.refresh = refreshConnectionFlow;`, sandbox);
       sandbox.reads.read.mockRejectedValueOnce({ category: "waiting" });
@@ -194,6 +198,10 @@ describe("bounded live stream charts", () => {
       expect(labels.get("flow-status")).toBe(
         "Connection flows unavailable. Plant layout remains available.",
       );
+      sandbox.drawOverview.mockClear();
+      sandbox.reads.read.mockResolvedValueOnce({ readings: [] });
+      await sandbox.refresh("overview");
+      expect(sandbox.drawOverview).toHaveBeenCalledOnce();
     });
   });
 
