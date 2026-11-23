@@ -261,7 +261,7 @@ claim that every optional feature has passed in the hosted lab.
 | Mining ingestion         | Wait for receipts and compare sample/receipt times        | Fresh exact-run validated rows, observed receipt lag; no fabricated zeros      |
 | Mining completion        | Let ten minutes elapse and wait for ingestion             | `publisher_complete` plus exact expected-ID reconciliation, no conflicts       |
 | Stop path (separate run) | Request Stop and observe settlement                       | Stop intent distinct from stopped; no claim of complete finite ingestion       |
-| Stale/replay             | End a run, wait; inspect an allowed historical view       | Old samples age truthfully; replay is labeled historical                       |
+| Stale readings           | End a run and wait                                        | Old samples age truthfully rather than appearing current                       |
 | UI access                | Zoom, fit, select modules; keyboard list; narrow viewport | Selection details remain related; no horizontal overflow                       |
 | Optional integrations    | Exercise intended model/report/delegated user path        | Actual rendered answer/report; explicit unavailable/consent errors retained    |
 | Failure boundary         | With controlled scope, test unavailable source            | No healthy zero, anonymous backend fallback or arbitrary query escape          |

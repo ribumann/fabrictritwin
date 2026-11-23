@@ -1159,6 +1159,13 @@ describe("cross-run chart validation", () => {
     expect(offsets.every((offset) => offset >= 0)).toBe(true);
     expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
   });
+  it("offers only the live Mining view without replay controls", () => {
+    const html = readFileSync(new URL("../src/ui/public/mining/index.html", import.meta.url), "utf8");
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    expect(html).not.toMatch(/id="(?:mode|replay-time|replay-label)"/);
+    expect(source).not.toMatch(/\$\("(?:mode|replay-time|replay-label)"\)/);
+    expect(source).toContain('const mode = "live"');
+  });
   it.each(["bounded", "continuous", "unavailable"])(
     "shows the preparation notice only for a verified bounded status: %s",
     async (mode) => {

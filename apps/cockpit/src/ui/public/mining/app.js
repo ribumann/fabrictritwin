@@ -90,8 +90,8 @@ let incidents = [];
 let incidentAsOf = null;
 let incidentAssessment = null;
 let continuousAdvisoryData = null;
-let mode = "live";
-let replayTime = null;
+const mode = "live";
+const replayTime = null;
 let appearanceMode = "clean";
 let showScreenedOut = false;
 let appearanceBundle = null;
@@ -2236,12 +2236,8 @@ async function updateDemoStatus(notice = "") {
     const active = activePublisher(demoRun);
     $("run-start").disabled = managed || !!active;
     $("run-cancel").disabled = managed || !active || demoRun.stopRequested;
-    $("mode").disabled = managed;
     $("window").disabled = managed && context?.capabilities?.trends !== true;
     if (managed) {
-      mode = "live";
-      $("mode").value = "live";
-      $("replay-label").hidden = true;
       if (context?.mode === "continuous") {
         if (
           !demoRun ||
@@ -2328,31 +2324,6 @@ const arrivalTimer = setInterval(drawArrival, 1_000);
 $("refresh").addEventListener("click", async () => {
   invalidate();
   await loadContext();
-});
-$("mode").addEventListener("change", async () => {
-  invalidate();
-  mode = $("mode").value;
-  drawStream();
-  $("replay-label").hidden = mode !== "replay";
-  text("mode-label", mode.toUpperCase());
-  if (mode === "replay") {
-    $("replay-time").value ||= new Date().toISOString().slice(0, 16);
-    replayTime = new Date(`${$("replay-time").value}Z`).toISOString();
-  }
-  clearReadState("Loading selected time mode…");
-  drawDiagnosticScope();
-  drawStream();
-  await refreshAll();
-  configurePolling();
-});
-$("replay-time").addEventListener("change", async () => {
-  invalidate();
-  const value = Date.parse(`${$("replay-time").value}Z`);
-  replayTime = Number.isFinite(value) ? new Date(value).toISOString() : null;
-  clearReadState("Loading replay time…");
-  drawDiagnosticScope();
-  await refreshAll();
-  configurePolling();
 });
 $("window").addEventListener("change", () => {
   drawDiagnosticScope();

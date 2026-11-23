@@ -60,6 +60,6 @@ diagnosis would need equipment/load baselines, site thresholds and operator veri
 - Start, duplicate start, startup window, overdue receipt, publisher completion before
   ingestion reconciliation, and cooldown are different states.
 - Inspect Line B vibration and shared water without a mismatched diagnostic request.
-- Missing, stale, and true zero remain distinct; replay never shows the live arrival lane.
+- Missing, stale, and true zero remain distinct. The Mining interface offers the live view only.
 - A common-cause water concern must not be interpreted as three proved equipment failures.
 - No tag, Eventhouse schema, auth scope, or public scenario input changes in this release.
