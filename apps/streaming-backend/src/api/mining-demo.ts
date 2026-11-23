@@ -1113,6 +1113,8 @@ export function createMiningDemoRouter(options: Options): Router {
             runId: status.runId,
             asOf,
             source: "Synthetic demo observations read from Fabric; not physical measurements.",
+            profileLimitations:
+              "This flow profile does not simulate medium density or product mass and does not provide incident assessments. Their absence is expected, not evidence of incomplete ingestion. Do not infer ingestion completeness from missing sensor values.",
             summary: overview.summary,
             sensors: {
               columns: [

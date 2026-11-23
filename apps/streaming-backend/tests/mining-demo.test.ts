@@ -727,6 +727,11 @@ describe("public mining demo service boundary", () => {
       expect.any(AbortSignal),
       expect.any(Number),
     );
+    const modelEvidence = JSON.parse(answer.mock.calls[0][1]);
+    expect(modelEvidence.profileLimitations).toContain(
+      "does not simulate medium density or product mass",
+    );
+    expect(modelEvidence.profileLimitations).toContain("not evidence of incomplete ingestion");
     connectionFlow.latest.mockRejectedValueOnce(new Error("Fabric offline"));
     expect((await ask()).status).toBe(503);
     expect(answer).toHaveBeenCalledTimes(1);
