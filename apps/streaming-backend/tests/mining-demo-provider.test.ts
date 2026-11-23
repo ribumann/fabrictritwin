@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createBoundedMiningQuery } from "../src/mining/read/bounded-query.js";
 import { createMiningDemoProvider } from "../src/mining/read/demo-provider.js";
 import type { MiningRunRecord } from "../src/mining/run-coordinator.js";
-import { createD01RunContract } from "../src/mining-incidents/catalog.js";
+import {
+  createD01RunContract,
+  createD01SharedFlowRunContract,
+} from "../src/mining-incidents/catalog.js";
+import { D01_CONNECTION_PROFILE_VERSION } from "@triathlon-twin/simulator/mining";
 
 const run: MiningRunRecord = {
   plantId: "D01",
@@ -19,6 +23,27 @@ const start = "2026-01-01T11:00:00.000Z";
 const end = "2026-01-01T11:01:00.000Z";
 
 describe("public mining curated reads", () => {
+  it("does not apply legacy expected-event reconciliation to shared-flow projections", async () => {
+    const query = vi
+      .fn<ReturnType<typeof createBoundedMiningQuery>>()
+      .mockRejectedValue(new Error("probe"));
+    const provider = createMiningDemoProvider(
+      { MINING_INGESTION_RECONCILIATION_ENABLED: "true" },
+      query,
+    );
+    const shared: MiningRunRecord = {
+      ...run,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      shutdownAtSeconds: 120,
+      drainDownSeconds: 180,
+      connectionProfileContract: createD01SharedFlowRunContract(),
+    };
+    await expect(
+      provider({ kind: "overview", run: shared, asOf: end }, new AbortController().signal),
+    ).rejects.toThrow("probe");
+    expect(query.mock.calls.map(([input]) => input.kind).sort()).toEqual(["latest", "summary"]);
+  });
+
   it("does not query finite incident or overview contracts for continuous lifetimes", async () => {
     const query = vi.fn<ReturnType<typeof createBoundedMiningQuery>>();
     const provider = createMiningDemoProvider({}, query);

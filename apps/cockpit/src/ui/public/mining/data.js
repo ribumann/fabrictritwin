@@ -1,3 +1,20 @@
+export function activePublisher(run) {
+  return ["preparing", "scheduled", "running", "stopping"].includes(run?.publisherStatus);
+}
+
+export function demoContextChanged(context, run, managed) {
+  const approved = context?.approvedRun;
+  const status =
+    run?.stopRequested && run.publisherStatus === "running"
+      ? "stop_requested"
+      : run?.publisherStatus;
+  return (
+    (approved?.runId ?? null) !== (run?.runId ?? null) ||
+    (managed && (approved?.generation ?? null) !== (run?.generation ?? null)) ||
+    (!managed && !!run && !!approved && approved.publisherStatus !== status)
+  );
+}
+
 export function simulationTiming(run, data, now = Date.now()) {
   const start = Date.parse(run?.startedAt);
   const stop = Date.parse(run?.stopAt);
@@ -145,6 +162,134 @@ export function incidentAssessmentLabel(data) {
 
 export function sameScope(data, runId, catalogVersion) {
   return data?.plantId === "D01" && data.runId === runId && data.catalogVersion === catalogVersion;
+}
+
+export function validConnectionFlow(data, runId, catalogVersion, catalog, now = Date.now()) {
+  const asOf = Date.parse(data?.asOf);
+  const anchor = Date.parse(data?.runStartedAt);
+  if (
+    !sameScope(data, runId, catalogVersion) ||
+    !Number.isFinite(asOf) ||
+    !Number.isFinite(anchor) ||
+    anchor > asOf ||
+    asOf > now + 15_000 ||
+    asOf < now - 30_000 ||
+    !Array.isArray(data.readings) ||
+    !Array.isArray(catalog?.streams)
+  )
+    return false;
+  const ids = new Set(catalog.streams.map((stream) => stream.id));
+  const seen = new Set();
+  for (const reading of data.readings) {
+    const key = `${reading?.streamId}:${reading?.quantity}`;
+    if (
+      !ids.has(reading?.streamId) ||
+      seen.has(key) ||
+      typeof reading?.measurementTagId !== "string" ||
+      !Number.isFinite(reading.nominalCapacity) ||
+      reading.nominalCapacity <= 0 ||
+      !(
+        (reading.quantity === "dry_solids_mass_flow" && reading.unit === "t/h") ||
+        (["water_volume_flow", "medium_volume_flow"].includes(reading.quantity) &&
+          reading.unit === "m3/h")
+      ) ||
+      ![
+        "OK",
+        "MISSING",
+        "STALE",
+        "BAD_QUALITY",
+        "UNCERTAIN_QUALITY",
+        "DUPLICATE_CONFLICT",
+      ].includes(reading.status)
+    )
+      return false;
+    seen.add(key);
+    if (reading.status === "OK" || reading.status === "STALE") {
+      if (
+        reading.quality !== "good" ||
+        reading.stale !== (reading.status === "STALE") ||
+        !Number.isFinite(reading.value) ||
+        reading.value < 0 ||
+        !Number.isFinite(Date.parse(reading.sampleTime)) ||
+        !Number.isFinite(Date.parse(reading.receiptTime)) ||
+        Date.parse(reading.sampleTime) < anchor ||
+        Date.parse(reading.receiptTime) < Date.parse(reading.sampleTime) ||
+        Date.parse(reading.sampleTime) > asOf ||
+        Date.parse(reading.receiptTime) > asOf
+      )
+        return false;
+    } else if (reading.status === "MISSING" && reading.value !== null) return false;
+  }
+  return ids.size > 0 && [...ids].every((id) => data.readings.some((row) => row.streamId === id));
+}
+
+export function validConnectionTrend(data, request, flow) {
+  const start = Date.parse(request.start);
+  const end = Date.parse(request.end);
+  const anchor = Date.parse(flow?.runStartedAt);
+  const size = request.windowSeconds * 1000;
+  if (
+    !sameScope(data, request.runId, request.catalogVersion) ||
+    data.start !== request.start ||
+    data.end !== request.end ||
+    data.runStartedAt !== flow?.runStartedAt ||
+    !Number.isFinite(anchor) ||
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    start < anchor ||
+    end <= start ||
+    ![30, 60].includes(request.windowSeconds) ||
+    !Array.isArray(data.points) ||
+    data.points.length > 1000 ||
+    !Array.isArray(flow?.readings)
+  )
+    return false;
+  const selected = flow.readings.filter((item) => request.streamIds.includes(item.streamId));
+  const tags = new Map(selected.map((item) => [item.measurementTagId, item]));
+  const first = anchor + Math.floor((start - anchor - (start > anchor ? 1 : 0)) / size) * size;
+  const last = anchor + Math.floor((end - anchor - 1) / size) * size;
+  if (!tags.size || data.points.length !== tags.size * ((last - first) / size + 1)) return false;
+  const seen = new Set();
+  for (const point of data.points) {
+    const tag = tags.get(point?.measurementTagId);
+    const windowStart = Date.parse(point?.windowStart);
+    const windowEnd = Date.parse(point?.windowEnd);
+    const key = `${point?.measurementTagId}:${windowStart}`;
+    if (
+      !tag ||
+      tag.streamId !== point.streamId ||
+      tag.quantity !== point.quantity ||
+      tag.unit !== point.unit ||
+      seen.has(key) ||
+      !Number.isFinite(windowStart) ||
+      windowStart < first ||
+      windowStart > last ||
+      (windowStart - anchor) % size !== 0 ||
+      windowEnd !== windowStart + size ||
+      !Number.isInteger(point.samples) ||
+      point.samples < 0 ||
+      point.expectedSamples !== request.windowSeconds / 5 ||
+      point.samples > point.expectedSamples ||
+      !Number.isFinite(point.coverage) ||
+      Math.abs(point.coverage - point.samples / point.expectedSamples) > 1e-9 ||
+      typeof point.complete !== "boolean" ||
+      !["COMPLETE", "PARTIAL", "MISSING", "UNUSABLE", "CONFLICT", "OPEN_WINDOW"].includes(
+        point.state,
+      ) ||
+      point.complete !== (point.state === "COMPLETE") ||
+      (point.complete &&
+        (windowEnd > end ||
+          point.samples !== point.expectedSamples ||
+          point.quality !== "good" ||
+          point.conflicts !== 0)) ||
+      (point.samples === 0
+        ? point.value !== null
+        : !Number.isFinite(point.value) || point.value < 0)
+    )
+      return false;
+    seen.add(key);
+  }
+  return true;
 }
 
 export function validAsOf(value, asOf, replay) {
@@ -954,6 +1099,7 @@ export function seriesQuery(
 }
 
 const safeReadErrors = {
+  mining_flow_pending: ["waiting", "Waiting for the first connection flow samples."],
   mining_demo_run_not_found: ["no_sample", "No public simulation is available yet."],
   mining_run_not_found: ["no_sample", "No approved run is available yet."],
   mining_admission_unavailable: ["waiting", "Waiting for run admission."],
@@ -1050,6 +1196,22 @@ export class MiningPolling {
   }
 }
 export function verifiedRunIngestion(overview, run) {
+  const connection = overview?.connectionIngestion;
+  if (run && overview?.run?.runId === run.runId && connection) {
+    if (connection.status === "pending") return "verification pending";
+    if (
+      connection.provenance === "fabric-connection-reconciliation-v1" &&
+      ["complete", "changed"].includes(connection.status) &&
+      Number.isFinite(Date.parse(connection.asOf)) &&
+      Number.isFinite(Date.parse(connection.checkedAt)) &&
+      Date.parse(connection.asOf) <= Date.parse(connection.checkedAt)
+    ) {
+      return connection.status === "complete"
+        ? `complete as of ${formatTimestamp(connection.asOf)} · row counts checked ${formatTimestamp(connection.checkedAt)}`
+        : `changed after verification at ${formatTimestamp(connection.asOf)}`;
+    }
+    return "unknown";
+  }
   const evidence = overview?.ingestion;
   if (
     !run ||

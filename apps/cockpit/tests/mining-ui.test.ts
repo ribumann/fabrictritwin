@@ -18,6 +18,8 @@ import {
   validIncidentAssociation,
   refreshedIncidentSelection,
   sameScope,
+  validConnectionFlow,
+  validConnectionTrend,
   moduleStatus,
   lineOperatingState,
   validOverview,
@@ -39,7 +41,30 @@ import {
   continuousSummaryMetric,
   continuousClockSkewMs,
   simulationTiming,
+  activePublisher,
+  demoContextChanged,
 } from "../src/ui/public/mining/data.js";
+
+describe("shared-flow preparation", () => {
+  it("keeps a preparing or scheduled run cancellable and refreshes context on activation", () => {
+    const preparing = { runId: "run", publisherStatus: "preparing" };
+    const scheduled = { ...preparing, publisherStatus: "scheduled" };
+    const running = { ...preparing, publisherStatus: "running" };
+    expect(activePublisher(preparing)).toBe(true);
+    expect(activePublisher(scheduled)).toBe(true);
+    expect(activePublisher({ ...running, publisherStatus: "failed" })).toBe(false);
+    expect(demoContextChanged({ approvedRun: preparing }, scheduled, false)).toBe(true);
+    expect(demoContextChanged({ approvedRun: scheduled }, running, false)).toBe(true);
+    expect(demoContextChanged({ approvedRun: running }, running, false)).toBe(false);
+    expect(
+      demoContextChanged(
+        { approvedRun: { ...running, publisherStatus: "stop_requested" } },
+        { ...running, stopRequested: true },
+        false,
+      ),
+    ).toBe(false);
+  });
+});
 
 describe("bounded live stream charts", () => {
   const start = Date.parse("2026-01-01T00:00:00Z");
@@ -60,6 +85,7 @@ describe("bounded live stream charts", () => {
       state: "collecting",
       remaining: 1,
     });
+
     expect(streamWindow(run, observed, start + 32_000)?.state).toBe("arriving");
     expect(streamWindow(run, observed, start + 36_000)?.state).toBe("overdue");
     const withNumeric = collectReceipt(observed, { ...run, nativeReceipt: numeric });
@@ -90,6 +116,53 @@ describe("bounded live stream charts", () => {
         category: "service_failed",
         message: "Live readings unavailable. Plant layout still works. Retry.",
       });
+      const pending = new MiningReads(async () => response("mining_flow_pending"));
+      await expect(pending.read("connection-latest")).rejects.toMatchObject({
+        category: "waiting",
+        message: "Waiting for the first connection flow samples.",
+      });
+    });
+
+    it("shows a pending flow read as waiting, but reports a real read failure", async () => {
+      const source = readFileSync(
+        new URL("../src/ui/public/mining/app.js", import.meta.url),
+        "utf8",
+      );
+      const tree = ts.createSourceFile("app.js", source, ts.ScriptTarget.Latest, true);
+      const refresh = tree.statements.find(
+        (statement): statement is ts.FunctionDeclaration =>
+          ts.isFunctionDeclaration(statement) && statement.name?.text === "refreshConnectionFlow",
+      );
+      if (!refresh) throw new Error("Connection flow refresh not found");
+      const labels = new Map<string, string>();
+      const sandbox: any = {
+        mode: "live",
+        context: {
+          capabilities: { connectionFlow: true },
+          readAvailable: true,
+          approvedRun: { runId: "current" },
+        },
+        document: { hidden: false },
+        requestEpoch: 0,
+        flowExpiryTimer: undefined,
+        connectionFlow: null,
+        flowTrendGeneration: 0,
+        $: () => ({}),
+        text: (id: string, value: string) => labels.set(id, value),
+        reads: { read: vi.fn() },
+        clearTimeout,
+        drawPlant: vi.fn(),
+        drawDrawer: vi.fn(),
+      };
+      runInNewContext(`${refresh.getText(tree)}; this.refresh = refreshConnectionFlow;`, sandbox);
+      sandbox.reads.read.mockRejectedValueOnce({ category: "waiting" });
+      await sandbox.refresh("overview");
+      expect(labels.get("flow-status")).toBe("Waiting for the first connection flow samples.");
+      sandbox.reads.read.mockRejectedValueOnce(new Error("private upstream failure"));
+      await sandbox.refresh("overview");
+      expect(labels.get("flow-status")).toBe(
+        "Connection flows unavailable. Plant layout remains available.",
+      );
     });
   });
 
@@ -111,6 +184,147 @@ import {
   relevantTags,
   visibleModules,
 } from "../src/ui/public/mining/plant.js";
+
+describe("connection flow browser scope", () => {
+  const now = Date.parse("2026-01-01T12:00:30.000Z");
+  const catalog = { streams: [{ id: "feed" }, { id: "water" }] };
+  const data = {
+    plantId: "D01",
+    runId: "current",
+    catalogVersion: "pinned",
+    runStartedAt: "2026-01-01T12:00:00.000Z",
+    asOf: new Date(now).toISOString(),
+    readings: [
+      {
+        streamId: "feed",
+        measurementTagId: "feed-solids",
+        quantity: "dry_solids_mass_flow",
+        unit: "t/h",
+        nominalCapacity: 60,
+        status: "OK",
+        quality: "good",
+        stale: false,
+        value: 0,
+        sampleTime: "2026-01-01T12:00:25.000Z",
+        receiptTime: "2026-01-01T12:00:28.000Z",
+      },
+      {
+        streamId: "water",
+        measurementTagId: "water-flow",
+        quantity: "water_volume_flow",
+        unit: "m3/h",
+        nominalCapacity: 120,
+        status: "MISSING",
+        value: null,
+      },
+    ],
+  };
+  it("accepts a measured zero but refuses stale, foreign or incomplete scopes", () => {
+    expect(validConnectionFlow(data, "current", "pinned", catalog, now)).toBe(true);
+    expect(validConnectionFlow(data, "other", "pinned", catalog, now)).toBe(false);
+    expect(validConnectionFlow(data, "current", "pinned", catalog, now + 31_000)).toBe(false);
+    expect(
+      validConnectionFlow(
+        { ...data, readings: [data.readings[0]] },
+        "current",
+        "pinned",
+        catalog,
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      validConnectionFlow(
+        { ...data, readings: [data.readings[0], data.readings[0], data.readings[1]] },
+        "current",
+        "pinned",
+        catalog,
+        now,
+      ),
+    ).toBe(false);
+  });
+  it("accepts timestamped delayed observations but rejects inconsistent delay metadata", () => {
+    const delayed = {
+      ...data,
+      readings: [
+        {
+          ...data.readings[0],
+          status: "STALE",
+          stale: true,
+          sampleTime: "2026-01-01T12:00:05.000Z",
+        },
+        data.readings[1],
+      ],
+    };
+    expect(validConnectionFlow(delayed, "current", "pinned", catalog, now)).toBe(true);
+    delayed.readings[0].stale = false;
+    expect(validConnectionFlow(delayed, "current", "pinned", catalog, now)).toBe(false);
+  });
+  it("checks complete aligned trend grids rather than filling gaps", () => {
+    const request = {
+      runId: "current",
+      catalogVersion: "pinned",
+      streamIds: ["feed"],
+      start: "2026-01-01T12:00:00.000Z",
+      end: "2026-01-01T12:00:30.000Z",
+      windowSeconds: 30,
+    };
+    const point = {
+      streamId: "feed",
+      measurementTagId: "feed-solids",
+      quantity: "dry_solids_mass_flow",
+      unit: "t/h",
+      windowStart: request.start,
+      windowEnd: request.end,
+      samples: 6,
+      expectedSamples: 6,
+      coverage: 1,
+      complete: true,
+      conflicts: 0,
+      quality: "good",
+      state: "COMPLETE",
+      value: 0,
+    };
+    const open = {
+      ...point,
+      windowStart: request.end,
+      windowEnd: "2026-01-01T12:01:00.000Z",
+      samples: 0,
+      coverage: 0,
+      complete: false,
+      state: "OPEN_WINDOW",
+      value: null,
+    };
+    const result = { ...data, start: request.start, end: request.end, points: [point] };
+    expect(validConnectionTrend(result, request, data)).toBe(true);
+    expect(validConnectionTrend({ ...result, points: [] }, request, data)).toBe(false);
+    const extendedRequest = { ...request, end: "2026-01-01T12:00:35.000Z" };
+    expect(
+      validConnectionTrend(
+        { ...result, end: extendedRequest.end, points: [point, open] },
+        extendedRequest,
+        data,
+      ),
+    ).toBe(true);
+    expect(
+      validConnectionTrend({ ...result, points: [{ ...point, conflicts: 1 }] }, request, data),
+    ).toBe(false);
+    const shiftedFlow = { ...data, runStartedAt: "2026-01-01T12:00:07.000Z" };
+    const shiftedRequest = {
+      ...request,
+      start: shiftedFlow.runStartedAt,
+      end: "2026-01-01T12:00:37.000Z",
+    };
+    const shiftedResult = {
+      ...result,
+      runStartedAt: shiftedFlow.runStartedAt,
+      start: shiftedRequest.start,
+      end: shiftedRequest.end,
+      points: [{ ...point, windowStart: shiftedRequest.start, windowEnd: shiftedRequest.end }],
+    };
+    expect(validConnectionTrend(shiftedResult, shiftedRequest, shiftedFlow)).toBe(true);
+    expect(validConnectionTrend(shiftedResult, request, shiftedFlow)).toBe(false);
+  });
+});
 import {
   APPEARANCE_RELEASE,
   fitModelToNode,
@@ -986,7 +1200,7 @@ describe("cross-run chart validation", () => {
         },
       });
     const tag = (metric: string) => ({ id: metric, metric, equipment_id: "e", unit: "t/h" });
-    const tags = [tag("ore_flow"), tag("stale_flow")];
+    const tags = [tag("ore_flow"), tag("stale_flow"), tag("medium_density")];
     const sandbox: any = {
       catalog: { modules: [{ id: "D01.A.crusher", kind: "crusher", label: "Crusher" }] },
       selected: "D01.A.crusher",
@@ -1039,7 +1253,25 @@ describe("cross-run chart validation", () => {
     expect(elements["latest-readings"].children.map((item: any) => item.value)).toEqual([
       "ore flow: 42 t/h",
       "stale flow: Unknown t/h",
+      "medium density: Unknown t/h",
     ]);
+    sandbox.context.capabilities = { connectionFlow: true };
+    sandbox.overview.quality = "missing";
+    sandbox.mode = "live";
+    sandbox.catalog.streams = [];
+    sandbox.connectionFlow = null;
+    sandbox.catalogVersion = "pinned";
+    sandbox.validConnectionFlow = () => false;
+    runInNewContext(`${fn.getText(tree)}; drawDrawer();`, sandbox);
+    expect(elements["latest-readings"].children.map((item: any) => item.value)).toEqual([
+      "ore flow: 42 t/h",
+      "stale flow: Unknown t/h",
+      "medium density: Not simulated",
+    ]);
+    sandbox.context.capabilities.connectionFlow = false;
+    runInNewContext(`${fn.getText(tree)}; drawDrawer();`, sandbox);
+    expect(elements["latest-readings"].children[0].value).toBe("ore flow: Unknown t/h");
+    expect(elements["latest-readings"].children[2].value).toBe("medium density: Unknown t/h");
   });
   it("accepts observed evidence and fails closed on foreign ownership, samples and statuses", () => {
     const catalog = readCatalog();
@@ -1623,6 +1855,62 @@ describe("mining request lifecycle", () => {
     expect(read.mock.calls.some(([path]) => path === "incidents")).toBe(mode === "live");
     expect(chart).toHaveBeenCalledWith("feed-chart", comparison);
   });
+  it("explains unsupported density and incidents without reporting an outage for flow runs", async () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile(
+      "app.js",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const refresh = tree.statements.find(
+      (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "refresh",
+    );
+    if (!refresh) throw new Error("Missing mining refresh function");
+    const read = vi.fn(async (_path: string) => ({}));
+    const diagnostic = { value: "density" };
+    const asset = { value: "D01.A.dms" };
+    const graph = { append: vi.fn() };
+    const context = {
+      mode: "live",
+      incidents: [],
+      incidentAsOf: null,
+      incidentAssessment: null,
+      selectedIncident: null,
+      requestEpoch: 0,
+      document: { hidden: false },
+      context: {
+        readAvailable: true,
+        approvedRun: { runId: "approved" },
+        capabilities: { connectionFlow: true },
+      },
+      query: () => ({ plantId: "D01", runId: "approved" }),
+      reads: { read },
+      currentIncidentQuery,
+      seriesQuery,
+      validSeries: () => true,
+      catalog: {},
+      catalogVersion: "pinned",
+      drawIncidents: vi.fn(),
+      drawDrawer: vi.fn(),
+      drawPlant: vi.fn(),
+      drawContinuousAdvisories: vi.fn(),
+      drawDiagnosticScope: vi.fn(),
+      chart: vi.fn(),
+      node: (_tag: string, value: string) => value,
+      $: (id: string) =>
+        id === "diagnostic" ? diagnostic : id === "diagnostic-asset" ? asset : graph,
+      refresh: undefined as undefined | ((scope: string) => Promise<void>),
+    };
+    runInNewContext(`${refresh.getText(tree)}; this.refresh = refresh;`, context);
+    await context.refresh!("detail");
+    expect(read.mock.calls.map(([path]) => path)).toEqual(["compare-lines"]);
+    expect(graph.append).toHaveBeenCalledWith("Density is not simulated in this flow profile.");
+    expect(context.drawIncidents).toHaveBeenCalledWith(
+      "Incident assessments are not available for this flow simulation.",
+    );
+  });
   it("distinguishes freshly rechecked reconciled event time from live assessment freshness", () => {
     const now = Date.parse("2026-01-01T12:10:00.000Z");
     const data = {
@@ -1709,6 +1997,29 @@ describe("mining request lifecycle", () => {
         run,
       ),
     ).toBe("unknown");
+  });
+  it("labels connection verification as a cutoff and flags later changes", () => {
+    const run = { runId: "approved" };
+    const overview = {
+      run,
+      connectionIngestion: {
+        status: "complete",
+        provenance: "fabric-connection-reconciliation-v1",
+        asOf: "2026-01-01T12:00:00.000Z",
+        checkedAt: "2026-01-01T12:01:00.000Z",
+      },
+    };
+    expect(verifiedRunIngestion(overview, run)).toMatch(/^complete as of .*row counts checked/);
+    expect(
+      verifiedRunIngestion(
+        {
+          ...overview,
+          connectionIngestion: { ...overview.connectionIngestion, status: "changed" },
+        },
+        run,
+      ),
+    ).toMatch(/^changed after verification/);
+    expect(verifiedRunIngestion(overview, { runId: "other" })).toBe("unknown");
   });
   it("sends chart windows without the overview-only asOf parameter", async () => {
     const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(new Response("{}")));

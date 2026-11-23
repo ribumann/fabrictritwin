@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MiningRunCoordinator,
   assertBoundedMiningRun,
+  createMiningConnectionRunProfilePin,
+  receiptAnchoredStart,
   type MiningClock,
   type StartMiningRun,
 } from "../src/mining/run-coordinator.js";
@@ -11,6 +13,12 @@ import {
   type StoredDocument,
 } from "../src/mining/store.js";
 import { createD01RunContract } from "../src/mining-incidents/catalog.js";
+import {
+  D01_CONNECTION_PROFILE_VERSION,
+  D01_CATALOG_VERSION,
+  D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
+  D01_LEGACY_FLOW_PROJECTION_PROFILE_VERSION,
+} from "@triathlon-twin/simulator/mining";
 
 const first = "11111111-1111-4111-8111-111111111111";
 const second = "22222222-2222-4222-8222-222222222222";
@@ -122,6 +130,243 @@ describe("mining durable run coordination", () => {
     replicaB = new MiningRunCoordinator(storage, clock);
   });
   afterEach(() => vi.useRealTimers());
+
+  it("persists a future start and bounded pin deadline in the isolated prepared-flow schema", async () => {
+    replicaA = new MiningRunCoordinator(storage, clock, { finalFlushMilliseconds: 5_000 });
+    replicaB = new MiningRunCoordinator(storage, clock, { finalFlushMilliseconds: 5_000 });
+    const admission = await replicaA.start({
+      plantId: "D01",
+      requestId: first,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    expect(admission.kind).toBe("started");
+    if (admission.kind !== "started") throw new Error("Missing shared-flow owner.");
+    expect(storage.documents.get(plantPath)?.value).toMatchObject({
+      version: 4,
+      run: {
+        runId: first,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 185,
+        shutdownAtSeconds: 5,
+        drainDownSeconds: 180,
+        admittedAt: "2026-01-01T00:00:00.000Z",
+        pinDeadlineAt: "2026-01-01T00:02:00.000Z",
+        startedAt: "2026-01-01T00:02:05.000Z",
+        stopAt: "2026-01-01T00:05:10.000Z",
+        finalFlushUntil: "2026-01-01T00:05:15.000Z",
+        phase: "preparing",
+        connectionProfileContract: {
+          catalogVersion: D01_CATALOG_VERSION,
+          measurementCatalogVersion: D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
+          profileVersion: D01_CONNECTION_PROFILE_VERSION,
+          legacyProjectionProfileVersion: D01_LEGACY_FLOW_PROJECTION_PROFILE_VERSION,
+        },
+      },
+    });
+    expect(admission.run).not.toHaveProperty("contract");
+    expect(createMiningConnectionRunProfilePin(admission.run)).toEqual({
+      plant_id: "D01",
+      run_id: first,
+      catalog_version: D01_CATALOG_VERSION,
+      measurement_catalog_version: D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
+      profile_version: D01_CONNECTION_PROFILE_VERSION,
+      started_at: "2026-01-01T00:02:05.000Z",
+    });
+    expect(
+      await replicaB.start({
+        plantId: "D01",
+        requestId: first,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 185,
+      }),
+    ).toMatchObject({
+      kind: "observed",
+      status: { run: { profileVersion: D01_CONNECTION_PROFILE_VERSION } },
+    });
+    await expect(replicaB.start({ plantId: "D01", requestId: first })).rejects.toMatchObject({
+      code: "conflict",
+    });
+    await admission.owner.finish("failed");
+  });
+
+  it("persists the confirmed receipt schedule and rejects a corrupted version-5 record", async () => {
+    const coordinator = new MiningRunCoordinator(storage, clock, {
+      finalFlushMilliseconds: 5_000,
+      receiptStartEnabled: true,
+    });
+    const admission = await coordinator.start({
+      ...input,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    if (admission.kind !== "started") throw new Error("Missing shared-flow owner.");
+    vi.setSystemTime(new Date("2026-01-01T00:00:40.500Z"));
+    const activated = await admission.owner.activatePreparedRun("2026-01-01T00:00:40.1234567Z");
+    expect(activated).toMatchObject({
+      startedAt: "2026-01-01T00:01:11.000Z",
+      stopAt: "2026-01-01T00:04:16.000Z",
+      phase: "scheduled",
+    });
+    expect(storage.documents.get(plantPath)?.value).toMatchObject({
+      version: 5,
+      run: { pinReceivedAt: "2026-01-01T00:00:40.1234567Z", ...activated },
+    });
+    const document = storage.documents.get(plantPath)!;
+    const original = structuredClone(document.value);
+    document.value = { version: 5, run: { ...activated, startedAt: "2026-01-01T00:01:12.000Z" } };
+    await expect(coordinator.currentStatus()).rejects.toMatchObject({ code: "invalid" });
+    document.value = { version: 5, run: { ...activated, pinReceivedAt: undefined } };
+    await expect(coordinator.currentStatus()).rejects.toMatchObject({ code: "invalid" });
+    document.value = original;
+    await admission.owner.finish("failed");
+  });
+
+  it("fails closed on missing, implausible or unleased receipt activation", async () => {
+    const coordinator = new MiningRunCoordinator(storage, clock, {
+      finalFlushMilliseconds: 5_000,
+      receiptStartEnabled: true,
+    });
+    const admission = await coordinator.start({
+      ...input,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    if (admission.kind !== "started") throw new Error("Missing shared-flow owner.");
+    for (const receipt of [undefined, "2025-12-31T23:59:54Z", "2026-01-01T00:00:06Z"]) {
+      await expect(admission.owner.activatePreparedRun(receipt)).rejects.toMatchObject({
+        code: "invalid",
+      });
+    }
+    storage.revoke();
+    await expect(admission.owner.activatePreparedRun("2026-01-01T00:00:00Z")).rejects.toMatchObject(
+      {
+        code: "lease_lost",
+      },
+    );
+    expect(storage.documents.get(plantPath)?.value).toMatchObject({
+      version: 5,
+      run: { phase: "preparing" },
+    });
+  });
+
+  it("caps receipt-derived starts at the original deadline and rejects invalid timestamps", () => {
+    expect(receiptAnchoredStart("2026-01-01T00:01:59.9999999Z", "2026-01-01T00:02:05.000Z")).toBe(
+      "2026-01-01T00:02:05.000Z",
+    );
+    expect(() => receiptAnchoredStart("invalid", "2026-01-01T00:02:05.000Z")).toThrow();
+  });
+
+  it("rejects shared-flow admission without a positive final-flush budget before persisting it", async () => {
+    await expect(
+      replicaA.start({
+        plantId: "D01",
+        requestId: first,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 185,
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect(storage.documents.size).toBe(0);
+  });
+
+  it("still reads earlier prepared records with the original 30-second pin deadline", async () => {
+    const coordinator = new MiningRunCoordinator(storage, clock, { finalFlushMilliseconds: 5_000 });
+    const admission = await coordinator.start({
+      plantId: "D01",
+      requestId: first,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    if (admission.kind !== "started") throw new Error("Missing shared-flow owner.");
+    const document = storage.documents.get(plantPath)!;
+    const original = structuredClone(document.value);
+    document.value = {
+      version: 4,
+      run: {
+        ...admission.run,
+        pinDeadlineAt: "2026-01-01T00:00:30.000Z",
+        startedAt: "2026-01-01T00:00:35.000Z",
+        stopAt: "2026-01-01T00:03:40.000Z",
+        finalFlushUntil: "2026-01-01T00:03:45.000Z",
+      },
+    };
+    expect(await coordinator.currentStatus()).toMatchObject({
+      phase: "preparing",
+      run: { pinDeadlineAt: "2026-01-01T00:00:30.000Z" },
+    });
+    document.value = original;
+    await admission.owner.finish("failed");
+  });
+
+  it("rejects shared-flow duration, prepare lead, and flush budgets beyond total lifetime", async () => {
+    const coordinator = new MiningRunCoordinator(storage, clock, {
+      finalFlushMilliseconds: 5_000,
+    });
+    await expect(
+      coordinator.start({
+        plantId: "D01",
+        requestId: first,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 1_800,
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect(storage.documents.size).toBe(0);
+
+    await expect(
+      coordinator.start({
+        plantId: "D01",
+        requestId: first,
+        profileVersion: D01_CONNECTION_PROFILE_VERSION,
+        durationSeconds: 1_675,
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect(storage.documents.size).toBe(0);
+
+    const boundary = await coordinator.start({
+      plantId: "D01",
+      requestId: second,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 1_670,
+    });
+    expect(boundary.kind).toBe("started");
+    if (boundary.kind !== "started") throw new Error("Missing boundary shared-flow owner.");
+    expect(Date.parse(boundary.run.finalFlushUntil!) - Date.parse(boundary.run.admittedAt!)).toBe(
+      1_800_000,
+    );
+    await boundary.owner.finish("failed");
+  });
+
+  it("requires both clocks to reach the pinned future start before activation", async () => {
+    let monotonicNow = 0;
+    const dualClock: MiningClock = { now: () => Date.now(), monotonic: () => monotonicNow };
+    const dualClockCoordinator = new MiningRunCoordinator(storage, dualClock, {
+      finalFlushMilliseconds: 5_000,
+    });
+    const admission = await dualClockCoordinator.start({
+      plantId: "D01",
+      requestId: first,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    if (admission.kind !== "started") throw new Error("Missing prepared owner.");
+    await admission.owner.activatePreparedRun();
+    expect(await admission.owner.beginScheduledRun()).toBe(false);
+
+    for (let elapsed = 10_000; elapsed <= 110_000; elapsed += 10_000) {
+      vi.setSystemTime(new Date(Date.parse("2026-01-01T00:00:00.000Z") + elapsed));
+      monotonicNow = elapsed;
+      await admission.owner.heartbeat();
+    }
+    vi.setSystemTime(new Date("2026-01-01T00:02:05.000Z"));
+    expect(await admission.owner.beginScheduledRun()).toBe(false);
+    vi.setSystemTime(new Date("2026-01-01T00:01:50.000Z"));
+    monotonicNow = 125_000;
+    expect(await admission.owner.beginScheduledRun()).toBe(false);
+    vi.setSystemTime(new Date("2026-01-01T00:02:05.000Z"));
+    expect(await admission.owner.beginScheduledRun()).toBe(true);
+    expect(await dualClockCoordinator.status(first)).toMatchObject({ phase: "running" });
+    await admission.owner.finish("failed");
+  });
 
   it("uses a separate continuous schema with no invented duration or end time", async () => {
     const admission = await replicaA.startContinuous({

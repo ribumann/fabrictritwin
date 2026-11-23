@@ -3,10 +3,15 @@ import type { JWTPayload } from "jose";
 import { verifyMcpCallerClaimsWithErrors } from "../auth/mcp-caller.js";
 import { MiningPublisherHost, type MiningPublisherExecution } from "../mining/publisher-host.js";
 import { configuredMiningPublisherRuntime } from "../mining/publisher-runtime.js";
-import type { MiningPublisherAdmission } from "../mining/publisher-runtime.js";
+import type {
+  MiningConnectionRunProfilePinHandler,
+  MiningPublisherAdmission,
+} from "../mining/publisher-runtime.js";
 import type { StartMiningRun } from "../mining/run-coordinator.js";
 import { MiningCoordinationError } from "../mining/store.js";
 import { hasApprovedDelegatedOperatorClaims } from "./mining-delegated-auth.js";
+import { D01_CONNECTION_PROFILE_VERSION } from "@triathlon-twin/simulator/mining";
+import { configuredConnectionRunPinHandler } from "../mining/connection-run-pin.js";
 
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const runIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -14,12 +19,15 @@ const scopePattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 interface StartBody {
   plantId: "D01";
   runId: string;
+  profileVersion?: typeof D01_CONNECTION_PROFILE_VERSION;
 }
 
 interface Options {
   synthetic: boolean;
   env?: NodeJS.ProcessEnv;
   host?: MiningPublisherHost;
+  /** Trusted external writer; must persist the immutable profile pin and resolve only after confirmation. */
+  connectionRunProfilePin?: MiningConnectionRunProfilePinHandler;
   verifyClaims?: (req: Request, signal: AbortSignal) => Promise<JWTPayload | undefined>;
   start?: (body: StartBody, signal: AbortSignal) => MiningPublisherExecution;
 }
@@ -43,9 +51,9 @@ function parseStartBody(body: unknown): StartBody | undefined {
   if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
   const value = body as Record<string, unknown>;
   const keys = Object.keys(value);
-  if (keys.length !== 2) return undefined;
+  if (keys.length < 2 || keys.length > 3) return undefined;
   for (const key of keys) {
-    if (key !== "plantId" && key !== "runId") return undefined;
+    if (key !== "plantId" && key !== "runId" && key !== "profileVersion") return undefined;
   }
   if (
     !("plantId" in body) ||
@@ -56,9 +64,15 @@ function parseStartBody(body: unknown): StartBody | undefined {
   ) {
     return undefined;
   }
+  if ("profileVersion" in value && value.profileVersion !== D01_CONNECTION_PROFILE_VERSION) {
+    return undefined;
+  }
   return {
     plantId: value.plantId as "D01",
     runId: value.runId as string,
+    ...(value.profileVersion === D01_CONNECTION_PROFILE_VERSION
+      ? { profileVersion: D01_CONNECTION_PROFILE_VERSION }
+      : {}),
   };
 }
 
@@ -66,11 +80,20 @@ function parseStartBody(body: unknown): StartBody | undefined {
 export function createMiningStartRouter(options: Options): Router {
   const router = Router();
   const env = { ...(options.env ?? process.env) };
+  const profilePin = options.connectionRunProfilePin ?? configuredConnectionRunPinHandler(env);
   const verify =
     options.verifyClaims ??
     ((req: Request, signal: AbortSignal) => verifyMcpCallerClaimsWithErrors(req, signal, env));
   const host =
-    options.host ?? new MiningPublisherHost(() => configuredMiningPublisherRuntime({ ...env }));
+    options.host ??
+    new MiningPublisherHost(() =>
+      configuredMiningPublisherRuntime(
+        { ...env },
+        {
+          connectionRunProfilePin: profilePin,
+        },
+      ),
+    );
   const start =
     options.start ??
     ((body: StartBody, signal: AbortSignal): MiningPublisherExecution =>
@@ -78,8 +101,14 @@ export function createMiningStartRouter(options: Options): Router {
         {
           plantId: "D01",
           requestId: body.runId,
+          ...(body.profileVersion ? { profileVersion: body.profileVersion } : {}),
         } satisfies StartMiningRun,
         signal,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        profilePin,
       ));
   router.post("/runs/start", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -120,6 +149,18 @@ export function createMiningStartRouter(options: Options): Router {
         400,
         "invalid_mining_start",
         "Provide only D01 plantId and a canonical UUID runId.",
+      );
+      return;
+    }
+    if (
+      body.profileVersion === D01_CONNECTION_PROFILE_VERSION &&
+      env.MINING_CONNECTION_FLOW_ENABLED !== "true"
+    ) {
+      error(
+        res,
+        503,
+        "mining_connection_profile_disabled",
+        "The requested shared-flow run profile is not enabled.",
       );
       return;
     }

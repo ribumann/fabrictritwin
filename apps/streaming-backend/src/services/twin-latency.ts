@@ -6,6 +6,8 @@ export type Timeline = Run & {
   sampleTime: string;
   emittedAt: string;
   eventCount: number;
+  legacyEventCount?: number;
+  connectionEventCount?: number;
   eventId?: string;
   raceId?: string;
 };

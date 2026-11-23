@@ -3,9 +3,13 @@ import {
   D01_CATALOG_VERSION,
   D01_PLANT_CATALOG,
   D01_PLANT_ID,
+  D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
+  D01_CONNECTION_PROFILE_VERSION,
   D01_PUBLISH_PROFILE_VERSION,
+  D01_LEGACY_FLOW_PROJECTION_PROFILE_VERSION,
   getD01TagIntervalSeconds,
   toD01PublishProfileRecords,
+  toD01ConnectionMeasurementBindingRecords,
   validateD01PlantCatalog,
 } from "@triathlon-twin/simulator/mining";
 import type { BoundedMiningRunRecord } from "../mining/run-coordinator.js";
@@ -13,13 +17,24 @@ import type { MiningTag } from "./evaluator.js";
 import type { MiningIncidentRun } from "./runtime.js";
 
 /** Source-recorded contract; it is not an authorization or deployment attestation. */
-export interface D01RunContract {
+export interface D01LegacyRunContract {
   catalogVersion: string;
-  profileVersion: string;
+  profileVersion: typeof D01_PUBLISH_PROFILE_VERSION;
   evaluatorReplayVersion: 1;
 }
 
-export function createD01RunContract(): D01RunContract {
+export interface D01SharedFlowRunContract {
+  catalogVersion: string;
+  profileVersion: typeof D01_CONNECTION_PROFILE_VERSION;
+  measurementCatalogVersion: typeof D01_CONNECTION_MEASUREMENT_CATALOG_VERSION;
+  legacyProjectionProfileVersion: typeof D01_LEGACY_FLOW_PROJECTION_PROFILE_VERSION;
+}
+
+/** Legacy contract keeps existing incident/read APIs source-compatible. */
+export type D01RunContract = D01LegacyRunContract;
+export type D01PersistedRunContract = D01LegacyRunContract | D01SharedFlowRunContract;
+
+function assertD01PublishedMetadataPinned(): void {
   const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
   if (
     D01_CATALOG_VERSION !==
@@ -32,6 +47,10 @@ export function createD01RunContract(): D01RunContract {
   ) {
     throw new Error("D01 catalog or publish profile no longer matches the supported contract.");
   }
+}
+
+export function createD01RunContract(): D01LegacyRunContract {
+  assertD01PublishedMetadataPinned();
   return {
     catalogVersion: D01_CATALOG_VERSION,
     profileVersion: D01_PUBLISH_PROFILE_VERSION,
@@ -39,21 +58,70 @@ export function createD01RunContract(): D01RunContract {
   };
 }
 
-export function assertD01RunContract(value: unknown): asserts value is D01RunContract {
+export function createD01SharedFlowRunContract(): D01SharedFlowRunContract {
+  assertD01PublishedMetadataPinned();
+  const bindings = toD01ConnectionMeasurementBindingRecords();
+  if (
+    D01_CONNECTION_MEASUREMENT_CATALOG_VERSION !== "d01-connection-measurements-v1" ||
+    D01_CONNECTION_PROFILE_VERSION !== "d01-shared-flow-v1" ||
+    D01_LEGACY_FLOW_PROJECTION_PROFILE_VERSION !== "d01-shared-flow-legacy-projection-v1" ||
+    createHash("sha256").update(JSON.stringify(bindings)).digest("hex") !==
+      "dd6ee0169a0923f01f776047d1364efe3179e6d1e3c4c2cc8cd5009da93f61da" ||
+    bindings.length !== 57 ||
+    new Set(bindings.map((binding) => binding.measurement_tag_id)).size !== 57 ||
+    new Set(bindings.map((binding) => binding.stream_id)).size !== 50 ||
+    bindings.some(
+      (binding) =>
+        binding.catalog_version !== D01_CATALOG_VERSION ||
+        binding.measurement_catalog_version !== D01_CONNECTION_MEASUREMENT_CATALOG_VERSION ||
+        binding.profile_version !== D01_CONNECTION_PROFILE_VERSION,
+    )
+  ) {
+    throw new Error(
+      "D01 connection-flow catalog or profile no longer matches the supported contract.",
+    );
+  }
+  return {
+    catalogVersion: D01_CATALOG_VERSION,
+    profileVersion: D01_CONNECTION_PROFILE_VERSION,
+    measurementCatalogVersion: D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
+    legacyProjectionProfileVersion: D01_LEGACY_FLOW_PROJECTION_PROFILE_VERSION,
+  };
+}
+
+export function assertD01RunContract(value: unknown): asserts value is D01PersistedRunContract {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Invalid D01 run contract.");
   }
   const contract = value as Record<string, unknown>;
-  const supported = createD01RunContract();
-  if (
-    Object.keys(contract).sort().join() !==
-      "catalogVersion,evaluatorReplayVersion,profileVersion" ||
-    contract.catalogVersion !== supported.catalogVersion ||
-    contract.profileVersion !== supported.profileVersion ||
-    contract.evaluatorReplayVersion !== supported.evaluatorReplayVersion
-  ) {
-    throw new Error("Unsupported D01 run contract.");
+  if (contract.profileVersion === D01_PUBLISH_PROFILE_VERSION) {
+    const supported = createD01RunContract();
+    if (
+      Object.keys(contract).sort().join() !==
+        "catalogVersion,evaluatorReplayVersion,profileVersion" ||
+      contract.catalogVersion !== supported.catalogVersion ||
+      contract.profileVersion !== supported.profileVersion ||
+      contract.evaluatorReplayVersion !== supported.evaluatorReplayVersion
+    ) {
+      throw new Error("Unsupported D01 legacy run contract.");
+    }
+    return;
   }
+  if (contract.profileVersion === D01_CONNECTION_PROFILE_VERSION) {
+    const supported = createD01SharedFlowRunContract();
+    if (
+      Object.keys(contract).sort().join() !==
+        "catalogVersion,legacyProjectionProfileVersion,measurementCatalogVersion,profileVersion" ||
+      contract.catalogVersion !== supported.catalogVersion ||
+      contract.profileVersion !== supported.profileVersion ||
+      contract.measurementCatalogVersion !== supported.measurementCatalogVersion ||
+      contract.legacyProjectionProfileVersion !== supported.legacyProjectionProfileVersion
+    ) {
+      throw new Error("Unsupported D01 shared-flow run contract.");
+    }
+    return;
+  }
+  throw new Error("Unsupported D01 run contract.");
 }
 
 /** Reconstructs the exact run/catalog binding without activating incident processing. */
@@ -107,10 +175,13 @@ export function createD01IncidentRun(
 /** Builds the prospective journal definition only from an already bound run. */
 export function createD01VersionedIncidentRun(
   run: Pick<BoundedMiningRunRecord, "runId" | "startedAt" | "stopAt" | "lifetime"> & {
-    contract: D01RunContract;
+    contract: D01LegacyRunContract;
   },
 ): MiningIncidentRun {
   assertD01RunContract(run.contract);
+  if (run.contract.profileVersion !== D01_PUBLISH_PROFILE_VERSION) {
+    throw new Error("Shared-flow runs cannot activate legacy incident processing.");
+  }
   return Object.freeze({
     ...createD01IncidentRun(run),
     contract: Object.freeze(createD01RunContract()),

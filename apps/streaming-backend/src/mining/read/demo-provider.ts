@@ -139,7 +139,8 @@ export function createMiningDemoProvider(
         query,
         now,
         signal,
-        env.MINING_INGESTION_RECONCILIATION_ENABLED === "true",
+        env.MINING_INGESTION_RECONCILIATION_ENABLED === "true" &&
+          input.run.connectionProfileContract === undefined,
       );
     if (input.kind !== "trend" && input.kind !== "compare") {
       throw new Error("Unsupported public mining read.");

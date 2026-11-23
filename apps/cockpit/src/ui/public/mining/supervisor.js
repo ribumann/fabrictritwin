@@ -8,7 +8,25 @@ const overlayMetric = {
   dms: "medium_density",
 };
 
-export function plantEvidence(catalog, getReading, number, selected) {
+export function connectionReadingState(reading, now = Date.now()) {
+  const age = now - Date.parse(reading?.sampleTime);
+  const usable =
+    ((reading?.status === "OK" && reading.stale === false) ||
+      (reading?.status === "STALE" && reading.stale === true)) &&
+    reading.quality === "good" &&
+    Number.isFinite(reading.value) &&
+    reading.value >= 0 &&
+    Number.isFinite(age) &&
+    age >= -15_000 &&
+    age <= 120_000;
+  return !usable ? "unavailable" : age >= 15_000 || reading.stale ? "delayed" : "current";
+}
+
+export function usableConnectionReading(reading, now = Date.now()) {
+  return connectionReadingState(reading, now) !== "unavailable";
+}
+
+export function plantEvidence(catalog, getReading, number, selected, connectionReadings, now) {
   const readings = new Map();
   for (const module of catalog.modules) {
     const metric = overlayMetric[module.kind];
@@ -25,6 +43,44 @@ export function plantEvidence(catalog, getReading, number, selected) {
   }
   const activeRoutes = new Set();
   const measuredRoutes = new Map();
+  if (Array.isArray(connectionReadings)) {
+    const streamIds = new Set(catalog.streams.map((stream) => stream.id));
+    const invalidStreams = new Set();
+    for (const reading of connectionReadings) {
+      if (
+        !reading ||
+        !streamIds.has(reading.streamId) ||
+        !usableConnectionReading(reading, now) ||
+        !Number.isFinite(reading.nominalCapacity) ||
+        reading.nominalCapacity <= 0 ||
+        !(
+          (reading.quantity === "dry_solids_mass_flow" && reading.unit === "t/h") ||
+          (["water_volume_flow", "medium_volume_flow"].includes(reading.quantity) &&
+            reading.unit === "m3/h")
+        )
+      )
+        continue;
+      if (invalidStreams.has(reading.streamId)) continue;
+      const current = measuredRoutes.get(reading.streamId) ?? { components: [] };
+      if (current.components.some((component) => component.quantity === reading.quantity)) {
+        measuredRoutes.delete(reading.streamId);
+        activeRoutes.delete(reading.streamId);
+        invalidStreams.add(reading.streamId);
+        continue;
+      }
+      current.components.push({
+        quantity: reading.quantity,
+        value: reading.value,
+        unit: reading.unit,
+        width: 0.18 + 0.55 * Math.min(reading.value / reading.nominalCapacity, 1),
+        delayed: connectionReadingState(reading, now) === "delayed",
+        sampleTime: reading.sampleTime,
+      });
+      measuredRoutes.set(reading.streamId, current);
+      if (reading.value > 0) activeRoutes.add(reading.streamId);
+    }
+    return { readings, activeRoutes, measuredRoutes };
+  }
   for (const route of catalog.streams) {
     const id = route.target.module_id;
     if (!(

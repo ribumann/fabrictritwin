@@ -1,0 +1,110 @@
+{
+  "sources": [
+    {
+      "name": "connection_custom_endpoint",
+      "type": "CustomEndpoint",
+      "properties": {}
+    }
+  ],
+  "destinations": [
+    {
+      "name": "connection_measurement_raw_ingestion",
+      "type": "Eventhouse",
+      "properties": {
+        "dataIngestionMode": "DirectIngestion",
+        "workspaceId": "{{EVENTHOUSE_WORKSPACE_ID}}",
+        "itemId": "{{KQLDATABASE_ITEM_ID}}",
+        "tableName": "mining_ConnectionMeasurementRaw",
+        "connectionName": "{{CONNECTION_MEASUREMENT_CONNECTION_NAME}}",
+        "mappingRuleName": "mining_connection_measurement_v1_json_map"
+      },
+      "inputNodes": [{ "name": "connection_measurement_stream" }]
+    },
+    {
+      "name": "connection_run_profile_ingestion",
+      "type": "Eventhouse",
+      "properties": {
+        "dataIngestionMode": "DirectIngestion",
+        "workspaceId": "{{EVENTHOUSE_WORKSPACE_ID}}",
+        "itemId": "{{KQLDATABASE_ITEM_ID}}",
+        "tableName": "mining_ConnectionRunProfile",
+        "connectionName": "{{CONNECTION_PROFILE_CONNECTION_NAME}}",
+        "mappingRuleName": "mining_connection_run_profile_v1_json_map"
+      },
+      "inputNodes": [{ "name": "connection_run_profile_stream" }]
+    }
+  ],
+  "operators": [
+    {
+      "name": "connection_measurement_filter",
+      "type": "Filter",
+      "inputNodes": [{ "name": "connection_main_stream" }],
+      "properties": {
+        "conditions": [
+          {
+            "column": {
+              "node": "connection_main_stream",
+              "columnName": "entityType",
+              "columnPathSegments": null,
+              "expressionType": "ColumnReference"
+            },
+            "operatorType": "Equals",
+            "value": {
+              "dataType": "Nvarchar(max)",
+              "value": "ConnectionMeasurement",
+              "expressionType": "Literal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "connection_run_profile_filter",
+      "type": "Filter",
+      "inputNodes": [{ "name": "connection_main_stream" }],
+      "properties": {
+        "conditions": [
+          {
+            "column": {
+              "node": "connection_main_stream",
+              "columnName": "entityType",
+              "columnPathSegments": null,
+              "expressionType": "ColumnReference"
+            },
+            "operatorType": "Equals",
+            "value": {
+              "dataType": "Nvarchar(max)",
+              "value": "ConnectionRunProfile",
+              "expressionType": "Literal"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "streams": [
+    {
+      "name": "connection_main_stream",
+      "type": "DefaultStream",
+      "properties": {},
+      "inputNodes": [{ "name": "connection_custom_endpoint" }]
+    },
+    {
+      "name": "connection_measurement_stream",
+      "type": "DerivedStream",
+      "properties": {
+        "inputSerialization": { "type": "Json", "properties": { "encoding": "UTF8" } }
+      },
+      "inputNodes": [{ "name": "connection_measurement_filter" }]
+    },
+    {
+      "name": "connection_run_profile_stream",
+      "type": "DerivedStream",
+      "properties": {
+        "inputSerialization": { "type": "Json", "properties": { "encoding": "UTF8" } }
+      },
+      "inputNodes": [{ "name": "connection_run_profile_filter" }]
+    }
+  ],
+  "compatibilityLevel": "1.1"
+}

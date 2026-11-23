@@ -249,6 +249,67 @@ export function createMiningRouter(
       "mining_assistant_unavailable",
     );
   });
+  for (const route of ["connection-latest", "connection-trend"] as const) {
+    router.get(`/${route}`, async (req, res) => {
+      if (synthetic || !demoEnabled || !demoReadEnabled) {
+        res.status(503).json({
+          error: {
+            code: "mining_demo_read_disabled",
+            message: "Public mining reads are disabled.",
+          },
+        });
+        return;
+      }
+      const keys =
+        route === "connection-latest"
+          ? ["plantId", "runId"]
+          : ["plantId", "runId", "streamIds", "start", "end", "windowSeconds"];
+      const values = req.query;
+      const streams = typeof values.streamIds === "string" ? values.streamIds.split(",") : [];
+      const duration =
+        typeof values.end === "string" && typeof values.start === "string"
+          ? Date.parse(values.end) - Date.parse(values.start)
+          : NaN;
+      if (
+        Object.keys(values).length !== keys.length ||
+        keys.some((key) => typeof values[key] !== "string") ||
+        values.plantId !== "D01" ||
+        typeof values.runId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+          values.runId,
+        ) ||
+        (route === "connection-trend" &&
+          (streams.length < 1 ||
+            streams.length > 3 ||
+            new Set(streams).size !== streams.length ||
+            streams.some((id) => !identifier.test(id)) ||
+            typeof values.start !== "string" ||
+            typeof values.end !== "string" ||
+            !utc.test(values.start) ||
+            !utc.test(values.end) ||
+            !Number.isFinite(duration) ||
+            duration <= 0 ||
+            duration > 900_000 ||
+            !["30", "60"].includes(String(values.windowSeconds))))
+      ) {
+        res.status(400).json({
+          error: { code: "invalid_mining_query", message: "Invalid connection flow request." },
+        });
+        return;
+      }
+      await proxyStreamingBackendGet(
+        req,
+        res,
+        { ...options, maxResponseBytes: 1_048_576 },
+        () => {
+          const url = new URL(`/api/mining/demo/${route}`, options.streamingBackendBaseUrl);
+          for (const key of keys) url.searchParams.set(key, values[key] as string);
+          return url;
+        },
+        "mining_backend_unavailable",
+      );
+    });
+  }
   for (const route of routes) {
     router.get(`/${route}`, async (req, res) => {
       if (synthetic) {

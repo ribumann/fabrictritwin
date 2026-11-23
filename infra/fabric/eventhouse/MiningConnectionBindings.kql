@@ -1,0 +1,126 @@
+// Seed the immutable D01 v1 profile and its 57 measurement bindings.
+// Prerequisite: the existing pinned D01 stream records are already loaded in
+// mining_PlantCatalog. This file only writes new connection-owned tables.
+.set-or-append mining_ConnectionMeasurementProfile <|
+let already_present = toscalar(
+    mining_ConnectionMeasurementProfile
+    | where plant_id == "D01" and
+        measurement_catalog_version == "d01-connection-measurements-v1" and
+        profile_version == "d01-shared-flow-v1"
+    | count);
+datatable(
+    plant_id:string, catalog_version:string, measurement_catalog_version:string,
+    profile_version:string, entity_type:string, schema_version:int,
+    sample_interval_seconds:int, created_at:datetime)
+[
+    "D01", "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
+    "d01-connection-measurements-v1", "d01-shared-flow-v1",
+    "ConnectionMeasurement", 1, 5, datetime(null)
+]
+| extend created_at = now()
+| where already_present == 0
+
+.set-or-append mining_ConnectionMeasurementBinding <|
+let line_ids = datatable(line_id:string) ["A", "B", "C"];
+let process_components =
+    line_ids
+    | mv-expand suffix=dynamic([
+        "feed", "crush", "wash", "size", "sinks", "floats",
+        "concentrate", "reject", "sorter-reject", "product"
+    ]) to typeof(string)
+    | extend stream_id = strcat("process-", line_id, "-", suffix),
+        quantity = "dry_solids_mass_flow", basis = "dry_solids", unit = "t/h",
+        nominal_capacity = iff(suffix == "product", 10.0, 60.0);
+let fines_solids =
+    line_ids
+    | extend stream_id = strcat("utility-", line_id, "-fines"),
+        quantity = "dry_solids_mass_flow", basis = "dry_solids", unit = "t/h",
+        nominal_capacity = 20.0;
+let effluent_solids =
+    line_ids
+    | extend stream_id = strcat("utility-", line_id, "-effluent"),
+        quantity = "dry_solids_mass_flow", basis = "dry_solids", unit = "t/h",
+        nominal_capacity = 20.0;
+let fines_water =
+    line_ids
+    | extend stream_id = strcat("utility-", line_id, "-fines"),
+        quantity = "water_volume_flow", basis = "water", unit = "m3/h",
+        nominal_capacity = 100.0;
+let effluent_water =
+    line_ids
+    | extend stream_id = strcat("utility-", line_id, "-effluent"),
+        quantity = "water_volume_flow", basis = "water", unit = "m3/h",
+        nominal_capacity = 250.0;
+let medium_recycle =
+    line_ids
+    | extend stream_id = strcat("utility-", line_id, "-medium-recycle"),
+        quantity = "medium_volume_flow", basis = "ferrosilicon_medium", unit = "m3/h",
+        nominal_capacity = 150.0;
+let branch_water =
+    line_ids
+    | mv-expand suffix=dynamic(["scrubber-water", "screen-water", "medium-water"]) to typeof(string)
+    | extend stream_id = strcat("utility-", line_id, "-", suffix),
+        quantity = "water_volume_flow", basis = "water", unit = "m3/h",
+        nominal_capacity = 120.0;
+let shared_components = datatable(
+    stream_id:string, quantity:string, basis:string, unit:string, nominal_capacity:real)
+[
+    "utility-water-return", "water_volume_flow", "water", "m3/h", 300.0,
+    "utility-thickener-underflow", "dry_solids_mass_flow", "dry_solids", "t/h", 100.0,
+    "utility-thickener-underflow", "water_volume_flow", "water", "m3/h", 300.0
+];
+let components = union
+    (process_components | project stream_id, quantity, basis, unit, nominal_capacity),
+    (fines_solids | project stream_id, quantity, basis, unit, nominal_capacity),
+    (effluent_solids | project stream_id, quantity, basis, unit, nominal_capacity),
+    (fines_water | project stream_id, quantity, basis, unit, nominal_capacity),
+    (effluent_water | project stream_id, quantity, basis, unit, nominal_capacity),
+    (medium_recycle | project stream_id, quantity, basis, unit, nominal_capacity),
+    (branch_water | project stream_id, quantity, basis, unit, nominal_capacity),
+    shared_components;
+components
+| join kind=inner (
+    mining_PlantCatalog
+    | where plant_id == "D01" and
+        catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+        record_kind == "stream"
+    | project stream_id = record_id, stream_json = record_json
+) on stream_id
+| extend measurement_tag_id = strcat("D01.connection.", stream_id, ".", quantity)
+| project
+    plant_id = "D01",
+    catalog_version = "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
+    measurement_catalog_version = "d01-connection-measurements-v1",
+    profile_version = "d01-shared-flow-v1",
+    stream_id, measurement_tag_id,
+    source_module_id = tostring(stream_json.source.module_id),
+    source_port_id = tostring(stream_json.source.port_id),
+    source_equipment_id = "",
+    source_equipment_port_id = "",
+    target_module_id = tostring(stream_json.target.module_id),
+    target_port_id = tostring(stream_json.target.port_id),
+    target_equipment_id = "",
+    target_equipment_port_id = "",
+    endpoint_granularity = "module-port",
+    quantity, basis, unit, nominal_capacity, nominal_capacity_unit = unit,
+    nominal_capacity_purpose = "visualization_scale_only",
+    sample_interval_seconds = toint(5), origin = "synthetic_sensor_observation"
+| join kind=leftanti (
+    mining_ConnectionMeasurementBinding
+    | where plant_id == "D01" and
+        catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+        measurement_catalog_version == "d01-connection-measurements-v1" and
+        profile_version == "d01-shared-flow-v1"
+    | project plant_id, catalog_version, measurement_catalog_version,
+        profile_version, measurement_tag_id
+) on plant_id, catalog_version, measurement_catalog_version, profile_version, measurement_tag_id
+
+// Inspect after seeding: expected 57 unique tags, one profile row, and no
+// duplicate (stream_id, quantity) pairs. Do not repair by replacing the table.
+mining_ConnectionMeasurementBinding
+| where plant_id == "D01" and
+    measurement_catalog_version == "d01-connection-measurements-v1" and
+    profile_version == "d01-shared-flow-v1"
+| summarize binding_rows=count(),
+    unique_tags=dcount(measurement_tag_id),
+    unique_components=dcount(strcat(stream_id, ":", quantity))

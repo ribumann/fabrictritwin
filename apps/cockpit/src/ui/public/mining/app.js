@@ -1,10 +1,12 @@
 import { collectPreview, collectReceipt, drawStreamCharts, streamWindow } from "./stream.js";
 import {
   buildupObservation,
+  connectionReadingState,
   diagnosticAssets,
   investigationPrompt,
   plantEvidence,
   possibleBuildup,
+  usableConnectionReading,
 } from "./supervisor.js";
 import {
   MiningReads,
@@ -17,6 +19,8 @@ import {
   validIncidentAssociation,
   refreshedIncidentSelection,
   sameScope,
+  validConnectionFlow,
+  validConnectionTrend,
   moduleStatus,
   lineOperatingState,
   validOverview,
@@ -37,6 +41,8 @@ import {
   continuousSummaryMetric,
   continuousClockSkewMs,
   simulationTiming,
+  activePublisher,
+  demoContextChanged,
 } from "./data.js";
 import { visibleModules, connections, relevantTags, renderTop, createPlant3D } from "./plant.js";
 import {
@@ -77,6 +83,9 @@ let catalog,
   plant3d,
   requestEpoch = 0,
   selectedIncident = null;
+let connectionFlow = null;
+let flowTrendGeneration = 0;
+let flowExpiryTimer;
 let incidents = [];
 let incidentAsOf = null;
 let incidentAssessment = null;
@@ -191,12 +200,19 @@ function drawPlant() {
           const row =
             context?.mode === "continuous"
               ? continuousTagReading(continuousOverview, id)
-              : overview?.quality === "good" &&
+              : (overview?.quality === "good" ||
+                  (context?.capabilities?.connectionFlow === true &&
+                    overview?.quality === "missing")) &&
                 overview.latest.readings.find((reading) => reading.tagId === id);
           return usable(row) ? row : null;
         },
         number,
         selected,
+        context?.capabilities?.connectionFlow === true && mode === "live"
+          ? validConnectionFlow(connectionFlow, context.approvedRun?.runId, catalogVersion, catalog)
+            ? connectionFlow.readings
+            : []
+          : undefined,
       )
     : { readings: new Map(), measuredRoutes: new Map() };
   evidence.lineStates = new Map(
@@ -471,8 +487,13 @@ function drawOverview() {
     if (demoRun) drawDemoRunStatus();
     return;
   }
-  const valid = overview?.quality === "good";
-  text("quality", `Quality: ${valid ? "good" : unknownQuality(overview?.quality)}`);
+  const valid =
+    overview?.quality === "good" ||
+    (context?.capabilities?.connectionFlow === true && overview?.quality === "missing");
+  text(
+    "quality",
+    `Quality: ${overview?.quality === "good" ? "good" : valid ? "partial" : unknownQuality(overview?.quality)}`,
+  );
   text("freshness", `Last refresh: ${timestamp(overview?.refreshedAt)}`);
   const run = overview?.run ?? context?.approvedRun;
   text(
@@ -529,7 +550,8 @@ function drawShift() {
   const observation =
     !continuous &&
     mode === "live" &&
-    data?.quality === "good" &&
+    (data?.quality === "good" ||
+      (context?.capabilities?.connectionFlow === true && data?.quality === "missing")) &&
     demoRun?.publisherStatus === "running" &&
     !demoRun.stopRequested &&
     demoRun.runId === context?.approvedRun?.runId
@@ -617,7 +639,10 @@ function drawDrawer() {
   const module = catalog.modules.find((item) => item.id === selected);
   const next = {
     crusher: "Compare feed across lines, then check vibration against operating load.",
-    dms: "Check the density trend with feed pressure before interpreting a change.",
+    dms:
+      context?.capabilities?.connectionFlow === true
+        ? "Compare feed pressure and upstream flows. Density is not simulated in this profile."
+        : "Check the density trend with feed pressure before interpreting a change.",
     water: "Compare tank level and delivered flow, then check whether multiple lines slowed.",
     hopper: "Compare inventory and line feed before treating a rise as congestion.",
     sorter:
@@ -662,6 +687,8 @@ function drawDrawer() {
     );
   if (!tags.length) latestReadings.append(node("p", "No direct sensor readings."));
   for (const tag of tags) {
+    const notSimulated =
+      context?.capabilities?.connectionFlow === true && tag.metric === "medium_density";
     const reading = continuous
       ? continuousTagReading(continuousOverview, tag.id)
       : overview?.latest?.readings?.find(
@@ -673,21 +700,29 @@ function drawDrawer() {
         );
     const good = continuous
       ? reading?.quality === "good" && usable(reading)
-      : overview?.quality === "good" &&
+      : (overview?.quality === "good" ||
+          (context?.capabilities?.connectionFlow === true && overview?.quality === "missing")) &&
         usable(reading) &&
         reading.sampleTime &&
         Number.isFinite(Date.parse(reading.sampleTime));
     latestReadings.append(
       node(
         "p",
-        `${tag.metric.replaceAll("_", " ")}: ${good ? `${number(reading.value)} ${tag.unit}` : `Unknown ${tag.unit}`}`,
+        `${tag.metric.replaceAll("_", " ")}: ${notSimulated ? "Not simulated" : good ? `${number(reading.value)} ${tag.unit}` : `Unknown ${tag.unit}`}`,
       ),
     );
     const article = node("article");
     article.append(node("h3", tag.metric.replaceAll("_", " ")));
     const details = node("dl");
     for (const [label, value] of [
-      ["Reading", good ? `${number(reading.value)} ${tag.unit}` : `Unknown ${tag.unit}`],
+      [
+        "Reading",
+        notSimulated
+          ? "Not simulated"
+          : good
+            ? `${number(reading.value)} ${tag.unit}`
+            : `Unknown ${tag.unit}`,
+      ],
       [
         "Quality",
         continuous
@@ -718,6 +753,46 @@ function drawDrawer() {
   for (const direction of ["upstream", "downstream"]) {
     const container = $(direction);
     container.replaceChildren();
+    if (context?.capabilities?.connectionFlow === true && mode === "live") {
+      const endpoint = direction === "upstream" ? "target" : "source";
+      const other = direction === "upstream" ? "source" : "target";
+      const valid = validConnectionFlow(
+        connectionFlow,
+        context.approvedRun?.runId,
+        catalogVersion,
+        catalog,
+      );
+      for (const stream of catalog.streams.filter(
+        (item) => item[endpoint].module_id === selected,
+      )) {
+        const components = valid
+          ? connectionFlow.readings.filter((item) => item.streamId === stream.id)
+          : [];
+        const rates = components.map((item) => {
+          const label =
+            item.quantity === "dry_solids_mass_flow"
+              ? "solids"
+              : item.quantity === "water_volume_flow"
+                ? "water"
+                : "medium";
+          const state = connectionReadingState(item);
+          return `${label} ${state !== "unavailable" ? `${number(item.value)} ${item.unit}${state === "delayed" ? ` (delayed · sampled ${timestamp(item.sampleTime)})` : ""}` : "unknown"}`;
+        });
+        const button = node("button", stream[other].module_id);
+        button.type = "button";
+        button.addEventListener("click", () => select(stream[other].module_id));
+        const trendButton = node(
+          "button",
+          `${rates.length ? rates.join(" · ") : "Flow unknown"} · trend`,
+        );
+        trendButton.type = "button";
+        trendButton.disabled = !valid;
+        trendButton.addEventListener("click", () => showConnectionTrend(stream));
+        container.append(button, trendButton);
+      }
+      if (!container.childNodes.length) container.append(node("p", "No authored connection."));
+      continue;
+    }
     for (const id of connections(catalog, selected, direction)) {
       const button = node("button", id);
       button.type = "button";
@@ -730,6 +805,8 @@ function drawDrawer() {
 }
 function select(id, incident = null) {
   if (!catalog.modules.some((module) => module.id === id)) return;
+  flowTrendGeneration++;
+  $("flow-trend-details").hidden = true;
   selected = id;
   selectedIncident = incident;
   const module = catalog.modules.find((item) => item.id === id);
@@ -829,11 +906,15 @@ function chart(container, data) {
     container.append(node("p", "Unknown — no covered trend is available."));
     return;
   }
+  const binSeconds = data.connectionFlow ? data.windowSeconds : data.binMinutes * 60;
   if (
-    ![1, 5].includes(data.binMinutes) ||
-    data.rows.some(
-      (row) =>
-        !catalog.telemetry_tags.some((tag) => tag.id === row.seriesId && tag.unit === row.unit),
+    (data.connectionFlow ? ![30, 60].includes(binSeconds) : ![1, 5].includes(data.binMinutes)) ||
+    data.rows.some((row) =>
+      data.connectionFlow
+        ? !connectionFlow?.readings.some(
+            (item) => item.measurementTagId === row.seriesId && item.unit === row.unit,
+          )
+        : !catalog.telemetry_tags.some((tag) => tag.id === row.seriesId && tag.unit === row.unit),
     )
   ) {
     container.append(
@@ -939,8 +1020,7 @@ function chart(container, data) {
               row.segmentId !== previous.segmentId ||
               Date.parse(row.timestamp) - Date.parse(previous.timestamp) !==
                 data.binMinutes * 60_000
-            : Date.parse(row.timestamp) - Date.parse(previous.timestamp) >
-              data.binMinutes * 60_000 * 1.5))
+            : Date.parse(row.timestamp) - Date.parse(previous.timestamp) > binSeconds * 1000 * 1.5))
       )
         flush();
       if (drawable(row))
@@ -962,7 +1042,7 @@ function chart(container, data) {
   container.append(
     node(
       "p",
-      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.binMinutes}-minute bins`,
+      `${timestamp(data.windowStart)} to ${timestamp(data.windowEnd)} · ${data.connectionFlow ? `${binSeconds}-second` : `${data.binMinutes}-minute`} bins`,
     ),
   );
   const details = node("details"),
@@ -1011,6 +1091,88 @@ function chart(container, data) {
   );
   container.append(details);
 }
+
+async function showConnectionTrend(stream) {
+  const owner = context?.approvedRun?.runId;
+  if (!validConnectionFlow(connectionFlow, owner, catalogVersion, catalog)) return;
+  const quantities = new Set(
+    connectionFlow.readings
+      .filter((item) => item.streamId === stream.id)
+      .map((item) => item.quantity),
+  );
+  const sharesQuantity = (candidate) =>
+    connectionFlow.readings.some(
+      (item) => item.streamId === candidate.id && quantities.has(item.quantity),
+    );
+  const related = [
+    stream,
+    catalog.streams.find(
+      (item) => item.target.module_id === stream.source.module_id && sharesQuantity(item),
+    ),
+    catalog.streams.find(
+      (item) => item.source.module_id === stream.target.module_id && sharesQuantity(item),
+    ),
+  ].filter(Boolean);
+  const streamIds = [...new Set(related.map((item) => item.id))];
+  const end = connectionFlow.asOf;
+  const start = new Date(
+    Math.max(Date.parse(connectionFlow.runStartedAt), Date.parse(end) - 15 * 60_000),
+  ).toISOString();
+  if (start === end) {
+    $("flow-trend-details").hidden = false;
+    $("flow-trend-details").open = true;
+    text("flow-trend-heading", `Connection trend · ${stream.id}`);
+    $("flow-trend").replaceChildren(node("p", "Waiting for the first trend window."));
+    return;
+  }
+  const request = { runId: owner, catalogVersion, streamIds, start, end, windowSeconds: 30 };
+  const generation = ++flowTrendGeneration;
+  const moduleId = selected;
+  const current = () =>
+    generation === flowTrendGeneration &&
+    mode === "live" &&
+    selected === moduleId &&
+    context?.approvedRun?.runId === owner;
+  $("flow-trend-details").hidden = false;
+  $("flow-trend-details").open = true;
+  text("flow-trend-heading", `Connection trend · ${stream.id}`);
+  $("flow-trend").replaceChildren(node("p", "Loading connection trends…"));
+  try {
+    const data = await reads.read("connection-trend", {
+      plantId: "D01",
+      runId: owner,
+      streamIds: streamIds.join(","),
+      start,
+      end,
+      windowSeconds: "30",
+    });
+    if (!current()) return;
+    if (!validConnectionTrend(data, request, connectionFlow)) {
+      throw new Error("Connection trend evidence is unavailable or incomplete.");
+    }
+    chart($("flow-trend"), {
+      connectionFlow: true,
+      windowSeconds: request.windowSeconds,
+      windowStart: start,
+      windowEnd: end,
+      rows: data.points.map((point) => ({
+        seriesId: point.measurementTagId,
+        unit: point.unit,
+        timestamp: point.windowStart,
+        value: point.value,
+        quality: point.complete ? "good" : point.quality === "good" ? "partial" : point.quality,
+        coverage: point.coverage,
+      })),
+    });
+    $("flow-trend").append(
+      node("p", "Nearby modeled connections can differ because of splits and transit time."),
+    );
+  } catch {
+    if (current())
+      $("flow-trend").replaceChildren(node("p", "Connection trends unavailable. Try again."));
+  }
+}
+
 function clearReadState(message) {
   contextualGeneration++;
   buildup = [];
@@ -1171,7 +1333,102 @@ async function refreshContextualTrends(scope) {
   }
 }
 async function refreshAll(scope = "all") {
-  await Promise.all([refresh(scope), refreshContextualTrends(scope)]);
+  await Promise.all([refresh(scope), refreshContextualTrends(scope), refreshConnectionFlow(scope)]);
+}
+
+function scheduleFlowExpiry(data) {
+  clearTimeout(flowExpiryTimer);
+  const now = Date.now();
+  const deadlines = [
+    Date.parse(data.asOf) + 30_001,
+    ...data.readings
+      .filter((reading) => usableConnectionReading(reading, now))
+      .flatMap((reading) => [
+        Date.parse(reading.sampleTime) + 15_000,
+        Date.parse(reading.sampleTime) + 120_001,
+      ]),
+  ].filter((deadline) => Number.isFinite(deadline) && deadline > now);
+  if (!deadlines.length) return;
+  flowExpiryTimer = setTimeout(
+    () => {
+      if (connectionFlow !== data) return;
+      drawPlant();
+      drawDrawer();
+      if (
+        !validConnectionFlow(data, context?.approvedRun?.runId, catalogVersion, catalog) ||
+        !data.readings.some((reading) => usableConnectionReading(reading))
+      ) {
+        text("flow-status", "Waiting for validated connection flows.");
+        return;
+      }
+      text("flow-status", connectionFlowStatus(data));
+      scheduleFlowExpiry(data);
+    },
+    Math.min(...deadlines) - now,
+  );
+}
+
+function connectionFlowStatus(data) {
+  const readings = data.readings.filter((reading) => usableConnectionReading(reading));
+  if (!readings.length) return "Waiting for validated connection flows.";
+  const times = readings.map((reading) => Date.parse(reading.sampleTime));
+  const first = Math.min(...times);
+  const last = Math.max(...times);
+  const timeRange =
+    first === last
+      ? timestamp(new Date(first).toISOString())
+      : `${timestamp(new Date(first).toISOString())} – ${timestamp(new Date(last).toISOString())}`;
+  const delayed = readings.some((reading) => connectionReadingState(reading) === "delayed");
+  return `Synthetic flows${delayed ? " · delayed" : ""} · sampled ${timeRange}`;
+}
+
+async function refreshConnectionFlow(scope) {
+  const enabled =
+    mode === "live" &&
+    context?.capabilities?.connectionFlow === true &&
+    context?.readAvailable &&
+    context?.approvedRun;
+  $("flow-status").hidden = !enabled;
+  text(
+    "flow-legend",
+    enabled ? "Solids flow (synthetic)" : "Measured inlet rate (not equipment health)",
+  );
+  if (!enabled) {
+    clearTimeout(flowExpiryTimer);
+    connectionFlow = null;
+    flowTrendGeneration++;
+    $("flow-trend-details").hidden = true;
+    return;
+  }
+  if (document.hidden || !["all", "overview"].includes(scope)) return;
+  const runId = context.approvedRun.runId;
+  const epoch = requestEpoch;
+  const current = () =>
+    epoch === requestEpoch && !document.hidden && context?.approvedRun?.runId === runId;
+  try {
+    const data = await reads.read("connection-latest", { plantId: "D01", runId });
+    if (!current()) return;
+    if (!validConnectionFlow(data, runId, catalogVersion, catalog)) {
+      throw new Error("Flow readings are unavailable or out of date.");
+    }
+    connectionFlow = data;
+    scheduleFlowExpiry(data);
+    text("flow-status", connectionFlowStatus(data));
+  } catch (cause) {
+    if (!current()) return;
+    clearTimeout(flowExpiryTimer);
+    connectionFlow = null;
+    flowTrendGeneration++;
+    $("flow-trend-details").hidden = true;
+    text(
+      "flow-status",
+      cause?.category === "waiting"
+        ? "Waiting for the first connection flow samples."
+        : "Connection flows unavailable. Plant layout remains available.",
+    );
+  }
+  drawPlant();
+  drawDrawer();
 }
 async function refresh(scope = "all") {
   if (context?.mode === "continuous") {
@@ -1365,7 +1622,17 @@ async function refresh(scope = "all") {
       })(),
     );
   const incidentQuery = currentIncidentQuery(mode, params);
-  if ((scope === "all" || scope === "detail") && incidentQuery)
+  const flowProfile = context?.capabilities?.connectionFlow === true;
+  if ((scope === "all" || scope === "detail") && incidentQuery && flowProfile) {
+    incidents = [];
+    incidentAsOf = null;
+    incidentAssessment = null;
+    selectedIncident = null;
+    drawIncidents("Incident assessments are not available for this flow simulation.");
+    drawDrawer();
+    drawPlant();
+  }
+  if ((scope === "all" || scope === "detail") && incidentQuery && !flowProfile)
     tasks.push(
       (async () => {
         try {
@@ -1450,24 +1717,29 @@ async function refresh(scope = "all") {
       metric = $("diagnostic").value;
     const diagnosticCurrent = () =>
       current() && $("diagnostic-asset").value === moduleId && $("diagnostic").value === metric;
-    tasks.push(
-      (async () => {
-        try {
-          const data = await reads.read("trends", seriesQuery(params, metric, moduleId));
-          if (!validSeries(data, { ...params, moduleId, metric }, catalogVersion, catalog))
-            throw new Error(
-              "Trend response does not match the requested module, time, metric or catalog.",
-            );
-          if (diagnosticCurrent()) chart($("diagnostic-chart"), data);
-          if (diagnosticCurrent()) drawDiagnosticScope();
-        } catch (error) {
-          if (diagnosticCurrent()) {
-            chart($("diagnostic-chart"), null);
-            $("diagnostic-chart").append(node("p", error.message));
+    if (flowProfile && metric === "density") {
+      chart($("diagnostic-chart"), null);
+      $("diagnostic-chart").append(node("p", "Density is not simulated in this flow profile."));
+      drawDiagnosticScope();
+    } else
+      tasks.push(
+        (async () => {
+          try {
+            const data = await reads.read("trends", seriesQuery(params, metric, moduleId));
+            if (!validSeries(data, { ...params, moduleId, metric }, catalogVersion, catalog))
+              throw new Error(
+                "Trend response does not match the requested module, time, metric or catalog.",
+              );
+            if (diagnosticCurrent()) chart($("diagnostic-chart"), data);
+            if (diagnosticCurrent()) drawDiagnosticScope();
+          } catch (error) {
+            if (diagnosticCurrent()) {
+              chart($("diagnostic-chart"), null);
+              $("diagnostic-chart").append(node("p", error.message));
+            }
           }
-        }
-      })(),
-    );
+        })(),
+      );
   }
   await Promise.all(tasks);
 }
@@ -1549,6 +1821,10 @@ async function loadContext() {
 }
 function invalidate() {
   requestEpoch++;
+  clearTimeout(flowExpiryTimer);
+  connectionFlow = null;
+  flowTrendGeneration++;
+  $("flow-trend-details").hidden = true;
   answerController?.abort();
   answerController = null;
   text("mining-answer", "");
@@ -1847,13 +2123,15 @@ function drawArrival() {
         : "Finishing"
       : timing.active
         ? "Continuous"
-        : demoRun?.publisherStatus === "publisher_complete"
-          ? "Complete"
-          : demoRun?.publisherStatus === "stopping" || demoRun?.stopRequested
-            ? "Stopping / stopped"
-            : demoRun
-              ? "Ready to start"
-              : "Status unavailable",
+        : ["preparing", "scheduled"].includes(demoRun?.publisherStatus)
+          ? "Preparing"
+          : demoRun?.publisherStatus === "publisher_complete"
+            ? "Complete"
+            : demoRun?.publisherStatus === "stopping" || demoRun?.stopRequested
+              ? "Stopping / stopped"
+              : demoRun
+                ? "Ready to start"
+                : "Status unavailable",
   );
   const hasReceipt = timing.lagSeconds !== null;
   if (hasReceipt && requestedSimulation && requestedSimulation.runId === demoRun?.runId) {
@@ -1954,7 +2232,7 @@ async function updateDemoStatus(notice = "") {
     fabricDemoSignal = data.fabricSignal === true && data.mode === "bounded";
     drawStartupPreview();
     const managed = data.mode === "continuous";
-    const active = demoRun && ["running", "stopping"].includes(demoRun.publisherStatus);
+    const active = activePublisher(demoRun);
     $("run-start").disabled = managed || !!active;
     $("run-cancel").disabled = managed || !active || demoRun.stopRequested;
     $("mode").disabled = managed;
@@ -1979,11 +2257,7 @@ async function updateDemoStatus(notice = "") {
       }
     }
     drawDemoRunStatus(notice);
-    if (
-      catalog &&
-      ((context?.approvedRun?.runId ?? null) !== (demoRun?.runId ?? null) ||
-        (managed && (context?.approvedRun?.generation ?? null) !== (demoRun?.generation ?? null)))
-    ) {
+    if (catalog && demoContextChanged(context, demoRun, managed)) {
       invalidate();
       reads.reset();
       await loadContext();
@@ -2016,6 +2290,7 @@ function scheduleDemoStatus() {
   demoStatusTimer = setTimeout(
     () => void updateDemoStatus().finally(scheduleDemoStatus),
     waitingForStartup ||
+      ["preparing", "scheduled"].includes(demoRun?.publisherStatus) ||
       ((nativeDemoLive || fastDemoStatus) && demoRun?.publisherStatus === "running")
       ? 2_000
       : 15_000,
@@ -2035,7 +2310,7 @@ async function demoAction(action) {
     if (action === "start") requestedSimulation = { runId: result.runId, at: Date.now() };
     text(
       "run-control-status",
-      `${action === "start" ? "Started" : "Stop requested"}: ${result.runId}. Fabric ingestion is not yet confirmed.`,
+      `${action === "start" ? (result.publisherStatus === "preparing" ? "Preparing" : "Started") : "Stop requested"}: ${result.runId}. Fabric ingestion is not yet confirmed.`,
     );
   } catch (error) {
     notice = `${error.message} Check the run status before retrying. `;

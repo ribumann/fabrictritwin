@@ -1,0 +1,74 @@
+// Additive D01 connection-measurement objects. Do not edit the legacy Mining*.kql
+// tables, functions, or policies as part of this rollout.
+.create table mining_ConnectionMeasurementRaw (event:dynamic, sample_time_raw:string)
+.create table mining_ConnectionMeasurementProfile (
+    plant_id:string, catalog_version:string, measurement_catalog_version:string,
+    profile_version:string, entity_type:string, schema_version:int,
+    sample_interval_seconds:int, created_at:datetime)
+.create table mining_ConnectionMeasurementBinding (
+    plant_id:string, catalog_version:string, measurement_catalog_version:string,
+    profile_version:string, stream_id:string, measurement_tag_id:string,
+    source_module_id:string, source_port_id:string, source_equipment_id:string,
+    source_equipment_port_id:string, target_module_id:string, target_port_id:string,
+    target_equipment_id:string, target_equipment_port_id:string,
+    endpoint_granularity:string, quantity:string, basis:string, unit:string,
+    nominal_capacity:real, nominal_capacity_unit:string,
+    nominal_capacity_purpose:string, sample_interval_seconds:int, origin:string)
+.create table mining_ConnectionRunProfile (
+    plant_id:string, run_id:string, catalog_version:string,
+    measurement_catalog_version:string, profile_version:string,
+    started_at:datetime, pinned_at:datetime, start_policy:string)
+.create table mining_ConnectionRunCompletion (
+    plant_id:string, run_id:string, catalog_version:string,
+    measurement_catalog_version:string, profile_version:string,
+    completed_at:datetime, completion_source:string)
+.create table mining_ValidatedConnectionMeasurement (
+    plant_id:string, run_id:string, event_id:string, sequence:long,
+    sample_time:datetime, received_at:datetime, stream_id:string,
+    measurement_tag_id:string, source_module_id:string, source_port_id:string,
+    source_equipment_id:string, source_equipment_port_id:string,
+    target_module_id:string, target_port_id:string, target_equipment_id:string,
+    target_equipment_port_id:string, quantity:string, basis:string, value:real,
+    unit:string, quality:string, origin:string, schema_version:int,
+    sample_interval_seconds:int, catalog_version:string,
+    measurement_catalog_version:string, profile_version:string,
+    payload_fingerprint:string)
+.create table mining_ConnectionQuarantine (
+    source_kind:string, received_at:datetime, raw_event:dynamic,
+    sample_time_raw:string, plant_id:string, run_id:string, event_id:string,
+    sequence:long, disposition:string, reason_codes:dynamic,
+    catalog_version:string, measurement_catalog_version:string,
+    profile_version:string, payload_fingerprint:string)
+
+.create-or-alter table mining_ConnectionMeasurementRaw ingestion json mapping
+'mining_connection_measurement_v1_json_map'
+'[{"column":"event","Properties":{"path":"$"}},{"column":"sample_time_raw","Properties":{"path":"$.sample_time"}}]'
+
+// pinned_at is the sender's request time, not evidence that Fabric persisted the row.
+.create-or-alter table mining_ConnectionRunProfile ingestion json mapping
+'mining_connection_run_profile_v1_json_map'
+'[{"column":"plant_id","Properties":{"path":"$.plant_id"}},{"column":"run_id","Properties":{"path":"$.run_id"}},{"column":"catalog_version","Properties":{"path":"$.catalog_version"}},{"column":"measurement_catalog_version","Properties":{"path":"$.measurement_catalog_version"}},{"column":"profile_version","Properties":{"path":"$.profile_version"}},{"column":"started_at","Properties":{"path":"$.started_at"}},{"column":"pinned_at","Properties":{"path":"$.requested_at"}},{"column":"start_policy","Properties":{"path":"$.start_policy"}}]'
+
+// Preserve actual Eventhouse ingestion time for receipt-time evidence.
+.alter table mining_ConnectionMeasurementRaw policy ingestiontime true
+.alter table mining_ValidatedConnectionMeasurement policy ingestiontime true
+.alter table mining_ConnectionRunProfile policy ingestiontime true
+
+// Join-based classification is queued. Fabric requires streaming ingestion to
+// be disabled on every upstream table participating in update-policy joins.
+.alter table mining_ConnectionMeasurementRaw policy streamingingestion '{"IsEnabled":false}'
+.alter table mining_ConnectionMeasurementProfile policy streamingingestion '{"IsEnabled":false}'
+.alter table mining_ConnectionMeasurementBinding policy streamingingestion '{"IsEnabled":false}'
+.alter table mining_ConnectionRunProfile policy streamingingestion '{"IsEnabled":false}'
+
+// Connection binding/profile metadata must survive the database's short
+// telemetry horizon so old runs aren't silently reinterpreted or unbound.
+.alter-merge table mining_ConnectionMeasurementProfile policy retention softdelete = 36500d
+.alter-merge table mining_ConnectionMeasurementBinding policy retention softdelete = 36500d
+
+// Keep run pin/completion evidence aligned with the seven-day telemetry rows.
+.alter-merge table mining_ConnectionMeasurementRaw policy retention softdelete = 7d
+.alter-merge table mining_ValidatedConnectionMeasurement policy retention softdelete = 7d
+.alter-merge table mining_ConnectionQuarantine policy retention softdelete = 7d
+.alter-merge table mining_ConnectionRunProfile policy retention softdelete = 7d
+.alter-merge table mining_ConnectionRunCompletion policy retention softdelete = 7d

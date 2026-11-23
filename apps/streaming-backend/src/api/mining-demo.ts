@@ -3,7 +3,11 @@ import { performance } from "node:perf_hooks";
 import { traceTwinAdmission } from "../services/twin-latency.js";
 import { Router, type Request, type Response } from "express";
 import type { JWTPayload } from "jose";
-import { D01_CATALOG_VERSION, D01_PLANT_CATALOG } from "@triathlon-twin/simulator/mining";
+import {
+  D01_CATALOG_VERSION,
+  D01_CONNECTION_PROFILE_VERSION,
+  D01_PLANT_CATALOG,
+} from "@triathlon-twin/simulator/mining";
 import { verifyMcpCallerClaimsWithErrors } from "../auth/mcp-caller.js";
 import { configuredMiningStore } from "../mining/blob-store.js";
 import { MiningPublisherHost } from "../mining/publisher-host.js";
@@ -16,7 +20,11 @@ import {
   configuredMiningPublisherRuntime,
   type MiningStartupPreview,
 } from "../mining/publisher-runtime.js";
-import { MiningRunCoordinator, isContinuousMiningRun } from "../mining/run-coordinator.js";
+import {
+  MiningRunCoordinator,
+  createMiningConnectionRunProfilePin,
+  isContinuousMiningRun,
+} from "../mining/run-coordinator.js";
 import { MiningCoordinationError, type MiningStore } from "../mining/store.js";
 import {
   assertMiningDemoQueryConfiguration,
@@ -39,11 +47,21 @@ import {
   prepareMiningCrossRunTrendQuery,
   type MiningCrossRunMetric,
 } from "../mining/read/cross-run-trend-query.js";
-import { createBoundedMiningQuery, MiningQueryError } from "../mining/read/bounded-query.js";
+import {
+  createBoundedMiningQuery,
+  MiningQueryError,
+  MINING_FLOW_CUTOFF_MARGIN_MS,
+} from "../mining/read/bounded-query.js";
 import { createContinuousIncidentProvider } from "../mining-incidents/continuous-provider.js";
 import type { ContinuousIncidentOwner } from "../mining-incidents/continuous-snapshot-service.js";
 import { assertD01RunContract } from "../mining-incidents/catalog.js";
 import { mapContinuousAdvisories } from "../mining/read/continuous-advisory-dto.js";
+import { createMiningConnectionFlowProvider } from "../mining/read/connection-flow-provider.js";
+import { configuredConnectionRunPinHandler } from "../mining/connection-run-pin.js";
+import {
+  readConnectionEvidenceSnapshot,
+  type MiningConnectionEvidenceWorker,
+} from "../mining/read/connection-evidence-worker.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -63,6 +81,8 @@ interface Options {
   continuous?: ReturnType<typeof createMiningContinuousProvider>;
   continuousAdvisories?: ReturnType<typeof createContinuousIncidentProvider>;
   crossRunTrends?: ReturnType<typeof createMiningCrossRunTrendProvider>;
+  connectionFlow?: ReturnType<typeof createMiningConnectionFlowProvider>;
+  connectionEvidence?: Pick<MiningConnectionEvidenceWorker, "start">;
 }
 
 function error(res: Response, status: number, code: string, message: string): void {
@@ -72,7 +92,10 @@ function error(res: Response, status: number, code: string, message: string): vo
 export function createMiningDemoHost(env: NodeJS.ProcessEnv = process.env): MiningPublisherHost {
   const snapshot = { ...env };
   return new MiningPublisherHost(() =>
-    configuredMiningPublisherRuntime(snapshot, { minimumStartIntervalMs }),
+    configuredMiningPublisherRuntime(snapshot, {
+      minimumStartIntervalMs,
+      connectionRunProfilePin: configuredConnectionRunPinHandler(snapshot),
+    }),
   );
 }
 
@@ -268,6 +291,138 @@ export function createMiningDemoRouter(options: Options): Router {
     signal.throwIfAborted();
     return status;
   };
+
+  const currentConnectionOwner = async (signal: AbortSignal) => {
+    if (
+      continuousMode ||
+      env.MINING_PUBLIC_DEMO_READ_ENABLED !== "true" ||
+      env.MINING_CONNECTION_FLOW_READ_ENABLED !== "true"
+    )
+      return undefined;
+    const { store, coordinator } = dependencies();
+    const status = await visibleRun(store, await coordinator.currentStatus(signal), signal);
+    const run = status?.run;
+    if (
+      status?.admission !== "accepted" ||
+      status.stopRequested ||
+      !["running", "publisher_complete"].includes(status.phase) ||
+      !run ||
+      isContinuousMiningRun(run) ||
+      run.profileVersion !== D01_CONNECTION_PROFILE_VERSION
+    )
+      return undefined;
+    const pin = createMiningConnectionRunProfilePin(run);
+    return { run, pin, phase: status.phase };
+  };
+
+  for (const route of ["connection-latest", "connection-trend"] as const) {
+    router.get(`/${route}`, async (req, res) => {
+      if (
+        env.MINING_PUBLIC_DEMO_READ_ENABLED !== "true" ||
+        env.MINING_CONNECTION_FLOW_READ_ENABLED !== "true"
+      ) {
+        error(res, 503, "mining_flow_unavailable", "Connection flows are not enabled.");
+        return;
+      }
+      const keys =
+        route === "connection-latest"
+          ? ["plantId", "runId"]
+          : ["plantId", "runId", "streamIds", "start", "end", "windowSeconds"];
+      const value = req.query;
+      const streams = typeof value.streamIds === "string" ? value.streamIds.split(",") : [];
+      const canonical = (item: unknown) =>
+        typeof item === "string" &&
+        Number.isFinite(Date.parse(item)) &&
+        new Date(Date.parse(item)).toISOString() === item;
+      const start = typeof value.start === "string" ? Date.parse(value.start) : NaN;
+      const end = typeof value.end === "string" ? Date.parse(value.end) : NaN;
+      const knownStreams = new Set(D01_PLANT_CATALOG.streams.map((stream) => stream.id));
+      if (
+        Object.keys(value).length !== keys.length ||
+        keys.some((key) => typeof value[key] !== "string") ||
+        value.plantId !== "D01" ||
+        typeof value.runId !== "string" ||
+        !uuid.test(value.runId) ||
+        (route === "connection-trend" &&
+          (streams.length < 1 ||
+            streams.length > 3 ||
+            new Set(streams).size !== streams.length ||
+            streams.some((stream) => !knownStreams.has(stream)) ||
+            !canonical(value.start) ||
+            !canonical(value.end) ||
+            end <= start ||
+            end - start > 900_000 ||
+            end > Date.now() ||
+            !["30", "60"].includes(String(value.windowSeconds))))
+      ) {
+        error(res, 400, "invalid_mining_query", "Invalid connection flow request.");
+        return;
+      }
+      try {
+        assertMiningDemoQueryConfiguration(env);
+        const signal: AbortSignal = res.locals.miningDemoSignal;
+        const owner = await currentConnectionOwner(signal);
+        if (!owner || owner.run.runId !== value.runId) {
+          error(
+            res,
+            403,
+            "mining_run_forbidden",
+            "Only the current flow-enabled demo is available.",
+          );
+          return;
+        }
+        if (route === "connection-trend" && start < Date.parse(owner.run.startedAt)) {
+          error(res, 400, "invalid_mining_query", "Trend starts before the current run.");
+          return;
+        }
+        const provider =
+          options.connectionFlow ??
+          createMiningConnectionFlowProvider(
+            createBoundedMiningQuery({
+              ...env,
+              EVENTHOUSE_QUERY_URI: env.MINING_EVENTHOUSE_QUERY_URI,
+              EVENTHOUSE_DATABASE_NAME: env.MINING_EVENTHOUSE_DATABASE_NAME,
+            }),
+          );
+        const scope = { runId: owner.run.runId, runStartedAt: owner.run.startedAt };
+        const latestCutoff = Date.now() - MINING_FLOW_CUTOFF_MARGIN_MS;
+        if (route === "connection-latest" && latestCutoff < Date.parse(owner.run.startedAt)) {
+          error(res, 503, "mining_flow_pending", "Waiting for the first connection flow samples.");
+          return;
+        }
+        const data =
+          route === "connection-latest"
+            ? await provider.latest(
+                { ...scope, asOf: new Date(latestCutoff).toISOString(), streamIds: [] },
+                signal,
+              )
+            : await provider.trend(
+                {
+                  ...scope,
+                  start: value.start as string,
+                  end: value.end as string,
+                  streamIds: streams,
+                  windowSeconds: value.windowSeconds === "30" ? 30 : 60,
+                },
+                signal,
+              );
+        const latest = await currentConnectionOwner(signal);
+        if (
+          !latest ||
+          latest.run.runId !== owner.run.runId ||
+          latest.run.startedAt !== owner.run.startedAt ||
+          JSON.stringify(latest.pin) !== JSON.stringify(owner.pin)
+        )
+          throw new MiningCoordinationError(
+            "prerequisite",
+            "Flow authority changed during the read.",
+          );
+        if (!res.headersSent && !res.destroyed) res.json(data);
+      } catch (cause) {
+        fail(res, cause, "mining_flow_unavailable");
+      }
+    });
+  }
 
   router.get("/runs/status", async (req, res) => {
     if (Object.keys(req.query).length) {
@@ -604,7 +759,8 @@ export function createMiningDemoRouter(options: Options): Router {
           return;
         }
         const run =
-          demo?.admission === "accepted" && demo.run?.contract
+          demo?.admission === "accepted" &&
+          (demo.run?.contract || demo.run?.connectionProfileContract)
             ? {
                 plantId: "D01",
                 runId: demo.runId,
@@ -619,11 +775,13 @@ export function createMiningDemoRouter(options: Options): Router {
           return;
         }
         if (route === "context") {
+          const flowOwner = await currentConnectionOwner(signal);
           res.json({
             plantId: "D01",
             approvedRun: run,
             catalogVersion: D01_CATALOG_VERSION,
             readAvailable: true,
+            capabilities: { connectionFlow: flowOwner?.run.runId === run?.runId && !!flowOwner },
             assistant: {
               available: miningAssistantConfigured(env),
               kind: "bounded-fabric-evidence",
@@ -671,6 +829,43 @@ export function createMiningDemoRouter(options: Options): Router {
               : { ...window, kind: "compare" };
         }
         const data = await curated(input, signal);
+        let connectionIngestion:
+          | Awaited<ReturnType<typeof readConnectionEvidenceSnapshot>>
+          | { status: "unknown" }
+          | undefined;
+        if (
+          route === "overview" &&
+          !req.query.asOf &&
+          demo.phase === "publisher_complete" &&
+          !demo.stopRequested &&
+          "profileVersion" in demo.run &&
+          demo.run.profileVersion === D01_CONNECTION_PROFILE_VERSION &&
+          env.MINING_CONNECTION_FLOW_READ_ENABLED === "true"
+        ) {
+          try {
+            const provider =
+              options.connectionFlow ??
+              createMiningConnectionFlowProvider(
+                createBoundedMiningQuery({
+                  ...env,
+                  EVENTHOUSE_QUERY_URI: env.MINING_EVENTHOUSE_QUERY_URI,
+                  EVENTHOUSE_DATABASE_NAME: env.MINING_EVENTHOUSE_DATABASE_NAME,
+                }),
+              );
+            connectionIngestion = await readConnectionEvidenceSnapshot(
+              demo,
+              store,
+              provider,
+              async (currentSignal) =>
+                visibleRun(store, await coordinator.currentStatus(currentSignal), currentSignal),
+              signal,
+            );
+          } catch (cause) {
+            if (signal.aborted) throw cause;
+            console.error("[mining-connection-evidence] Snapshot read unavailable", cause);
+            connectionIngestion = { status: "unknown" };
+          }
+        }
         if (route === "incidents") {
           const latest = await coordinator.currentStatus(signal);
           if (
@@ -690,6 +885,7 @@ export function createMiningDemoRouter(options: Options): Router {
           route === "overview"
             ? {
                 ...data,
+                ...(connectionIngestion ? { connectionIngestion } : {}),
                 run: {
                   ...run,
                   ingestionStatus:
@@ -753,8 +949,21 @@ export function createMiningDemoRouter(options: Options): Router {
       ]);
       let runId: string;
       let evidence: unknown;
+      let modelEvidence: unknown;
       let groundedOn: string[];
       let continuousOwner: ContinuousIncidentOwner | undefined;
+      let flowOwner: Awaited<ReturnType<typeof currentConnectionOwner>>;
+      const assertCurrentFlowOwner = async () => {
+        if (!flowOwner) return;
+        const latest = await currentConnectionOwner(requestSignal);
+        if (
+          !latest ||
+          latest.run.runId !== flowOwner.run.runId ||
+          latest.run.startedAt !== flowOwner.run.startedAt ||
+          JSON.stringify(latest.pin) !== JSON.stringify(flowOwner.pin)
+        )
+          throw new Error("The connection flow owner changed while answering; ask again.");
+      };
       if (continuousMode) {
         if (env.MINING_CONTINUOUS_READ_ENABLED !== "true" || !continuousIncidentProvider) {
           error(
@@ -852,24 +1061,131 @@ export function createMiningDemoRouter(options: Options): Router {
         const status = await coordinator.currentStatus(requestSignal);
         if (
           status?.admission !== "accepted" ||
-          !status.run?.contract ||
+          (!status.run?.contract && !status.run?.connectionProfileContract) ||
           !(await isDemoRun(store, status.runId, requestSignal))
         ) {
           error(res, 404, "mining_demo_run_not_found", "Start a public demo run before asking.");
           return;
         }
-        const asOf = new Date(now).toISOString();
+        const sharedFlow = status.run.connectionProfileContract !== undefined;
+        const asOf = new Date(now - (sharedFlow ? MINING_FLOW_CUTOFF_MARGIN_MS : 0)).toISOString();
+        if (sharedFlow) {
+          flowOwner = await currentConnectionOwner(requestSignal);
+          if (
+            !flowOwner ||
+            flowOwner.run.runId !== status.runId ||
+            Date.parse(asOf) < Date.parse(flowOwner.run.startedAt)
+          ) {
+            error(
+              res,
+              503,
+              "mining_assistant_unavailable",
+              "Connection flow evidence is not ready.",
+            );
+            return;
+          }
+        }
         const overview = await curated({ kind: "overview", run: status.run, asOf }, requestSignal);
         if (!overview || !("latest" in overview)) {
           throw new Error("Mining assistant evidence is unavailable.");
         }
-        evidence = overview;
+        if (flowOwner) {
+          const provider =
+            options.connectionFlow ??
+            createMiningConnectionFlowProvider(
+              createBoundedMiningQuery({
+                ...env,
+                EVENTHOUSE_QUERY_URI: env.MINING_EVENTHOUSE_QUERY_URI,
+                EVENTHOUSE_DATABASE_NAME: env.MINING_EVENTHOUSE_DATABASE_NAME,
+              }),
+            );
+          const connectionFlow = await provider.latest(
+            {
+              runId: flowOwner.run.runId,
+              runStartedAt: flowOwner.run.startedAt,
+              asOf,
+              streamIds: [],
+            },
+            requestSignal,
+          );
+          evidence = { ...overview, connectionFlow, connectionFlowOrigin: "synthetic" };
+          modelEvidence = {
+            runId: status.runId,
+            asOf,
+            source: "Synthetic demo observations read from Fabric; not physical measurements.",
+            profileLimitations:
+              "This flow profile does not simulate medium density or product mass and does not provide incident assessments. Their absence is expected, not evidence of incomplete ingestion. Do not infer ingestion completeness from missing sensor values.",
+            summary: overview.summary,
+            sensors: {
+              columns: [
+                "tagId",
+                "equipmentId",
+                "value",
+                "unit",
+                "quality",
+                "sampleTime",
+                "ageSeconds",
+                "normalBand",
+              ],
+              rows: overview.latest.readings.map((item) => [
+                item.tagId,
+                item.equipmentId,
+                item.value,
+                item.unit,
+                item.quality,
+                item.sampleTime,
+                item.ageSeconds,
+                item.normalBand,
+              ]),
+            },
+            connectionFlow: {
+              columns: [
+                "streamId",
+                "sourceModule",
+                "sourcePort",
+                "targetModule",
+                "targetPort",
+                "quantity",
+                "basis",
+                "value",
+                "unit",
+                "quality",
+                "status",
+                "sampleTime",
+                "receiptTime",
+                "duplicates",
+                "conflicts",
+              ],
+              rows: connectionFlow.readings.map((item) => [
+                item.streamId,
+                item.source.module_id,
+                item.source.port_id,
+                item.target.module_id,
+                item.target.port_id,
+                item.quantity,
+                item.basis,
+                item.value,
+                item.unit,
+                item.quality,
+                item.status,
+                item.sampleTime,
+                item.receiptTime,
+                item.duplicates,
+                item.conflicts,
+              ]),
+            },
+          };
+        } else {
+          evidence = overview;
+        }
         runId = status.runId;
-        groundedOn = [
-          "validated latest readings",
-          "five-minute summary",
-          "event-ID reconciliation",
-        ];
+        groundedOn = flowOwner
+          ? [
+              "validated latest readings",
+              "five-minute summary",
+              "synthetic connection-flow readings",
+            ]
+          : ["validated latest readings", "five-minute summary", "event-ID reconciliation"];
         const latest = await coordinator.currentStatus(requestSignal);
         if (latest?.runId !== status.runId || latest.stopRequested !== status.stopRequested) {
           throw new Error("The public run changed while reading evidence; ask again.");
@@ -880,14 +1196,21 @@ export function createMiningDemoRouter(options: Options): Router {
         throw new Error("Mining assistant evidence exceeds its bound.");
       }
       requestSignal.throwIfAborted();
+      await assertCurrentFlowOwner();
       const answerBudget = Math.min(
         8_000,
-        Math.floor(9_000 - (performance.now() - requestStarted) - 500),
+        Math.floor(9_000 - (performance.now() - requestStarted) - (flowOwner ? 1_500 : 500)),
       );
       if (answerBudget <= 0) {
         throw new Error("The evidence read left no bounded time for an assistant answer.");
       }
-      const text = await answer(body.question.trim(), evidenceText, requestSignal, answerBudget);
+      const text = await answer(
+        body.question.trim(),
+        modelEvidence ? JSON.stringify(modelEvidence) : evidenceText,
+        requestSignal,
+        answerBudget,
+      );
+      await assertCurrentFlowOwner();
       if (continuousMode) {
         const status = await currentContinuousStatus(requestSignal, continuousOwner);
         if (
@@ -918,7 +1241,20 @@ export function createMiningDemoRouter(options: Options): Router {
         });
       }
     } catch (cause) {
-      fail(res, cause, "mining_assistant_unavailable");
+      if (
+        cause &&
+        typeof cause === "object" &&
+        "status" in cause &&
+        cause.status === 429 &&
+        !res.headersSent &&
+        !res.destroyed
+      ) {
+        console.warn("[mining-demo] Assistant model rate limit reached.");
+        res.setHeader("Retry-After", "60");
+        error(res, 429, "mining_assistant_busy", "The assistant model is busy; try again later.");
+      } else {
+        fail(res, cause, "mining_assistant_unavailable");
+      }
     } finally {
       answering = false;
     }
@@ -945,6 +1281,11 @@ export function createMiningDemoRouter(options: Options): Router {
       error(res, 400, "invalid_mining_demo", "Provide only the D01 plantId.");
       return;
     }
+    const sharedFlowDemo = env.MINING_PUBLIC_DEMO_CONNECTION_FLOW_ENABLED === "true";
+    if (sharedFlowDemo && env.MINING_CONNECTION_FLOW_ENABLED !== "true") {
+      error(res, 503, "mining_flow_unavailable", "The shared-flow publisher is not enabled.");
+      return;
+    }
     try {
       const { store } = dependencies();
       const signal: AbortSignal = res.locals.miningDemoSignal;
@@ -954,7 +1295,12 @@ export function createMiningDemoRouter(options: Options): Router {
       }
       signal.throwIfAborted();
       const execution = host.start(
-        { plantId: "D01", requestId: runId, durationSeconds },
+        {
+          plantId: "D01",
+          requestId: runId,
+          durationSeconds,
+          ...(sharedFlowDemo ? { profileVersion: D01_CONNECTION_PROFILE_VERSION } : {}),
+        },
         signal,
         undefined,
         (preview) => {
@@ -1011,7 +1357,24 @@ export function createMiningDemoRouter(options: Options): Router {
       const admission = await execution.admission;
       traceTwinAdmission({ scenario: "mining", runId }, requestStartedAt);
       const incidents = options.incidents;
-      if (incidents) {
+      if (options.connectionEvidence && sharedFlowDemo) {
+        void execution.completion
+          .then(
+            (status) => {
+              if (status.phase === "publisher_complete" && !status.stopRequested)
+                return options.connectionEvidence!.start(runId);
+            },
+            (cause: unknown) =>
+              console.error("[mining-connection-evidence] Publisher failed", cause),
+          )
+          .catch((cause: unknown) =>
+            console.error(
+              "[mining-connection-evidence] Completion-triggered reconciliation failed",
+              cause,
+            ),
+          );
+      }
+      if (incidents && !sharedFlowDemo) {
         void execution.completion
           .then(
             (status) => {

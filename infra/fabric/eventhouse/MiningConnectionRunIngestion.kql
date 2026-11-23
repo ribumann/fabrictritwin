@@ -1,0 +1,379 @@
+// Read-only completed-run reconciliation. "RECONCILED" means the raw rows
+// classified ACCEPTED by this function match validated event IDs and payload
+// fingerprints at this cutoff. It does not prove that the simulator emitted
+// every scheduled event or that every event reached the raw table.
+.create-or-alter function with (folder = "Mining/Connection/Queries")
+MiningConnectionRunReconciliationV1(runId:string, asOf:datetime)
+{
+    let pins =
+        mining_ConnectionRunProfile
+        | where plant_id == "D01" and run_id == runId
+        | extend pin_received_at=ingestion_time()
+        | summarize pin_rows=countif(isnotnull(pin_received_at) and pin_received_at <= asOf),
+            pin_receipt_time_missing_rows=countif(isnull(pin_received_at)),
+            pin_catalog_versions=make_set_if(catalog_version,
+                isnotnull(pin_received_at) and pin_received_at <= asOf, 2),
+            pin_measurement_versions=make_set_if(measurement_catalog_version,
+                isnotnull(pin_received_at) and pin_received_at <= asOf, 2),
+            pin_profile_versions=make_set_if(profile_version,
+                isnotnull(pin_received_at) and pin_received_at <= asOf, 2);
+    let completions =
+        mining_ConnectionRunCompletion
+        | where plant_id == "D01" and run_id == runId and completed_at <= asOf
+        | summarize completion_rows=count(), completion_time=max(completed_at),
+            completion_catalog_versions=make_set(catalog_version, 2),
+            completion_measurement_versions=make_set(measurement_catalog_version, 2),
+            completion_profile_versions=make_set(profile_version, 2);
+    let classified_raw =
+        mining_ClassifyConnectionMeasurementV1()
+        | where run_id == runId and received_at <= asOf;
+    let raw_identity_groups =
+        classified_raw
+        | where event_id matches regex @"^[0-9a-f]{64}$"
+        | summarize raw_copies=count(), fingerprints=make_set(payload_fingerprint, 2),
+            accepted_copies=countif(disposition == "ACCEPTED"),
+            quarantined_copies=countif(disposition == "QUARANTINED"),
+            blocked_copies=countif(disposition == "BLOCKED") by event_id;
+    let raw_conflicting_ids =
+        raw_identity_groups
+        | where raw_copies > 1 and
+            (array_length(fingerprints) != 1 or
+                (accepted_copies > 0 and quarantined_copies + blocked_copies > 0))
+        | project event_id;
+    let raw_groups =
+        classified_raw
+        | where disposition == "ACCEPTED"
+        | summarize copies=count(), fingerprints=make_set(payload_fingerprint, 2) by event_id;
+    let validated_groups =
+        mining_ValidatedConnectionMeasurement
+        | where plant_id == "D01" and run_id == runId and received_at <= asOf and
+            ingestion_time() <= asOf
+        | summarize copies=count(), fingerprints=make_set(payload_fingerprint, 2) by event_id;
+    let expected = raw_groups
+        | where array_length(fingerprints) == 1
+        | project event_id, fingerprint=tostring(fingerprints[0]);
+    let observed = validated_groups
+        | where array_length(fingerprints) == 1
+        | project event_id, fingerprint=tostring(fingerprints[0]);
+    let missing_count=toscalar(
+        expected | join kind=leftanti (observed) on event_id, fingerprint | count);
+    let unexpected_count=toscalar(
+        observed | join kind=leftanti (expected) on event_id, fingerprint | count);
+    let raw_conflict_count=toscalar(raw_conflicting_ids | count);
+    let validated_conflict_count=toscalar(
+        validated_groups | where array_length(fingerprints) != 1 | count);
+    let identical_duplicate_copies=toscalar(
+        raw_groups | where array_length(fingerprints) == 1 | summarize sum(copies - 1));
+    let quarantined_raw_event_count=toscalar(
+        classified_raw | where disposition == "QUARANTINED" | summarize dcount(event_id));
+    let blocked_raw_event_count=toscalar(
+        classified_raw | where disposition == "BLOCKED" | summarize dcount(event_id));
+    let raw_row_count=toscalar(classified_raw | count);
+    let validated_row_count=toscalar(
+        mining_ValidatedConnectionMeasurement
+        | where plant_id == "D01" and run_id == runId and received_at <= asOf and
+            ingestion_time() <= asOf
+        | count);
+    let pin=toscalar(pins | project pin_rows);
+    let pin_receipt_time_missing=toscalar(pins | project pin_receipt_time_missing_rows);
+    let completion=toscalar(completions | project completion_rows);
+    let completion_time=toscalar(completions | project completion_time);
+    let versions_ok=toscalar(
+        completions
+        | extend match=completion_rows == 1 and
+            array_length(set_difference(completion_catalog_versions,
+                dynamic(["sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce"]))) == 0 and
+            array_length(set_difference(completion_measurement_versions,
+                dynamic(["d01-connection-measurements-v1"]))) == 0 and
+            array_length(set_difference(completion_profile_versions,
+                dynamic(["d01-shared-flow-v1"]))) == 0
+        | project match);
+    let pin_versions_ok=toscalar(
+        pins
+        | extend match=pin_rows == 1 and
+            array_length(set_difference(pin_catalog_versions,
+                dynamic(["sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce"]))) == 0 and
+            array_length(set_difference(pin_measurement_versions,
+                dynamic(["d01-connection-measurements-v1"]))) == 0 and
+            array_length(set_difference(pin_profile_versions,
+                dynamic(["d01-shared-flow-v1"]))) == 0
+        | project match);
+    let request_ok=runId matches regex
+        @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        isnotnull(asOf) and asOf <= now();
+    print Status=case(
+            not(request_ok), "INVALID_REQUEST",
+            pin_receipt_time_missing > 0, "RUN_PIN_RECEIPT_TIME_UNAVAILABLE",
+            pin != 1 or not(pin_versions_ok), "RUN_PIN_MISSING_OR_AMBIGUOUS",
+            completion == 0, "NOT_COMPLETED_AT_CUTOFF",
+            completion != 1 or not(versions_ok), "COMPLETION_MARKER_AMBIGUOUS_OR_MISMATCHED",
+            blocked_raw_event_count > 0, "BLOCKED_RAW_CLASSIFICATION",
+            raw_conflict_count + validated_conflict_count > 0, "CONFLICTS",
+            missing_count + unexpected_count > 0, "INCOMPLETE",
+            quarantined_raw_event_count > 0, "RECONCILED_WITH_QUARANTINE",
+            "RECONCILED"),
+        RunId=runId,
+        CatalogVersion="sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce",
+        MeasurementCatalogVersion="d01-connection-measurements-v1",
+        ProfileVersion="d01-shared-flow-v1",
+        AsOf=asOf,
+        CompletionTime=completion_time,
+        RawRowCount=coalesce(raw_row_count, tolong(0)),
+        RawAcceptedDistinctEventCount=toscalar(expected | count),
+        ValidatedRowCount=coalesce(validated_row_count, tolong(0)),
+        ValidatedDistinctEventCount=toscalar(observed | count),
+        RawQuarantinedDistinctEventCount=coalesce(quarantined_raw_event_count, tolong(0)),
+        RawBlockedDistinctEventCount=coalesce(blocked_raw_event_count, tolong(0)),
+        IdenticalDuplicateCopyCount=coalesce(identical_duplicate_copies, tolong(0)),
+        RawConflictEventIdCount=coalesce(raw_conflict_count, tolong(0)),
+        ValidatedConflictEventIdCount=coalesce(validated_conflict_count, tolong(0)),
+        MissingValidatedIdentityCount=coalesce(missing_count, tolong(0)),
+        UnexpectedValidatedIdentityCount=coalesce(unexpected_count, tolong(0)),
+        RawValidatedSetMatch=missing_count == 0 and unexpected_count == 0 and
+            raw_conflict_count == 0 and validated_conflict_count == 0,
+        ReconciliationBasis="accepted raw event_id plus payload_fingerprint exact-set comparison"
+}
+
+.create-or-alter function with (folder = "Mining/Connection/Queries")
+MiningConnectionExpectedSetReconciliationV1(
+    runId:string, catalogVersion:string, measurementCatalogVersion:string,
+    profileVersion:string, asOf:datetime, expectedEventIds:dynamic)
+{
+    // A match covers only supplied IDs, not completeness of a run.
+    let expected_count=tolong(array_length(expectedEventIds));
+    // Never expand or join an oversized caller list. It yields one TRUNCATED
+    // status row below rather than a partial expected-set result.
+    let safe_expected_values=iff(
+        gettype(expectedEventIds) == "array" and expected_count <= 200,
+        expectedEventIds, dynamic([]));
+    let expanded_expected_ids =
+        print supplied_ids=safe_expected_values
+        | mv-expand supplied_id=supplied_ids
+        | extend supplied_id_type=gettype(supplied_id),
+            ExpectedEventId=tostring(supplied_id)
+        | project ExpectedEventId, supplied_id_type;
+    let expected_ids=expanded_expected_ids | distinct ExpectedEventId;
+    let expected_unique_count=toscalar(expected_ids | count);
+    let invalid_expected_id_count=toscalar(
+        expanded_expected_ids
+        | where supplied_id_type != "string" or ExpectedEventId == "" or
+            not(ExpectedEventId matches regex @"^[0-9a-f]{64}$") or
+            ExpectedEventId != tolower(ExpectedEventId)
+        | count);
+    let supported_scope=catalogVersion ==
+        "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+        measurementCatalogVersion == "d01-connection-measurements-v1" and
+        profileVersion == "d01-shared-flow-v1";
+    let pin_state =
+        mining_ConnectionRunProfile
+        | where plant_id == "D01" and run_id == runId
+        | extend pin_received_at=ingestion_time()
+        | summarize pin_count=countif(isnotnull(pin_received_at) and pin_received_at <= asOf),
+            pin_receipt_time_missing_count=countif(isnull(pin_received_at)),
+            matching_pin_count=countif(
+                catalog_version == catalogVersion and
+                measurement_catalog_version == measurementCatalogVersion and
+                profile_version == profileVersion and
+                isnotnull(pin_received_at) and pin_received_at <= asOf);
+    let pin_count=toscalar(pin_state | project pin_count);
+    let pin_receipt_time_missing_count=toscalar(
+        pin_state | project pin_receipt_time_missing_count);
+    let matching_pin_count=toscalar(pin_state | project matching_pin_count);
+    let basic_request_ok=runId matches regex
+        @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        supported_scope and isnotnull(asOf) and asOf <= now() and
+        gettype(expectedEventIds) == "array" and isnotnull(expected_count) and
+        expected_count >= 1;
+    let request_status=case(
+        not(basic_request_ok), "INVALID_REQUEST",
+        expected_count > 200, "TRUNCATED",
+        expected_unique_count != expected_count or invalid_expected_id_count > 0,
+            "INVALID_REQUEST",
+        pin_receipt_time_missing_count > 0,
+            "RUN_PIN_RECEIPT_TIME_UNAVAILABLE",
+        pin_count != 1 or matching_pin_count != 1,
+            "RUN_PIN_MISSING_OR_AMBIGUOUS",
+        "OK");
+    let raw_observations =
+        mining_ClassifyConnectionMeasurementV1()
+        | where run_id == runId and received_at <= asOf
+        | join kind=inner (expected_ids | project event_id=ExpectedEventId) on event_id
+        | extend InRequestedScope=plant_id == "D01" and
+            catalog_version == catalogVersion and
+            measurement_catalog_version == measurementCatalogVersion and
+            profile_version == profileVersion;
+    let raw_by_id =
+        raw_observations
+        | summarize RawCopyCount=count(),
+            RawInScopeCopyCount=countif(InRequestedScope),
+            RawAcceptedCopyCount=countif(InRequestedScope and disposition == "ACCEPTED"),
+            RawQuarantinedCopyCount=countif(InRequestedScope and disposition == "QUARANTINED"),
+            RawBlockedCopyCount=countif(InRequestedScope and disposition == "BLOCKED"),
+            RawAcceptedAnyCopyCount=countif(disposition == "ACCEPTED"),
+            RawNonAcceptedAnyCopyCount=countif(
+                disposition == "QUARANTINED" or disposition == "BLOCKED"),
+            RawAcceptedEvent=take_anyif(raw_event, InRequestedScope and disposition == "ACCEPTED"),
+            RawAcceptedSampleTime=take_anyif(sample_time_raw, InRequestedScope and disposition == "ACCEPTED"),
+            RawPayloadFingerprints=make_set(payload_fingerprint, 2),
+            RawAcceptedPayloadFingerprints=make_set_if(
+                payload_fingerprint, InRequestedScope and disposition == "ACCEPTED", 2)
+            by ExpectedEventId=event_id
+        // make_set is capped at two here; the exported columns therefore
+        // represent cardinality 0, 1, or 2+ rather than exact large counts.
+        | extend RawOutOfScopeCopyCount=RawCopyCount - RawInScopeCopyCount,
+            RawDuplicateCopyCount=iff(RawCopyCount > 1, RawCopyCount - 1, tolong(0)),
+            RawDistinctPayloadCountCappedAt2=tolong(array_length(RawPayloadFingerprints)),
+            RawAcceptedDistinctPayloadCountCappedAt2=
+                tolong(array_length(RawAcceptedPayloadFingerprints))
+        | extend RawConflict=RawCopyCount > 1 and
+            (RawDistinctPayloadCountCappedAt2 != 1 or
+                (RawAcceptedAnyCopyCount > 0 and RawNonAcceptedAnyCopyCount > 0));
+    let validated_by_id =
+        mining_ValidatedConnectionMeasurement
+        | where plant_id == "D01" and run_id == runId and
+            catalog_version == catalogVersion and
+            measurement_catalog_version == measurementCatalogVersion and
+            profile_version == profileVersion and received_at <= asOf and
+            ingestion_time() <= asOf
+        | extend materialized_fingerprint=hash_sha256(tostring(pack_array(
+            schema_version, run_id, event_id, sequence, sample_time, sample_interval_seconds,
+            plant_id, catalog_version, measurement_catalog_version, profile_version, stream_id,
+            measurement_tag_id, source_module_id, source_port_id, source_equipment_id,
+            source_equipment_port_id, target_module_id, target_port_id, target_equipment_id,
+            target_equipment_port_id, quantity, basis, value, unit, quality, origin)))
+        | join kind=inner (expected_ids | project event_id=ExpectedEventId) on event_id
+        | summarize ValidatedCopyCount=count(),
+            ValidatedEvent=take_any(pack(
+                "schema_version", schema_version, "run_id", run_id, "event_id", event_id,
+                "sequence", sequence, "sample_time", sample_time,
+                "sample_interval_seconds", sample_interval_seconds, "plant_id", plant_id,
+                "catalog_version", catalog_version, "measurement_catalog_version", measurement_catalog_version,
+                "profile_version", profile_version, "stream_id", stream_id,
+                "measurement_tag_id", measurement_tag_id, "source_module_id", source_module_id,
+                "source_port_id", source_port_id, "source_equipment_id", source_equipment_id,
+                "source_equipment_port_id", source_equipment_port_id, "target_module_id", target_module_id,
+                "target_port_id", target_port_id, "target_equipment_id", target_equipment_id,
+                "target_equipment_port_id", target_equipment_port_id, "quantity", quantity,
+                "basis", basis, "value", value, "unit", unit, "quality", quality, "origin", origin)),
+            ValidatedPayloadFingerprints=make_set(payload_fingerprint, 2),
+            MaterializedFingerprints=make_set(materialized_fingerprint, 2)
+            by ExpectedEventId=event_id
+        | extend ValidatedDuplicateCopyCount=iff(
+                ValidatedCopyCount > 1, ValidatedCopyCount - 1, tolong(0)),
+            ValidatedDistinctPayloadCountCappedAt2=
+                tolong(array_length(ValidatedPayloadFingerprints)),
+            MaterializedDistinctPayloadCountCappedAt2=tolong(array_length(MaterializedFingerprints))
+        | extend ValidatedConflict=ValidatedDistinctPayloadCountCappedAt2 > 1 or
+            MaterializedDistinctPayloadCountCappedAt2 > 1;
+    let expected_rows =
+        expected_ids
+        | join kind=leftouter (raw_by_id) on ExpectedEventId
+        | join kind=leftouter (validated_by_id) on ExpectedEventId
+        | extend RawCopyCount=coalesce(RawCopyCount, tolong(0)),
+            RawInScopeCopyCount=coalesce(RawInScopeCopyCount, tolong(0)),
+            RawOutOfScopeCopyCount=coalesce(RawOutOfScopeCopyCount, tolong(0)),
+            RawAcceptedCopyCount=coalesce(RawAcceptedCopyCount, tolong(0)),
+            RawQuarantinedCopyCount=coalesce(RawQuarantinedCopyCount, tolong(0)),
+            RawBlockedCopyCount=coalesce(RawBlockedCopyCount, tolong(0)),
+            RawDuplicateCopyCount=coalesce(RawDuplicateCopyCount, tolong(0)),
+            RawDistinctPayloadCountCappedAt2=
+                coalesce(RawDistinctPayloadCountCappedAt2, tolong(0)),
+            RawAcceptedDistinctPayloadCountCappedAt2=
+                coalesce(RawAcceptedDistinctPayloadCountCappedAt2, tolong(0)),
+            RawConflict=coalesce(RawConflict, false),
+            ValidatedCopyCount=coalesce(ValidatedCopyCount, tolong(0)),
+            ValidatedDuplicateCopyCount=coalesce(ValidatedDuplicateCopyCount, tolong(0)),
+            ValidatedDistinctPayloadCountCappedAt2=
+                coalesce(ValidatedDistinctPayloadCountCappedAt2, tolong(0)),
+            MaterializedDistinctPayloadCountCappedAt2=
+                coalesce(MaterializedDistinctPayloadCountCappedAt2, tolong(0)),
+            ValidatedConflict=coalesce(ValidatedConflict, false)
+        | extend RawValidatedPayloadMatch=iff(
+                RawAcceptedCopyCount > 0 and ValidatedCopyCount > 0 and
+                    RawAcceptedDistinctPayloadCountCappedAt2 == 1 and
+                    ValidatedDistinctPayloadCountCappedAt2 == 1,
+                tostring(RawAcceptedPayloadFingerprints[0]) ==
+                    tostring(ValidatedPayloadFingerprints[0]),
+                bool(null))
+        | extend PayloadMismatch=RawAcceptedCopyCount > 0 and ValidatedCopyCount > 0 and
+            (RawAcceptedDistinctPayloadCountCappedAt2 != 1 or
+                ValidatedDistinctPayloadCountCappedAt2 != 1 or
+                tostring(RawAcceptedPayloadFingerprints[0]) !=
+                    tostring(ValidatedPayloadFingerprints[0]))
+        | extend Conflict=RawConflict or ValidatedConflict or PayloadMismatch
+        | extend Status=case(
+            RawConflict, "RAW_CONFLICT",
+            ValidatedConflict, "VALIDATED_CONFLICT",
+            PayloadMismatch, "RAW_VALIDATED_MISMATCH",
+            RawCopyCount == 0 and ValidatedCopyCount == 0,
+                "MISSING_FROM_RAW_AND_VALIDATED",
+            RawCopyCount == 0 and ValidatedCopyCount > 0,
+                "VALIDATED_WITHOUT_RAW",
+            RawAcceptedCopyCount == 0 and ValidatedCopyCount > 0,
+                "VALIDATED_WITHOUT_ACCEPTED_RAW",
+            RawAcceptedCopyCount == 0 and RawInScopeCopyCount > 0,
+                "RAW_NOT_ACCEPTED",
+            RawAcceptedCopyCount == 0 and RawOutOfScopeCopyCount > 0,
+                "RAW_OUT_OF_SCOPE",
+            RawAcceptedCopyCount > 0 and ValidatedCopyCount == 0,
+                "RAW_ONLY",
+            RawDuplicateCopyCount > 0 or ValidatedDuplicateCopyCount > 0,
+                "DUPLICATE_MATCH",
+            "OBSERVED_MATCH")
+        | project Status, RunId=runId, CatalogVersion=catalogVersion,
+            MeasurementCatalogVersion=measurementCatalogVersion,
+            ProfileVersion=profileVersion, AsOf=asOf,
+            EvidenceScope="explicit_expected_ids_only", ExpectedEventId,
+            RawCopyCount, RawInScopeCopyCount, RawOutOfScopeCopyCount,
+            RawAcceptedCopyCount, RawQuarantinedCopyCount, RawBlockedCopyCount,
+            RawDuplicateCopyCount, RawDistinctPayloadCountCappedAt2,
+            RawAcceptedDistinctPayloadCountCappedAt2, RawConflict, ValidatedCopyCount,
+            ValidatedDuplicateCopyCount, ValidatedDistinctPayloadCountCappedAt2,
+            MaterializedDistinctPayloadCountCappedAt2,
+            ValidatedConflict, RawValidatedPayloadMatch, PayloadMismatch, Conflict,
+            RawAcceptedEvent, RawAcceptedSampleTime, ValidatedEvent;
+    let status_row =
+        print Status=request_status, RunId=runId, CatalogVersion=catalogVersion,
+            MeasurementCatalogVersion=measurementCatalogVersion,
+            ProfileVersion=profileVersion, AsOf=asOf,
+            EvidenceScope="explicit_expected_ids_only", ExpectedEventId="",
+            RawCopyCount=long(0), RawInScopeCopyCount=long(0),
+            RawOutOfScopeCopyCount=long(0), RawAcceptedCopyCount=long(0),
+            RawQuarantinedCopyCount=long(0), RawBlockedCopyCount=long(0),
+            RawDuplicateCopyCount=long(0), RawDistinctPayloadCountCappedAt2=long(0),
+            RawAcceptedDistinctPayloadCountCappedAt2=long(0), RawConflict=bool(null),
+            ValidatedCopyCount=long(0), ValidatedDuplicateCopyCount=long(0),
+            ValidatedDistinctPayloadCountCappedAt2=long(0),
+            MaterializedDistinctPayloadCountCappedAt2=long(0), ValidatedConflict=bool(null),
+            RawValidatedPayloadMatch=bool(null), PayloadMismatch=bool(null),
+            Conflict=bool(null), RawAcceptedEvent=dynamic(null), RawAcceptedSampleTime="",
+            ValidatedEvent=dynamic(null)
+        | where request_status != "OK";
+    union kind=outer status_row, (expected_rows | where request_status == "OK")
+}
+
+// Count all run-associated rows independently of the expected-ID pages.
+// Comparing these totals with the paged copies detects unexpected identities
+// and out-of-scope validated rows without returning an unbounded event list.
+.create-or-alter function with (folder = "Mining/Connection/Queries")
+MiningConnectionRunRowTotalsV1(runId:string, asOf:datetime)
+{
+    let raw = mining_ConnectionMeasurementRaw
+        | where tostring(event["run_id"]) == runId
+        | extend receipt=ingestion_time()
+        | summarize RawRows=countif(isnotnull(receipt) and receipt <= asOf),
+            RawReceiptTimeMissing=countif(isnull(receipt));
+    let validated = mining_ValidatedConnectionMeasurement
+        | where run_id == runId
+        | extend materialized=ingestion_time()
+        | summarize ValidatedRows=countif(isnotnull(materialized) and materialized <= asOf),
+            ValidatedReceiptTimeMissing=countif(isnull(materialized) or isnull(received_at));
+    let request_ok=runId matches regex
+        @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        isnotnull(asOf) and asOf <= now();
+    print Status=iff(request_ok, "OK", "INVALID_REQUEST"), RunId=runId, AsOf=asOf,
+        RawRows=toscalar(raw | project RawRows),
+        RawReceiptTimeMissing=toscalar(raw | project RawReceiptTimeMissing),
+        ValidatedRows=toscalar(validated | project ValidatedRows),
+        ValidatedReceiptTimeMissing=toscalar(validated | project ValidatedReceiptTimeMissing)
+}

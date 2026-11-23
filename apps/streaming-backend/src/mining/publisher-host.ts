@@ -6,6 +6,7 @@ import {
   type MiningStartupPreview,
   type MiningBatchObserver,
   type MiningPreviewObserver,
+  type MiningConnectionRunProfilePinHandler,
 } from "./publisher-runtime.js";
 import type {
   MiningRunStatus,
@@ -13,6 +14,7 @@ import type {
   StartContinuousMiningRun,
 } from "./run-coordinator.js";
 import { MiningCoordinationError } from "./store.js";
+import { configuredConnectionRunPinHandler } from "./connection-run-pin.js";
 
 export interface MiningPublisherExecution {
   admission: Promise<MiningPublisherAdmission>;
@@ -28,7 +30,12 @@ export class MiningPublisherHost {
 
   constructor(factory?: () => MiningPublisherRuntime | undefined) {
     const env = { ...process.env };
-    this.factory = factory ?? (() => configuredMiningPublisherRuntime(env));
+    this.factory =
+      factory ??
+      (() =>
+        configuredMiningPublisherRuntime(env, {
+          connectionRunProfilePin: configuredConnectionRunPinHandler(env),
+        }));
   }
 
   start(
@@ -38,11 +45,21 @@ export class MiningPublisherHost {
     onStartup?: (preview: MiningStartupPreview) => void,
     onBatch?: MiningBatchObserver,
     onPreview?: MiningPreviewObserver,
+    connectionRunProfilePin?: MiningConnectionRunProfilePinHandler,
   ): MiningPublisherExecution {
     const snapshot = { ...input };
     return this.launch(
       (runtime, signal, notify) =>
-        runtime.run(snapshot, signal, incidents, notify, onStartup, onBatch, onPreview),
+        runtime.run(
+          snapshot,
+          signal,
+          incidents,
+          notify,
+          onStartup,
+          onBatch,
+          onPreview,
+          connectionRunProfilePin,
+        ),
       requestSignal,
     );
   }

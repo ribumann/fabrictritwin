@@ -1,8 +1,38 @@
 const svgNs = "http://www.w3.org/2000/svg";
-const routeColors = { process: 0x64748b, water: 0x2563a6, observed: 0x08765c };
+const routeColors = {
+  process: 0x64748b,
+  water: 0x2563a6,
+  medium: 0x755197,
+  observed: 0x08765c,
+};
+function routeComponents(stream, evidence) {
+  const route = evidence?.measuredRoutes?.get(stream.id);
+  if (!route) return [];
+  return route.components ?? [{ ...route, quantity: "dry_solids_mass_flow" }];
+}
+function componentStyle(component) {
+  return component.quantity === "water_volume_flow"
+    ? "water"
+    : component.quantity === "medium_volume_flow"
+      ? "medium"
+      : "observed";
+}
+function componentLabel(component) {
+  const kind =
+    component.quantity === "water_volume_flow"
+      ? "water"
+      : component.quantity === "medium_volume_flow"
+        ? "medium"
+        : "solids";
+  const time = component.delayed
+    ? ` · delayed, sampled ${new Date(component.sampleTime).toLocaleTimeString()}`
+    : "";
+  return `${kind} ${component.value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${component.unit}${time}`;
+}
 function routeStyle(stream, evidence) {
-  return evidence?.measuredRoutes?.has(stream.id)
-    ? "observed"
+  const components = routeComponents(stream, evidence);
+  return components.length
+    ? componentStyle(components[0])
     : stream.material.includes("water")
       ? "water"
       : "process";
@@ -81,14 +111,37 @@ export function renderTop(
       !ids.has(stream.target.module_id)
     )
       continue;
-    container.append(
-      svg("polyline", {
+    const components = routeComponents(stream, evidence);
+    for (const [index, component] of (components.length ? components : [null]).entries()) {
+      const line = svg("polyline", {
         points: stream.route_points_m.map(([x, , z]) => `${x},${z}`).join(" "),
         "marker-end": "url(#flow-arrow)",
-        "data-route": routeStyle(stream, evidence),
-        "stroke-width": evidence?.measuredRoutes?.get(stream.id)?.width ?? 0.18,
-      }),
-    );
+        "data-route": component ? componentStyle(component) : routeStyle(stream, evidence),
+        "stroke-width": component?.width ?? 0.18,
+        ...(component?.delayed ? { "stroke-dasharray": "1.5 0.8" } : {}),
+        ...(components.length > 1 ? { transform: `translate(0 ${(index - 0.5) * 0.8})` } : {}),
+      });
+      if (component) {
+        const title = svg("title");
+        title.textContent = `${stream.source.module_id} → ${stream.target.module_id}: ${component.quantity.replaceAll("_", " ")} ${component.value} ${component.unit}`;
+        line.append(title);
+      }
+      container.append(line);
+    }
+    if (
+      components.length &&
+      (stream.source.module_id === selected || stream.target.module_id === selected)
+    ) {
+      const midpoint = stream.route_points_m[Math.floor(stream.route_points_m.length / 2)];
+      const label = svg("text", {
+        x: midpoint[0],
+        y: midpoint[2] - 1,
+        "text-anchor": "middle",
+        class: "plant-svg-reading",
+      });
+      label.textContent = components.map(componentLabel).join(" · ");
+      container.append(label);
+    }
   }
   for (const module of modules) {
     const [x, , z] = module.position;
@@ -152,6 +205,7 @@ export async function createPlant3D(container, catalog, select) {
   container.replaceChildren(renderer.domElement);
   let overlay;
   const badges = new Map();
+  const routeBadgePositions = new Map();
   const renderedBadges = [];
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
@@ -202,44 +256,48 @@ export async function createPlant3D(container, catalog, select) {
         new THREE.LineBasicMaterial({ color: 0x64748b }),
       ),
     );
-    const measured = new THREE.Group();
-    for (let i = 1; i < points.length; i++) {
-      const length = points[i].distanceTo(points[i - 1]);
-      if (length < 0.01) continue;
-      const segment = new THREE.Mesh(
-        new THREE.CylinderGeometry(1, 1, length, 8),
-        new THREE.MeshBasicMaterial({ color: routeColors.observed }),
-      );
-      segment.position
-        .copy(points[i - 1])
-        .add(points[i])
-        .multiplyScalar(0.5);
-      segment.quaternion.setFromUnitVectors(
-        new THREE.Vector3(0, 1, 0),
-        points[i]
-          .clone()
-          .sub(points[i - 1])
-          .normalize(),
-      );
-      measured.add(segment);
+    const measured = new Map();
+    for (const style of ["observed", "water", "medium"]) {
+      const component = new THREE.Group();
+      for (let i = 1; i < points.length; i++) {
+        const length = points[i].distanceTo(points[i - 1]);
+        if (length < 0.01) continue;
+        const segment = new THREE.Mesh(
+          new THREE.CylinderGeometry(1, 1, length, 8),
+          new THREE.MeshBasicMaterial({ color: routeColors[style] }),
+        );
+        segment.position
+          .copy(points[i - 1])
+          .add(points[i])
+          .multiplyScalar(0.5);
+        segment.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          points[i]
+            .clone()
+            .sub(points[i - 1])
+            .normalize(),
+        );
+        component.add(segment);
+      }
+      component.visible = false;
+      measured.set(style, component);
+      group.add(component);
     }
-    measured.visible = false;
-    group.add(measured);
     const last = points.at(-1),
       previous = [...points].reverse().find((point) => point.distanceTo(last) > 0.01);
+    let arrow;
     if (previous)
-      group.add(
-        new THREE.ArrowHelper(
-          last.clone().sub(previous).normalize(),
-          previous,
-          previous.distanceTo(last),
-          0x64748b,
-          1.1,
-          0.6,
-        ),
+      arrow = new THREE.ArrowHelper(
+        last.clone().sub(previous).normalize(),
+        previous,
+        previous.distanceTo(last),
+        0x64748b,
+        1.1,
+        0.6,
       );
+    if (arrow) group.add(arrow);
     scene.add(group);
-    streams.push({ stream, group, measured });
+    streams.push({ stream, group, measured, arrow });
   }
   const selection = new THREE.BoxHelper(undefined, 0x4f46e5);
   selection.visible = false;
@@ -268,8 +326,12 @@ export async function createPlant3D(container, catalog, select) {
     renderedBadges.length = 0;
     for (const [id, badge] of badges) {
       const target = targets.get(id);
-      position.copy(target.position);
-      position.y += target.geometry.parameters.height / 2 + 1;
+      const routePosition = routeBadgePositions.get(id);
+      if (target) {
+        position.copy(target.position);
+        position.y += target.geometry.parameters.height / 2 + 1;
+      } else if (routePosition) position.copy(routePosition);
+      else continue;
       cameraSpace.copy(position).applyMatrix4(camera.matrixWorldInverse);
       position.project(camera);
       const x = ((position.x + 1) * width) / 2;
@@ -277,7 +339,7 @@ export async function createPlant3D(container, catalog, select) {
       // Selected equipment wins collisions; clips and overlaps are omitted, not relocated.
       const offset = badge.offsetWidth / 2;
       const visible =
-        target.visible &&
+        (target ? target.visible : true) &&
         cameraSpace.z < -camera.near &&
         Math.abs(position.z) < 1 &&
         x - offset > 4 &&
@@ -508,21 +570,32 @@ export async function createPlant3D(container, catalog, select) {
       );
       if (box.visible) box.setFromObject(target);
     }
-    for (const { stream, group, measured } of streams) {
+    for (const { stream, group, measured, arrow } of streams) {
       group.visible =
         (utilities || stream.visible_by_default) &&
         targets.get(stream.source.module_id).visible &&
         targets.get(stream.target.module_id).visible;
       const color = routeColors[routeStyle(stream, evidence)];
       group.children[0].material.color.setHex(color);
-      group.children[2]?.setColor(color);
-      const rate = evidence?.measuredRoutes?.get(stream.id);
-      measured.visible = !!rate;
-      for (const segment of measured.children) {
-        segment.scale.set(rate ? rate.width / 2 : 1, 1, rate ? rate.width / 2 : 1);
+      arrow?.setColor(color);
+      const components = routeComponents(stream, evidence);
+      for (const [style, pipe] of measured) {
+        const component = components.find((item) => componentStyle(item) === style);
+        pipe.visible = !!component;
+        pipe.position.y = components.length > 1 ? (style === "water" ? 0.5 : -0.5) : 0;
+        for (const segment of pipe.children) {
+          segment.material.transparent = !!component?.delayed;
+          segment.material.opacity = component?.delayed ? 0.55 : 1;
+          segment.scale.set(
+            component ? component.width / 2 : 1,
+            1,
+            component ? component.width / 2 : 1,
+          );
+        }
       }
     }
     badges.clear();
+    routeBadgePositions.clear();
     overlay?.replaceChildren();
     const labels = [...(evidence?.readings ?? [])].filter(
       ([id, reading]) => reading.current || id === moduleId,
@@ -533,7 +606,13 @@ export async function createPlant3D(container, catalog, select) {
       if (existing) existing[1] = { ...existing[1], line, state };
       else labels.push([id, { line, state, current: false, label: "" }]);
     }
-    if (labels.length && !overlay) {
+    const hasRouteLabels = streams.some(
+      ({ stream, group }) =>
+        group.visible &&
+        routeComponents(stream, evidence).length &&
+        (stream.source.module_id === moduleId || stream.target.module_id === moduleId),
+    );
+    if ((labels.length || hasRouteLabels) && !overlay) {
       overlay = document.createElement("div");
       overlay.className = "plant-overlays";
       overlay.setAttribute("aria-hidden", "true");
@@ -550,6 +629,26 @@ export async function createPlant3D(container, catalog, select) {
         : reading.label;
       badges.set(id, badge);
       overlay.append(badge);
+    }
+    if (overlay) {
+      for (const { stream, group } of streams) {
+        const components = routeComponents(stream, evidence);
+        if (
+          !group.visible ||
+          !components.length ||
+          (stream.source.module_id !== moduleId && stream.target.module_id !== moduleId)
+        )
+          continue;
+        const point = stream.route_points_m[Math.floor(stream.route_points_m.length / 2)];
+        const id = `route:${stream.id}`;
+        const badge = document.createElement("span");
+        badge.className = "plant-reading";
+        badge.dataset.current = String(!components.some((component) => component.delayed));
+        badge.textContent = components.map(componentLabel).join(" · ");
+        badges.set(id, badge);
+        routeBadgePositions.set(id, new THREE.Vector3(point[0], point[1] + 1, point[2]));
+        overlay.append(badge);
+      }
     }
     const selected = targets.get(moduleId);
     selection.visible = !!selected?.visible;

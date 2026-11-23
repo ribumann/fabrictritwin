@@ -185,9 +185,12 @@
           <div class="plant-legend" aria-label="Plant overlay legend">
             <span class="legend-route">Process route</span>
             <span class="legend-water">Water route (enable utility streams)</span>
-            <span class="legend-observed">Measured inlet rate (not equipment health)</span>
+            <span class="legend-observed" id="flow-legend"
+              >Measured inlet rate (not equipment health)</span
+            >
             <span>Line markers: green running · grey stopped · hollow unknown</span>
           </div>
+          <p id="flow-status" role="status" hidden></p>
           <details id="object-disclosure">
             <summary>Browse plant equipment</summary>
             <ul id="object-list" class="mining-objects" aria-label="Plant object selection"></ul>
@@ -238,6 +241,10 @@
               <div id="downstream"></div>
             </div>
           </div>
+          <details id="flow-trend-details" hidden>
+            <summary id="flow-trend-heading">Connection trends</summary>
+            <div id="flow-trend"></div>
+          </details>
           <details class="connection-details">
             <summary>About connections</summary>
             <p>

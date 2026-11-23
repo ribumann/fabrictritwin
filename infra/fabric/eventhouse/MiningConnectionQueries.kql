@@ -1,0 +1,306 @@
+// Public bounded D01 v1 read functions. All reads are scoped to one pinned run
+// and the explicit catalog/profile versions; no legacy function is replaced.
+.create-or-alter function with (folder = "Mining/Connection/Queries")
+mining_ConnectionUniqueTicksV1(
+    requested_run_id:string, requested_catalog_version:string,
+    requested_measurement_catalog_version:string, requested_profile_version:string,
+    requested_start_utc:datetime, requested_end_utc:datetime,
+    requested_receipt_cutoff_utc:datetime)
+{
+    let scoped_events = materialize(
+        mining_ValidatedConnectionMeasurement
+        | where plant_id == "D01" and run_id == requested_run_id and
+            catalog_version == requested_catalog_version and
+            measurement_catalog_version == requested_measurement_catalog_version and
+            profile_version == requested_profile_version and
+            received_at <= requested_receipt_cutoff_utc
+    );
+    let candidate_event_ids =
+        scoped_events
+        | where sample_time >= requested_start_utc and sample_time <= requested_end_utc
+        | distinct event_id;
+    let validated_identity_status =
+        scoped_events
+        | summarize fingerprints=make_set(payload_fingerprint, 2) by event_id
+        | project event_id, validated_identity_conflict=array_length(fingerprints) != 1;
+    let raw_identity_status =
+        mining_ClassifyConnectionMeasurementV1()
+        | where run_id == requested_run_id and received_at <= requested_receipt_cutoff_utc and
+            event_id matches regex @"^[0-9a-f]{64}$"
+        | summarize raw_copies=count(), raw_fingerprints=make_set(payload_fingerprint, 2),
+            accepted_copies=countif(disposition == "ACCEPTED"),
+            quarantined_copies=countif(disposition == "QUARANTINED"),
+            blocked_copies=countif(disposition == "BLOCKED") by event_id
+        | where raw_copies > 1 and
+            (array_length(raw_fingerprints) != 1 or
+                (accepted_copies > 0 and quarantined_copies + blocked_copies > 0))
+        | project event_id, raw_identity_conflict=true;
+    let identity_status =
+        candidate_event_ids
+        | join kind=leftouter (validated_identity_status) on event_id
+        | join kind=leftouter (raw_identity_status) on event_id
+        | extend event_conflict=coalesce(validated_identity_conflict, false) or
+            coalesce(raw_identity_conflict, false)
+        | project event_id, event_conflict;
+    let event_copies =
+        scoped_events
+        | where sample_time >= requested_start_utc and sample_time <= requested_end_utc
+        | summarize copies=count(), sample_time=take_any(sample_time),
+            first_received_at=min(received_at), last_received_at=max(received_at),
+            stream_id=take_any(stream_id), measurement_tag_id=take_any(measurement_tag_id),
+            source_module_id=take_any(source_module_id), source_port_id=take_any(source_port_id),
+            target_module_id=take_any(target_module_id), target_port_id=take_any(target_port_id),
+            quantity=take_any(quantity), basis=take_any(basis), value=take_any(value),
+            unit=take_any(unit), quality=take_any(quality), sequence=take_any(sequence)
+            by run_id, event_id, payload_fingerprint
+        | join kind=leftouter (identity_status) on event_id
+        | extend event_conflict=coalesce(event_conflict, false),
+            duplicate_copies=tolong(copies - 1);
+    event_copies
+    | summarize event_count=count(), event_ids=make_set(event_id, 2),
+        event_conflicts=countif(event_conflict),
+        duplicate_count=sum(duplicate_copies),
+        first_received_at=min(first_received_at), last_received_at=max(last_received_at),
+        source_module_id=take_any(source_module_id), source_port_id=take_any(source_port_id),
+        target_module_id=take_any(target_module_id), target_port_id=take_any(target_port_id),
+        quantity=take_any(quantity), basis=take_any(basis), value=take_any(value),
+        unit=take_any(unit), quality=take_any(quality), sequence=take_any(sequence)
+        by run_id, sample_time, stream_id, measurement_tag_id
+    | extend tick_conflict=event_conflicts > 0 or event_count != 1,
+        conflict_count=tolong(iff(event_conflicts > 0 or event_count != 1, 1, 0)),
+        event_id=iff(event_count == 1, tostring(event_ids[0]), ""),
+        value=iff(event_conflicts > 0 or event_count != 1, real(null), value),
+        quality=iff(event_conflicts > 0 or event_count != 1, "conflict", quality)
+}
+
+.create-or-alter function with (folder = "Mining/Connection/Queries")
+MiningConnectionLatestV1(
+    runId:string, catalogVersion:string, measurementCatalogVersion:string,
+    profileVersion:string, streamIds:dynamic, asOf:datetime,
+    lookback:timespan, maxRows:long)
+{
+    let valid_versions=catalogVersion ==
+        "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+        measurementCatalogVersion == "d01-connection-measurements-v1" and
+        profileVersion == "d01-shared-flow-v1";
+    let selected_bindings =
+        mining_ConnectionMeasurementBinding
+        | where plant_id == "D01" and catalog_version == catalogVersion and
+            measurement_catalog_version == measurementCatalogVersion and
+            profile_version == profileVersion
+        | where array_length(streamIds) == 0 or set_has_element(streamIds, stream_id)
+        | project stream_id, measurement_tag_id, quantity, basis, unit;
+    let selected_count=toscalar(selected_bindings | count);
+    let run_profile =
+        mining_ConnectionRunProfile
+        | where plant_id == "D01" and run_id == runId and
+            catalog_version == catalogVersion and
+            measurement_catalog_version == measurementCatalogVersion and
+            profile_version == profileVersion
+        | extend pin_receipt=ingestion_time()
+        | extend effective_start=case(
+            isempty(start_policy), started_at,
+            start_policy == "fabric-receipt-v1" and isnotnull(started_at) and isnotnull(pin_receipt),
+                min_of(started_at, bin(pin_receipt, 1s) + 31s),
+            datetime(null))
+        | summarize run_profile_rows=count(), started_at=take_any(effective_start);
+    let run_profile_rows=toscalar(run_profile | project run_profile_rows);
+    let run_started_at=toscalar(run_profile | where run_profile_rows == 1 | project started_at);
+    let known_stream_ids=toscalar(
+        mining_ConnectionMeasurementBinding
+        | where plant_id == "D01" and catalog_version == catalogVersion and
+            measurement_catalog_version == measurementCatalogVersion and
+            profile_version == profileVersion
+        | summarize make_set(stream_id, 50));
+    let request_ok=runId matches regex
+        @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        valid_versions and gettype(streamIds) == "array" and array_length(streamIds) <= 50 and
+        array_length(set_difference(streamIds, known_stream_ids)) == 0 and
+        isnotnull(asOf) and asOf <= now() and
+        lookback between (5s .. 1d) and maxRows between (1 .. 57) and
+        selected_count > 0 and run_profile_rows == 1 and isnotnull(run_started_at);
+    let response_status=case(
+        not(request_ok), "INVALID_REQUEST",
+        selected_count > maxRows, "TRUNCATED",
+        "OK");
+    let status_row =
+        print Status=response_status, RunId=runId, CatalogVersion=catalogVersion,
+            MeasurementCatalogVersion=measurementCatalogVersion, ProfileVersion=profileVersion,
+            StreamId="", MeasurementTagId="", Quantity="", Basis="", Unit="",
+            Value=real(null), Quality="", SampleTime=datetime(null), ReceiptTime=datetime(null),
+            EventId="", Sequence=long(null), IsStale=bool(null), DuplicateCount=long(0),
+            ConflictCount=long(0)
+        | where response_status != "OK";
+    let latest_ticks =
+        mining_ConnectionUniqueTicksV1(
+            runId, catalogVersion, measurementCatalogVersion, profileVersion,
+            asOf - lookback, asOf, asOf)
+        | summarize arg_max(sample_time, *) by stream_id, measurement_tag_id;
+    let result_rows =
+        selected_bindings
+        | where response_status == "OK"
+        | join kind=leftouter (
+            latest_ticks
+            | project stream_id, measurement_tag_id, sample_time, first_received_at,
+                event_id, sequence, value, quality, duplicate_count, conflict_count, tick_conflict
+        ) on stream_id, measurement_tag_id
+        | extend is_stale=isnotnull(sample_time) and datetime_diff("second", asOf, sample_time) > 15
+        | extend Status=case(
+            tick_conflict, "DUPLICATE_CONFLICT",
+            isnull(sample_time), "MISSING",
+            quality == "bad", "BAD_QUALITY",
+            quality == "uncertain", "UNCERTAIN_QUALITY",
+            is_stale, "STALE",
+            "OK")
+        | project Status, RunId=runId, CatalogVersion=catalogVersion,
+            MeasurementCatalogVersion=measurementCatalogVersion, ProfileVersion=profileVersion,
+            StreamId=stream_id, MeasurementTagId=measurement_tag_id, Quantity=quantity,
+            Basis=basis, Unit=unit,
+            Value=iff(tick_conflict, real(null), value),
+            Quality=coalesce(quality, "missing"), SampleTime=sample_time,
+            ReceiptTime=first_received_at, EventId=coalesce(event_id, ""),
+            Sequence=sequence, IsStale=is_stale,
+            DuplicateCount=coalesce(duplicate_count, tolong(0)),
+            ConflictCount=coalesce(conflict_count, tolong(0));
+    union kind=outer status_row, result_rows
+}
+
+.create-or-alter function with (folder = "Mining/Connection/Queries")
+MiningConnectionTrendV1(
+    runId:string, catalogVersion:string, measurementCatalogVersion:string,
+    profileVersion:string, streamIds:dynamic, fromTime:datetime, toTime:datetime,
+    windowSize:timespan, maxRows:long)
+{
+    let valid_versions=catalogVersion ==
+        "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+        measurementCatalogVersion == "d01-connection-measurements-v1" and
+        profileVersion == "d01-shared-flow-v1";
+    let selected_bindings =
+        mining_ConnectionMeasurementBinding
+        | where plant_id == "D01" and catalog_version == catalogVersion and
+            measurement_catalog_version == measurementCatalogVersion and
+            profile_version == profileVersion
+        | where array_length(streamIds) == 0 or set_has_element(streamIds, stream_id)
+        | project stream_id, measurement_tag_id, quantity, basis, unit;
+    let selected_count=toscalar(selected_bindings | count);
+    let run_profile =
+        mining_ConnectionRunProfile
+        | where plant_id == "D01" and run_id == runId and
+            catalog_version == catalogVersion and
+            measurement_catalog_version == measurementCatalogVersion and
+            profile_version == profileVersion
+        | extend pin_receipt=ingestion_time()
+        | extend effective_start=case(
+            isempty(start_policy), started_at,
+            start_policy == "fabric-receipt-v1" and isnotnull(started_at) and isnotnull(pin_receipt),
+                min_of(started_at, bin(pin_receipt, 1s) + 31s),
+            datetime(null))
+        | summarize run_profile_rows=count(), started_at=take_any(effective_start);
+    let run_profile_rows=toscalar(run_profile | project run_profile_rows);
+    let run_started_at=toscalar(run_profile | where run_profile_rows == 1 | project started_at);
+    let known_stream_ids=toscalar(
+        mining_ConnectionMeasurementBinding
+        | where plant_id == "D01" and catalog_version == catalogVersion and
+            measurement_catalog_version == measurementCatalogVersion and
+            profile_version == profileVersion
+        | summarize make_set(stream_id, 50));
+    let request_ok=runId matches regex
+        @"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" and
+        valid_versions and gettype(streamIds) == "array" and array_length(streamIds) <= 50 and
+        array_length(set_difference(streamIds, known_stream_ids)) == 0 and
+        isnotnull(fromTime) and isnotnull(toTime) and fromTime <= toTime and toTime <= now() and
+        fromTime >= run_started_at and toTime - fromTime <= 1d and
+        windowSize in (30s, 60s) and
+        maxRows between (1 .. 5000) and selected_count > 0 and
+        run_profile_rows == 1 and isnotnull(run_started_at);
+    let window_anchor=coalesce(run_started_at, datetime(1970-01-01));
+    let first_window_start=window_anchor +
+        bin(fromTime - window_anchor - iff(fromTime > window_anchor, 1ms, 0ms), windowSize);
+    let last_window_start=window_anchor +
+        bin(toTime - window_anchor - iff(toTime > window_anchor, 1ms, 0ms), windowSize);
+    let window_count=tolong((last_window_start - first_window_start) / windowSize) + 1;
+    let requested_cells=selected_count * window_count;
+    let response_status=case(
+        not(request_ok), "INVALID_REQUEST",
+        requested_cells > maxRows, "TRUNCATED",
+        "OK");
+    let expected_samples=iff(windowSize == 30s, tolong(6), tolong(12));
+    let status_row =
+        print Status=response_status, RunId=runId, CatalogVersion=catalogVersion,
+            MeasurementCatalogVersion=measurementCatalogVersion, ProfileVersion=profileVersion,
+            StreamId="", MeasurementTagId="", Quantity="", Basis="", Unit="",
+            WindowStart=datetime(null), WindowEnd=datetime(null), WindowClosed=bool(null),
+            Value=real(null), SampleCount=long(0), ExpectedSampleCount=expected_samples,
+            ObservedTickCount=long(0), BadSampleCount=long(0), UncertainSampleCount=long(0),
+            Coverage=real(0.0), DuplicateCount=long(0), ConflictCount=long(0),
+            Quality="", WindowState=response_status, IsComplete=bool(false),
+            LastSampleTime=datetime(null), LastReceiptTime=datetime(null)
+        | where response_status != "OK";
+    let tick_windows =
+        mining_ConnectionUniqueTicksV1(
+            runId, catalogVersion, measurementCatalogVersion, profileVersion,
+            fromTime, toTime, toTime)
+        // Tick values describe the preceding five-second interval, so a tick
+        // exactly at the boundary belongs to the window ending there.
+        | extend WindowStart=window_anchor + bin(sample_time - window_anchor - 1ms, windowSize)
+        | summarize ObservedTickCount=count(),
+            SampleCount=countif(not(tick_conflict) and quality == "good"),
+            BadSampleCount=countif(not(tick_conflict) and quality == "bad"),
+            UncertainSampleCount=countif(not(tick_conflict) and quality == "uncertain"),
+            DuplicateCount=sum(duplicate_count), ConflictCount=sum(conflict_count),
+            Value=avgif(value, not(tick_conflict) and quality == "good"),
+            LastSampleTime=max(sample_time), LastReceiptTime=max(last_received_at)
+            by stream_id, measurement_tag_id, WindowStart;
+    let cells =
+        selected_bindings
+        | extend cross_key=1
+        | join kind=inner (
+            // `range` requires literal bounds; generate the one-day maximum
+            // grid from a bounded integer range, then retain requested bins.
+            range window_index from 0 to 2880 step 1
+            | extend WindowStart=first_window_start + todouble(window_index) * windowSize
+            | where WindowStart <= last_window_start
+            | extend cross_key=1, WindowEnd=WindowStart + windowSize
+            | project cross_key, WindowStart, WindowEnd
+        ) on cross_key
+        | project stream_id, measurement_tag_id, quantity, basis, unit, WindowStart, WindowEnd
+        | join kind=leftouter (tick_windows) on stream_id, measurement_tag_id, WindowStart
+        | extend WindowClosed=WindowEnd <= toTime,
+            ExpectedSampleCount=expected_samples,
+            SampleCount=coalesce(SampleCount, tolong(0)),
+            ObservedTickCount=coalesce(ObservedTickCount, tolong(0)),
+            BadSampleCount=coalesce(BadSampleCount, tolong(0)),
+            UncertainSampleCount=coalesce(UncertainSampleCount, tolong(0)),
+            DuplicateCount=coalesce(DuplicateCount, tolong(0)),
+            ConflictCount=coalesce(ConflictCount, tolong(0)),
+            Coverage=todouble(coalesce(SampleCount, tolong(0))) / todouble(expected_samples)
+        // avgif() is NaN when a present window has no qualifying good values.
+        // Keep the API's missing/unusable/conflict values explicitly null.
+        | extend Value=iff(SampleCount == 0, real(null), Value)
+        | extend Quality=case(
+            ConflictCount > 0, "conflict",
+            BadSampleCount > 0, "bad",
+            UncertainSampleCount > 0, "uncertain",
+            SampleCount == 0, "missing",
+            SampleCount == expected_samples, "good",
+            "partial")
+        | extend WindowState=case(
+            ConflictCount > 0, "CONFLICT",
+            not(WindowClosed), "OPEN_WINDOW",
+            ObservedTickCount == 0, "MISSING",
+            SampleCount == 0, "UNUSABLE",
+            SampleCount == expected_samples and BadSampleCount == 0 and
+                UncertainSampleCount == 0, "COMPLETE",
+            "PARTIAL")
+        | extend IsComplete=WindowClosed and SampleCount == expected_samples and
+            BadSampleCount == 0 and UncertainSampleCount == 0 and ConflictCount == 0
+        | extend Status=WindowState
+        | project Status, RunId=runId, CatalogVersion=catalogVersion,
+            MeasurementCatalogVersion=measurementCatalogVersion, ProfileVersion=profileVersion,
+            StreamId=stream_id, MeasurementTagId=measurement_tag_id, Quantity=quantity,
+            Basis=basis, Unit=unit, WindowStart, WindowEnd, WindowClosed, Value,
+            SampleCount, ExpectedSampleCount, ObservedTickCount, BadSampleCount,
+            UncertainSampleCount, Coverage, DuplicateCount, ConflictCount, Quality,
+            WindowState, IsComplete, LastSampleTime, LastReceiptTime;
+    union kind=outer status_row, (cells | where response_status == "OK")
+}

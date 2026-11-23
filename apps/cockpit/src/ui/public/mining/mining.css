@@ -166,6 +166,9 @@
 #plant-top polyline[data-route="observed"] {
   stroke: #08765c;
 }
+#plant-top polyline[data-route="medium"] {
+  stroke: #755197;
+}
 .plant-legend {
   display: flex;
   flex-wrap: wrap;
@@ -748,34 +751,42 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.25rem;
 }
-.mining-charts svg {
+.mining-charts svg,
+#flow-trend svg {
   width: 100%;
   height: auto;
 }
-.mining-charts p {
+.mining-charts p,
+#flow-trend p {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
-.mining-charts .chart-axis {
+.mining-charts .chart-axis,
+#flow-trend .chart-axis {
   stroke: var(--border-strong);
   stroke-width: 1;
 }
-.mining-charts .chart-tick {
+.mining-charts .chart-tick,
+#flow-trend .chart-tick {
   fill: var(--text-muted);
   font:
     11px system-ui,
     sans-serif;
 }
-.mining-charts polyline {
+.mining-charts polyline,
+#flow-trend polyline {
   fill: none;
   stroke-width: 2;
 }
-.mining-charts table {
+.mining-charts table,
+#flow-trend table {
   border-collapse: collapse;
   width: 100%;
 }
 .mining-charts th,
-.mining-charts td {
+.mining-charts td,
+#flow-trend th,
+#flow-trend td {
   text-align: left;
   padding: 0.4rem;
   border-bottom: 1px solid var(--border);

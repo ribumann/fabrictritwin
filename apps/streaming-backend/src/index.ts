@@ -21,6 +21,7 @@ import { MiningPublisherHost } from "./mining/publisher-host.js";
 import { createBackendShutdown } from "./services/backend-shutdown.js";
 import { configuredMiningDemoIncidentProcessor } from "./mining-incidents/demo-runtime.js";
 import { configuredMiningContinuousWorker } from "./mining/continuous-worker.js";
+import { configuredMiningConnectionEvidenceWorker } from "./mining/read/connection-evidence-worker.js";
 
 const app = express();
 const port = process.env.PORT ?? 3000;
@@ -31,6 +32,7 @@ const miningPublisherHost = synthetic ? undefined : new MiningPublisherHost();
 const miningDemoHost = synthetic ? undefined : createMiningDemoHost();
 const miningDemoIncidents = synthetic ? undefined : configuredMiningDemoIncidentProcessor();
 const miningContinuous = synthetic ? undefined : configuredMiningContinuousWorker();
+const miningConnectionEvidence = synthetic ? undefined : configuredMiningConnectionEvidenceWorker();
 const alertListener = synthetic
   ? createDefaultAlertListener({
       athleteIds: [runtime!.dataset.athlete.athleteId],
@@ -41,7 +43,12 @@ const alertListener = synthetic
 app.use(express.json());
 app.use(
   "/api/mining/demo",
-  createMiningDemoRouter({ synthetic, host: miningDemoHost, incidents: miningDemoIncidents }),
+  createMiningDemoRouter({
+    synthetic,
+    host: miningDemoHost,
+    incidents: miningDemoIncidents,
+    connectionEvidence: miningConnectionEvidence,
+  }),
 );
 app.use("/api/mining", createMiningStartRouter({ synthetic, host: miningPublisherHost }));
 app.use("/api/mining", createMiningCancelRouter({ synthetic }));
@@ -77,6 +84,7 @@ const shutdown = createBackendShutdown({
       miningDemoHost?.close(),
       miningDemoIncidents?.close(),
       miningContinuous?.close(),
+      miningConnectionEvidence?.close(),
     ]);
   },
   stopBackgroundServices: () => {
@@ -131,6 +139,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         "[mining-demo-incidents] Startup recovery failed; reconciliation remains unavailable",
         cause,
       );
+    });
+    void miningConnectionEvidence?.recoverCurrent().catch((cause: unknown) => {
+      console.error("[mining-connection-evidence] Startup recovery failed", cause);
     });
   });
 }
