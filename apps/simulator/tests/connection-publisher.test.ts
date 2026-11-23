@@ -90,6 +90,34 @@ describe("D01 shared-flow Eventstream publisher", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it("publishes unpinned observations without run or sequence identifiers", async () => {
+    const sent: { body: Record<string, unknown> }[] = [];
+    const createBatch = vi.fn(async () => ({
+      get count() {
+        return sent.length;
+      },
+      tryAdd(event: { body: Record<string, unknown> }) {
+        sent.push(event);
+        return true;
+      },
+    }));
+    const publisher = new D01ConnectionEventstreamPublisher(
+      connectionString,
+      { createBatch, sendBatch: vi.fn(async () => {}), close: vi.fn(async () => {}) } as never,
+      true,
+    );
+    await publisher.publish(firstSample(), new AbortController().signal);
+    expect(sent).toHaveLength(57);
+    for (const { body } of sent) {
+      expect(body.schema_version).toBe(2);
+      expect(body).not.toHaveProperty("run_id");
+      expect(body).not.toHaveProperty("event_id");
+      expect(body).not.toHaveProperty("sequence");
+      expect(body).toHaveProperty("measurement_tag_id");
+      expect(body).toHaveProperty("sample_time");
+    }
+  });
+
   it("rejects oversized or cross-sample batches before sending", async () => {
     const sendBatch = vi.fn(async () => {});
     const publisher = new D01ConnectionEventstreamPublisher(connectionString, {

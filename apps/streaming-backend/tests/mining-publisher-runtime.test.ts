@@ -325,6 +325,86 @@ describe("D01 real-clock publisher", () => {
     });
   }, 15_000);
 
+  it("starts shared-flow publication without a Fabric pin when unpinned streaming is enabled", async () => {
+    const prepareLegacy = vi.fn(async () => {});
+    const prepareConnection = vi.fn(async () => {});
+    const legacyPublish = vi.fn(async () => {});
+    const connectionPublish = vi.fn(async () => {});
+    const pin = vi.fn(async () => {
+      throw new Error("The unpinned stream must not invoke this handler.");
+    });
+    const fast = new MiningPublisherRuntime(
+      coordinator,
+      () => ({ prepare: prepareLegacy, publish: legacyPublish, close: async () => {} }),
+      clock,
+      scheduler,
+      () => ({ prepare: prepareConnection, publish: connectionPublish, close: async () => {} }),
+      pin,
+      true,
+    );
+    const execution = fast.run({
+      plantId: "D01",
+      requestId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    await settle();
+    expect(await coordinator.currentStatus()).toMatchObject({
+      phase: "running",
+      run: { startedAt: "2026-01-01T00:00:00.000Z" },
+    });
+    expect(prepareLegacy).toHaveBeenCalledOnce();
+    expect(prepareConnection).toHaveBeenCalledOnce();
+    expect(pin).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(connectionPublish).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(180_000);
+    await expect(execution).resolves.toMatchObject({ phase: "publisher_complete" });
+  }, 15_000);
+
+  it("uses sender readiness as the start time and honors stop", async () => {
+    const connectionPublish = vi.fn(async () => {});
+    const closeLegacy = vi.fn(async () => {});
+    const closeConnection = vi.fn(async () => {});
+    const fast = new MiningPublisherRuntime(
+      coordinator,
+      () => ({
+        prepare: (signal) => scheduler.wait(3_000, signal),
+        publish: vi.fn(async () => {}),
+        close: closeLegacy,
+      }),
+      clock,
+      scheduler,
+      () => ({
+        prepare: vi.fn(async () => {}),
+        publish: connectionPublish,
+        close: closeConnection,
+      }),
+      undefined,
+      true,
+    );
+    const execution = fast.run({
+      plantId: "D01",
+      requestId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    await settle();
+    expect(await coordinator.currentStatus()).toMatchObject({ phase: "preparing" });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await coordinator.currentStatus()).toMatchObject({
+      phase: "running",
+      run: { startedAt: "2026-01-01T00:00:03.000Z" },
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(connectionPublish).toHaveBeenCalledOnce();
+    await coordinator.requestStop(requestId);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(execution).resolves.toMatchObject({ phase: "stopped" });
+    expect(closeLegacy).toHaveBeenCalledOnce();
+    expect(closeConnection).toHaveBeenCalledOnce();
+  });
+
   it("starts on the confirmed receipt schedule instead of waiting for the fixed 125-second lead", async () => {
     const receiptCoordinator = new MiningRunCoordinator(store, clock, {
       finalFlushMilliseconds: 5_000,

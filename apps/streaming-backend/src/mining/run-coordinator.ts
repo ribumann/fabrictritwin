@@ -1028,7 +1028,7 @@ export class MiningRunOwner {
   private readonly cancellation = new AbortController();
   private deadline: ReturnType<typeof setTimeout> | undefined;
   private leaseTick: number;
-  private readonly startTick: number;
+  private startTick: number;
   private busy = false;
   private inFlight = false;
   private lost = false;
@@ -1252,6 +1252,47 @@ export class MiningRunOwner {
       throw new MiningCoordinationError("invalid", "Run has no prepared shared-flow start.");
     }
     return this.startTick + Date.parse(this.run.startedAt) - Date.parse(this.run.admittedAt);
+  }
+
+  get runStartMonotonic(): number {
+    return (
+      this.startTick +
+      Date.parse(this.run.startedAt) -
+      Date.parse(this.run.admittedAt ?? this.run.startedAt)
+    );
+  }
+
+  /** Begin a shared-flow simulation once its senders are ready, without a Fabric run pin. */
+  async beginUnpinnedRun(): Promise<MiningRunRecord> {
+    return this.exclusive(async () => {
+      await this.refresh();
+      if (this.signal.aborted) {
+        await this.complete("publisher_complete");
+        throw new MiningCoordinationError("cancelled", "Mining run was cancelled.");
+      }
+      if (!isPreparedSharedFlowRun(this.run) || this.run.phase !== "preparing") {
+        throw new MiningCoordinationError("conflict", "Mining run is not preparing.");
+      }
+      const flushBudget = Date.parse(this.run.finalFlushUntil) - Date.parse(this.run.stopAt);
+      const run: BoundedMiningRunRecord = { ...this.run };
+      delete run.admittedAt;
+      delete run.pinDeadlineAt;
+      delete run.startPolicy;
+      delete run.pinReceivedAt;
+      const start = this.clock.now();
+      this.startTick = this.clock.monotonic();
+      const stopAt = start + run.durationSeconds * 1_000;
+      this.run = {
+        ...run,
+        startedAt: new Date(start).toISOString(),
+        stopAt: new Date(stopAt).toISOString(),
+        finalFlushUntil: new Date(stopAt + flushBudget).toISOString(),
+        phase: "running",
+      };
+      await this.persist();
+      this.armDeadline();
+      return structuredClone(this.run);
+    });
   }
 
   /** Transition preparing -> scheduled only after exact external pin readback has returned. */

@@ -109,6 +109,7 @@ export function createConnectionRunPinHandler(
 export function configuredConnectionRunPinHandler(
   env: NodeJS.ProcessEnv,
 ): MiningConnectionRunProfilePinHandler | undefined {
+  if (env.MINING_UNPINNED_STREAM_ENABLED === "true") return undefined;
   if (
     env.MINING_CONNECTION_PIN_EVENTSTREAM_ENABLED !== undefined &&
     !["true", "false"].includes(env.MINING_CONNECTION_PIN_EVENTSTREAM_ENABLED)

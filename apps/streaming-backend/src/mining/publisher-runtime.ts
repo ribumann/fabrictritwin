@@ -95,6 +95,7 @@ export class MiningPublisherRuntime {
     private readonly scheduler: MiningScheduler = systemScheduler,
     private readonly connectionPublisher?: () => D01ConnectionPublisher,
     private readonly connectionRunProfilePin?: MiningConnectionRunProfilePinHandler,
+    private readonly unpinnedStream = false,
   ) {}
 
   status(runId: string) {
@@ -129,7 +130,7 @@ export class MiningPublisherRuntime {
           "The shared-flow connection transport is not enabled.",
         );
       }
-      if (!profilePin) {
+      if (!profilePin && !this.unpinnedStream) {
         throw new MiningCoordinationError(
           "configuration",
           "The shared-flow run requires an awaited external profile pin.",
@@ -231,7 +232,7 @@ export class MiningPublisherRuntime {
         signal.throwIfAborted();
       }
       if (sharedFlow) {
-        if (!preparedSharedFlow || !profilePin) {
+        if (!preparedSharedFlow || (!profilePin && !this.unpinnedStream)) {
           throw new MiningCoordinationError(
             "configuration",
             "Shared-flow run does not have a durable prepared-pin contract.",
@@ -244,10 +245,9 @@ export class MiningPublisherRuntime {
         const pinSignalController = new AbortController();
         const pinSignal = AbortSignal.any([signal, pinSignalController.signal]);
         const pinWork = Promise.resolve().then(async () => {
-          const pinReceivedAt = await profilePin(
-            createMiningConnectionRunProfilePin(run),
-            pinSignal,
-          );
+          const pinReceivedAt = this.unpinnedStream
+            ? undefined
+            : await profilePin!(createMiningConnectionRunProfilePin(run), pinSignal);
           pinSignal.throwIfAborted();
           transport = this.publisher(true);
           connectionTransport = this.connectionPublisher!();
@@ -318,9 +318,11 @@ export class MiningPublisherRuntime {
                   "Shared-flow profile pin confirmation arrived after its deadline.",
                 );
               }
-              const activated = await owner.activatePreparedRun(result.receipt || undefined);
+              const activated = this.unpinnedStream
+                ? await owner.beginUnpinnedRun()
+                : await owner.activatePreparedRun(result.receipt || undefined);
               startedAt = Date.parse(activated.startedAt);
-              firstTick = owner.scheduledStartMonotonic;
+              firstTick = owner.runStartMonotonic;
               break;
             }
             if (result === "cancelled") signal.throwIfAborted();
@@ -330,7 +332,7 @@ export class MiningPublisherRuntime {
         } finally {
           pinSignalController.abort();
         }
-        while (!(await owner.beginScheduledRun())) {
+        while (!this.unpinnedStream && !(await owner.beginScheduledRun())) {
           signal.throwIfAborted();
           const remainingMs = Math.min(
             startedAt - this.clock.now(),
@@ -798,6 +800,13 @@ export function configuredMiningPublisherRuntime(
   if (receiptStartSetting === "true" && sharedFlowSetting !== "true") {
     throw new Error("Receipt-based starts require shared connection flows.");
   }
+  const unpinnedStreamSetting = env.MINING_UNPINNED_STREAM_ENABLED;
+  if (unpinnedStreamSetting !== undefined && !["true", "false"].includes(unpinnedStreamSetting)) {
+    throw new Error("MINING_UNPINNED_STREAM_ENABLED must be true or false.");
+  }
+  if (unpinnedStreamSetting === "true" && sharedFlowSetting !== "true") {
+    throw new Error("Unpinned streaming requires shared connection flows.");
+  }
   let connectionPublisher: (() => D01ConnectionPublisher) | undefined;
   if (sharedFlowSetting === "true") {
     const connectionStringFlow =
@@ -814,7 +823,12 @@ export function configuredMiningPublisherRuntime(
           "Mining shared-flow observations require a separate Eventstream source from legacy telemetry.",
         );
       }
-      connectionPublisher = () => new D01ConnectionEventstreamPublisher(connectionStringFlow);
+      connectionPublisher = () =>
+        new D01ConnectionEventstreamPublisher(
+          connectionStringFlow,
+          undefined,
+          unpinnedStreamSetting === "true",
+        );
     }
   }
   return new MiningPublisherRuntime(
@@ -829,5 +843,6 @@ export function configuredMiningPublisherRuntime(
     systemScheduler,
     connectionPublisher,
     options.connectionRunProfilePin,
+    unpinnedStreamSetting === "true",
   );
 }

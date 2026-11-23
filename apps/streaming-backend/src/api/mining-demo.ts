@@ -324,10 +324,18 @@ export function createMiningDemoRouter(options: Options): Router {
         error(res, 503, "mining_flow_unavailable", "Connection flows are not enabled.");
         return;
       }
+      const liveStream = env.MINING_UNPINNED_STREAM_ENABLED === "true";
       const keys =
         route === "connection-latest"
-          ? ["plantId", "runId"]
-          : ["plantId", "runId", "streamIds", "start", "end", "windowSeconds"];
+          ? ["plantId", ...(liveStream ? [] : ["runId"])]
+          : [
+              "plantId",
+              ...(liveStream ? [] : ["runId"]),
+              "streamIds",
+              "start",
+              "end",
+              "windowSeconds",
+            ];
       const value = req.query;
       const streams = typeof value.streamIds === "string" ? value.streamIds.split(",") : [];
       const canonical = (item: unknown) =>
@@ -341,8 +349,7 @@ export function createMiningDemoRouter(options: Options): Router {
         Object.keys(value).length !== keys.length ||
         keys.some((key) => typeof value[key] !== "string") ||
         value.plantId !== "D01" ||
-        typeof value.runId !== "string" ||
-        !uuid.test(value.runId) ||
+        (!liveStream && (typeof value.runId !== "string" || !uuid.test(value.runId))) ||
         (route === "connection-trend" &&
           (streams.length < 1 ||
             streams.length > 3 ||
@@ -361,6 +368,31 @@ export function createMiningDemoRouter(options: Options): Router {
       try {
         assertMiningDemoQueryConfiguration(env);
         const signal: AbortSignal = res.locals.miningDemoSignal;
+        if (liveStream) {
+          const provider =
+            options.connectionFlow ??
+            createMiningConnectionFlowProvider(
+              createBoundedMiningQuery({
+                ...env,
+                EVENTHOUSE_QUERY_URI: env.MINING_EVENTHOUSE_QUERY_URI,
+                EVENTHOUSE_DATABASE_NAME: env.MINING_EVENTHOUSE_DATABASE_NAME,
+              }),
+            );
+          const data =
+            route === "connection-latest"
+              ? await provider.liveLatest(new Date().toISOString(), signal)
+              : await provider.liveTrend(
+                  {
+                    start: value.start as string,
+                    end: value.end as string,
+                    streamIds: streams,
+                    windowSeconds: value.windowSeconds === "30" ? 30 : 60,
+                  },
+                  signal,
+                );
+          if (!res.headersSent && !res.destroyed) res.json(data);
+          return;
+        }
         const owner = await currentConnectionOwner(signal);
         if (!owner || owner.run.runId !== value.runId) {
           error(
@@ -781,7 +813,15 @@ export function createMiningDemoRouter(options: Options): Router {
             approvedRun: run,
             catalogVersion: D01_CATALOG_VERSION,
             readAvailable: true,
-            capabilities: { connectionFlow: flowOwner?.run.runId === run?.runId && !!flowOwner },
+            capabilities: {
+              connectionFlow:
+                env.MINING_UNPINNED_STREAM_ENABLED === "true"
+                  ? env.MINING_CONNECTION_FLOW_READ_ENABLED === "true"
+                  : flowOwner?.run.runId === run?.runId && !!flowOwner,
+              unpinnedFlow:
+                env.MINING_UNPINNED_STREAM_ENABLED === "true" &&
+                env.MINING_CONNECTION_FLOW_READ_ENABLED === "true",
+            },
             assistant: {
               available: miningAssistantConfigured(env),
               kind: "bounded-fabric-evidence",
@@ -840,7 +880,8 @@ export function createMiningDemoRouter(options: Options): Router {
           !demo.stopRequested &&
           "profileVersion" in demo.run &&
           demo.run.profileVersion === D01_CONNECTION_PROFILE_VERSION &&
-          env.MINING_CONNECTION_FLOW_READ_ENABLED === "true"
+          env.MINING_CONNECTION_FLOW_READ_ENABLED === "true" &&
+          env.MINING_UNPINNED_STREAM_ENABLED !== "true"
         ) {
           try {
             const provider =
@@ -1099,15 +1140,18 @@ export function createMiningDemoRouter(options: Options): Router {
                 EVENTHOUSE_DATABASE_NAME: env.MINING_EVENTHOUSE_DATABASE_NAME,
               }),
             );
-          const connectionFlow = await provider.latest(
-            {
-              runId: flowOwner.run.runId,
-              runStartedAt: flowOwner.run.startedAt,
-              asOf,
-              streamIds: [],
-            },
-            requestSignal,
-          );
+          const connectionFlow =
+            env.MINING_UNPINNED_STREAM_ENABLED === "true"
+              ? await provider.liveLatest(asOf, requestSignal)
+              : await provider.latest(
+                  {
+                    runId: flowOwner.run.runId,
+                    runStartedAt: flowOwner.run.startedAt,
+                    asOf,
+                    streamIds: [],
+                  },
+                  requestSignal,
+                );
           evidence = { ...overview, connectionFlow, connectionFlowOrigin: "synthetic" };
           modelEvidence = {
             runId: status.runId,
@@ -1170,8 +1214,8 @@ export function createMiningDemoRouter(options: Options): Router {
                 item.status,
                 item.sampleTime,
                 item.receiptTime,
-                item.duplicates,
-                item.conflicts,
+                "duplicates" in item ? item.duplicates : null,
+                "conflicts" in item ? item.conflicts : null,
               ]),
             },
           };
@@ -1357,7 +1401,11 @@ export function createMiningDemoRouter(options: Options): Router {
       const admission = await execution.admission;
       traceTwinAdmission({ scenario: "mining", runId }, requestStartedAt);
       const incidents = options.incidents;
-      if (options.connectionEvidence && sharedFlowDemo) {
+      if (
+        options.connectionEvidence &&
+        sharedFlowDemo &&
+        env.MINING_UNPINNED_STREAM_ENABLED !== "true"
+      ) {
         void execution.completion
           .then(
             (status) => {
