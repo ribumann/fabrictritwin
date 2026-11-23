@@ -26,9 +26,9 @@ canary validation; the existing Eventstream is not modified.
 The profile mapping stores the sender's `requested_at` in `pinned_at`; actual
 pin receipt is established separately using the table's ingestion time. The
 sender sends a pin only once and checks a bounded, exact readback before flow
-publishing. The draft host enables this handler only when
-`MINING_CONNECTION_PIN_EVENTSTREAM_ENABLED=true`; it is off by default and has
-not been deployed to the backend. An isolated real-clock canary verified pin
+publishing. The host enables this handler only when
+`MINING_CONNECTION_PIN_EVENTSTREAM_ENABLED=true`; it is off by default and
+enabled in the hosted Mining demo. An isolated real-clock canary verified pin
 receipt, timestamp preservation, and arrival through the separate Eventstream:
 all 2,109 expected raw and validated observations matched at one cutoff, with
 no quarantined observations. The maximum measured raw receipt lag was 37.17
@@ -424,9 +424,19 @@ of the same flow run took 24.5 seconds for 14 evidence pages from a remote
 host. An isolated ten-minute public-router canary subsequently returned 57
 usable live bindings and a sampled trend, and reconciled all 6,840 expected
 flow observations in both raw and validated tables. It used test HTTP claims
-and isolated legacy raw destinations, not production authentication or legacy
-validation. These observations do not establish maximum-duration performance,
-deployed application behavior or a latency guarantee.
+and isolated legacy raw destinations. A later public Cockpit run used the
+deployed authentication and production legacy and flow routes, showed 57
+connection readings, and reported complete connection reconciliation after
+the publisher completed. These observations do not establish maximum-duration
+performance or a latency guarantee.
+
+Capacity availability is external to this feature. During one capacity
+recovery the derived streams in both Mining Eventstreams were paused; the
+publisher correctly failed its pin-confirmation deadline before sending
+measurements. The existing routes were resumed and a fresh run was verified.
+If a later run fails during preparation, check capacity and the exact
+Eventstream topology and runtime states before resuming routes or starting a
+new run. Do not retry an ambiguous pin for the same run.
 
 ## Scoped rollout and rollback
 

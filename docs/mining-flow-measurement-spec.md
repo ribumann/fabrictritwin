@@ -1,9 +1,9 @@
 # D01 connection-flow telemetry
 
-Status: implementation in progress behind default-off feature gates. The
-baseline and requirements below describe the starting point and the intended
-outcome; see `mining-connection-flow-fabric.md` for current implementation
-details and verification limits.
+Status: implemented behind default-off feature gates and enabled in the
+hosted Mining demo. The baseline and requirements below describe the starting
+point and the intended outcome; see `mining-connection-flow-fabric.md` for
+implementation details and verification limits.
 
 ## Outcome
 
