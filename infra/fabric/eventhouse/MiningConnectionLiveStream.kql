@@ -1,0 +1,54 @@
+// Run-independent observations. Missing tags are omitted; callers render them as missing.
+.create-or-alter function with (folder = "Mining/Connection/Queries")
+mining_ConnectionLiveTicksV2(fromTime:datetime, toTime:datetime, asOf:datetime)
+{
+    mining_ConnectionMeasurementRaw
+    | extend received_at=ingestion_time(),
+        sample_time=todatetime(sample_time_raw),
+        tag=tostring(event["measurement_tag_id"]),
+        value=toreal(event["value"]),
+        quality=tostring(event["quality"])
+    | where received_at <= asOf and sample_time between (fromTime .. toTime)
+    | where tostring(event["entityType"]) == "ConnectionMeasurement" and
+        toint(event["schema_version"]) == 2 and tostring(event["plant_id"]) == "D01" and
+        isnotempty(tag) and isfinite(value) and value >= 0 and
+        quality in ("good", "uncertain", "bad")
+    | join kind=inner (
+        mining_ConnectionMeasurementBinding
+        | where plant_id == "D01" and
+            catalog_version == "sha256:0ba278e5e28b3466381534c5a920ce28b551cb3a7ddfc68cdf4371749f2c62ce" and
+            measurement_catalog_version == "d01-connection-measurements-v1" and
+            profile_version == "d01-shared-flow-v1"
+        | project tag=measurement_tag_id, stream_id, quantity, unit
+    ) on tag
+    | where tostring(event["stream_id"]) == stream_id and
+        tostring(event["quantity"]) == quantity and tostring(event["unit"]) == unit
+    | summarize arg_max(received_at, *) by tag, sample_time
+    | project tag, stream_id, sample_time, received_at, value, quality
+}
+
+.create-or-alter function with (folder = "Mining/Connection/Queries")
+MiningConnectionLiveLatestV2(asOf:datetime)
+{
+    mining_ConnectionLiveTicksV2(asOf - 10m, asOf, asOf)
+    | summarize arg_max(sample_time, *) by tag
+    | project MeasurementTagId=tag, SampleTime=sample_time, ReceiptTime=received_at,
+        Value=value, Quality=quality
+}
+
+.create-or-alter function with (folder = "Mining/Connection/Queries")
+MiningConnectionLiveTrendV2(fromTime:datetime, toTime:datetime, windowSize:timespan, streamIds:dynamic)
+{
+    mining_ConnectionLiveTicksV2(fromTime, toTime, now())
+    | where set_has_element(streamIds, stream_id)
+    | extend WindowStart=bin(sample_time, windowSize)
+    | summarize SampleCount=countif(quality == "good"),
+        BadSampleCount=countif(quality == "bad"),
+        UncertainSampleCount=countif(quality == "uncertain"),
+        Value=avgif(value, quality == "good"),
+        LastSampleTime=max(sample_time), LastReceiptTime=max(received_at)
+        by tag, WindowStart
+    | extend Value=iff(SampleCount == 0, real(null), Value)
+    | project MeasurementTagId=tag, WindowStart, Value, SampleCount, BadSampleCount,
+        UncertainSampleCount, LastSampleTime, LastReceiptTime
+}

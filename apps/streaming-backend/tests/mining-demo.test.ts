@@ -110,6 +110,42 @@ function setup(
 }
 
 describe("public mining demo service boundary", () => {
+  it("serves live flow readings without requiring a current run or run ID", async () => {
+    const connectionFlow = {
+      liveLatest: vi.fn(async () => ({ plantId: "D01", readings: [] })),
+      liveTrend: vi.fn(async () => ({ plantId: "D01", points: [] })),
+      latest: vi.fn(),
+      trend: vi.fn(),
+      runRowTotals: vi.fn(),
+      expectedSet: vi.fn(),
+    };
+    const { app } = setup(
+      {
+        ...env,
+        MINING_UNPINNED_STREAM_ENABLED: "true",
+        MINING_CONNECTION_FLOW_READ_ENABLED: "true",
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      connectionFlow,
+    );
+    const context = await request(app).get("/demo/context").expect(200);
+    expect(context.body.approvedRun).toBeNull();
+    expect(context.body.capabilities).toMatchObject({ connectionFlow: true, unpinnedFlow: true });
+    await request(app).get("/demo/connection-latest").query({ plantId: "D01" }).expect(200);
+    expect(connectionFlow.liveLatest).toHaveBeenCalledOnce();
+    await request(app)
+      .get("/demo/connection-latest")
+      .query({
+        plantId: "D01",
+        runId: "44444444-4444-4444-8444-444444444444",
+      })
+      .expect(400);
+  });
+
   it("only selects shared flow for public starts when both server gates are enabled", async () => {
     const incidents = { start: vi.fn(async () => {}) };
     const gated = setup({ ...env, MINING_PUBLIC_DEMO_CONNECTION_FLOW_ENABLED: "true" }, incidents);

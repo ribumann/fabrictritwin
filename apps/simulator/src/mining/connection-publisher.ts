@@ -45,7 +45,11 @@ export function assertD01ConnectionEventstreamConfiguration(connectionString: st
 export class D01ConnectionEventstreamPublisher implements D01ConnectionPublisher {
   private readonly client: Producer;
 
-  constructor(connectionString: string, client?: Producer) {
+  constructor(
+    connectionString: string,
+    client?: Producer,
+    private readonly unpinnedStream = false,
+  ) {
     assertD01ConnectionEventstreamConfiguration(connectionString);
     this.client =
       client ??
@@ -91,7 +95,17 @@ export class D01ConnectionEventstreamPublisher implements D01ConnectionPublisher
 
     let batch = await this.client.createBatch({ abortSignal: signal });
     signal.throwIfAborted();
-    for (const body of events) {
+    for (const measurement of events) {
+      const body = this.unpinnedStream
+        ? {
+            ...Object.fromEntries(
+              Object.entries(measurement).filter(
+                ([key]) => !["run_id", "event_id", "sequence"].includes(key),
+              ),
+            ),
+            schema_version: 2,
+          }
+        : measurement;
       const event = { body, contentType: "application/json" };
       if (!batch.tryAdd(event)) {
         if (batch.count === 0) {

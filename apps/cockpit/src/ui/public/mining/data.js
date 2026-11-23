@@ -167,11 +167,13 @@ export function sameScope(data, runId, catalogVersion) {
 export function validConnectionFlow(data, runId, catalogVersion, catalog, now = Date.now()) {
   const asOf = Date.parse(data?.asOf);
   const anchor = Date.parse(data?.runStartedAt);
+  const liveStream = data?.runId === undefined;
   if (
-    !sameScope(data, runId, catalogVersion) ||
+    (liveStream
+      ? data?.plantId !== "D01" || data.catalogVersion !== catalogVersion
+      : !sameScope(data, runId, catalogVersion)) ||
     !Number.isFinite(asOf) ||
-    !Number.isFinite(anchor) ||
-    anchor > asOf ||
+    (!liveStream && (!Number.isFinite(anchor) || anchor > asOf)) ||
     asOf > now + 15_000 ||
     asOf < now - 30_000 ||
     !Array.isArray(data.readings) ||
@@ -212,18 +214,46 @@ export function validConnectionFlow(data, runId, catalogVersion, catalog, now = 
         reading.value < 0 ||
         !Number.isFinite(Date.parse(reading.sampleTime)) ||
         !Number.isFinite(Date.parse(reading.receiptTime)) ||
-        Date.parse(reading.sampleTime) < anchor ||
-        Date.parse(reading.receiptTime) < Date.parse(reading.sampleTime) ||
+        (!liveStream && Date.parse(reading.sampleTime) < anchor) ||
+        (!liveStream && Date.parse(reading.receiptTime) < Date.parse(reading.sampleTime)) ||
         Date.parse(reading.sampleTime) > asOf ||
         Date.parse(reading.receiptTime) > asOf
       )
         return false;
     } else if (reading.status === "MISSING" && reading.value !== null) return false;
   }
-  return ids.size > 0 && [...ids].every((id) => data.readings.some((row) => row.streamId === id));
+  return (
+    ids.size > 0 &&
+    (liveStream || [...ids].every((id) => data.readings.some((row) => row.streamId === id)))
+  );
 }
 
 export function validConnectionTrend(data, request, flow) {
+  if (data?.runId === undefined) {
+    const size = request.windowSeconds * 1000;
+    return (
+      data?.plantId === "D01" &&
+      data.catalogVersion === request.catalogVersion &&
+      data.start === request.start &&
+      data.end === request.end &&
+      [30, 60].includes(request.windowSeconds) &&
+      Array.isArray(data.points) &&
+      data.points.length <= 1000 &&
+      data.points.every(
+        (point) =>
+          request.streamIds.includes(point.streamId) &&
+          typeof point.measurementTagId === "string" &&
+          Number.isFinite(Date.parse(point.windowStart)) &&
+          Date.parse(point.windowEnd) === Date.parse(point.windowStart) + size &&
+          Number.isInteger(point.samples) &&
+          point.samples >= 0 &&
+          Number.isFinite(point.coverage) &&
+          point.coverage >= 0 &&
+          point.coverage <= 1 &&
+          (point.value === null || (Number.isFinite(point.value) && point.value >= 0)),
+      )
+    );
+  }
   const start = Date.parse(request.start);
   const end = Date.parse(request.end);
   const anchor = Date.parse(flow?.runStartedAt);

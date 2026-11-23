@@ -4,6 +4,7 @@ import {
   connectionReadingState,
   diagnosticAssets,
   investigationPrompt,
+  latestFeedTotal,
   plantEvidence,
   possibleBuildup,
   usableConnectionReading,
@@ -122,7 +123,9 @@ function configurePolling() {
   polling.update({
     mode,
     hidden: document.hidden,
-    connected: !!context?.readAvailable && !!context?.approvedRun,
+    connected:
+      !!context?.readAvailable &&
+      (!!context?.approvedRun || context?.capabilities?.unpinnedFlow === true),
   });
   plant3d?.setEnabled(!document.hidden && $("view").value === "3d");
   const canAsk =
@@ -506,6 +509,24 @@ function drawOverview() {
     const kpi = overview?.summary?.[key];
     const ratio = index >= 2;
     const good = valid && usable(kpi) && (!ratio || kpi.coverage >= 0.9);
+    const observedFeed =
+      index === 0 &&
+      !good &&
+      context?.capabilities?.unpinnedFlow === true &&
+      validConnectionFlow(connectionFlow, context?.approvedRun?.runId, catalogVersion, catalog)
+        ? latestFeedTotal(connectionFlow.readings)
+        : null;
+    if (observedFeed) {
+      text(
+        `kpi-${key}`,
+        `${observedFeed.count < 3 ? `Partial ${observedFeed.count}/3 · ` : ""}${number(observedFeed.value)} t/h`,
+      );
+      text(
+        `meta-${key}`,
+        `Latest observed feed · ${observedFeed.count}/3 lines${observedFeed.delayed ? " · delayed" : ""} · oldest sample ${timestamp(observedFeed.oldestSampleTime)}`,
+      );
+      return;
+    }
     text(`kpi-${key}`, good ? `${number(kpi.value)} ${kpi.unit}` : "Unknown");
     text(
       `meta-${key}`,
@@ -1094,6 +1115,7 @@ function chart(container, data) {
 
 async function showConnectionTrend(stream) {
   const owner = context?.approvedRun?.runId;
+  const liveStream = context?.capabilities?.unpinnedFlow === true;
   if (!validConnectionFlow(connectionFlow, owner, catalogVersion, catalog)) return;
   const quantities = new Set(
     connectionFlow.readings
@@ -1116,7 +1138,9 @@ async function showConnectionTrend(stream) {
   const streamIds = [...new Set(related.map((item) => item.id))];
   const end = connectionFlow.asOf;
   const start = new Date(
-    Math.max(Date.parse(connectionFlow.runStartedAt), Date.parse(end) - 15 * 60_000),
+    liveStream
+      ? Date.parse(end) - 15 * 60_000
+      : Math.max(Date.parse(connectionFlow.runStartedAt), Date.parse(end) - 15 * 60_000),
   ).toISOString();
   if (start === end) {
     $("flow-trend-details").hidden = false;
@@ -1140,7 +1164,7 @@ async function showConnectionTrend(stream) {
   try {
     const data = await reads.read("connection-trend", {
       plantId: "D01",
-      runId: owner,
+      ...(liveStream ? {} : { runId: owner }),
       streamIds: streamIds.join(","),
       start,
       end,
@@ -1352,8 +1376,7 @@ function scheduleFlowExpiry(data) {
   flowExpiryTimer = setTimeout(
     () => {
       if (connectionFlow !== data) return;
-      drawPlant();
-      drawDrawer();
+      drawOverview();
       if (
         !validConnectionFlow(data, context?.approvedRun?.runId, catalogVersion, catalog) ||
         !data.readings.some((reading) => usableConnectionReading(reading))
@@ -1387,7 +1410,7 @@ async function refreshConnectionFlow(scope) {
     mode === "live" &&
     context?.capabilities?.connectionFlow === true &&
     context?.readAvailable &&
-    context?.approvedRun;
+    (context?.capabilities?.unpinnedFlow === true || context?.approvedRun);
   $("flow-status").hidden = !enabled;
   text(
     "flow-legend",
@@ -1401,12 +1424,16 @@ async function refreshConnectionFlow(scope) {
     return;
   }
   if (document.hidden || !["all", "overview"].includes(scope)) return;
-  const runId = context.approvedRun.runId;
+  const runId = context.approvedRun?.runId;
+  const liveStream = context?.capabilities?.unpinnedFlow === true;
   const epoch = requestEpoch;
   const current = () =>
     epoch === requestEpoch && !document.hidden && context?.approvedRun?.runId === runId;
   try {
-    const data = await reads.read("connection-latest", { plantId: "D01", runId });
+    const data = await reads.read("connection-latest", {
+      plantId: "D01",
+      ...(liveStream ? {} : { runId }),
+    });
     if (!current()) return;
     if (!validConnectionFlow(data, runId, catalogVersion, catalog)) {
       throw new Error("Flow readings are unavailable or out of date.");
@@ -1427,8 +1454,7 @@ async function refreshConnectionFlow(scope) {
         : "Connection flows unavailable. Plant layout remains available.",
     );
   }
-  drawPlant();
-  drawDrawer();
+  drawOverview();
 }
 async function refresh(scope = "all") {
   if (context?.mode === "continuous") {

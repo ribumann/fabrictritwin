@@ -20,6 +20,15 @@ interface Scope {
 }
 type Query =
   | (MiningCrossRunTrendRequest & { kind: "cross-run-trend"; maxRows: 1000 })
+  | { kind: "connection-live-latest"; asOf: string; maxRows: number }
+  | {
+      kind: "connection-live-trend";
+      start: string;
+      end: string;
+      streamIds: readonly string[];
+      windowSeconds: 30 | 60;
+      maxRows: number;
+    }
   | (Scope & { kind: "connection-run-pin"; maxRows: 2 })
   | (Scope & { kind: "connection-run-row-totals"; asOf: string; maxRows: 1 })
   | (Scope & {
@@ -380,6 +389,35 @@ async function prepare(
       properties.setParameter(key, value);
     }
     return prepared.csl;
+  }
+  if (input.kind === "connection-live-latest" || input.kind === "connection-live-trend") {
+    if (!Number.isInteger(input.maxRows) || input.maxRows < 1 || input.maxRows > MAX_ROWS) {
+      throw new MiningQueryError("invalid", "Invalid live flow row limit.");
+    }
+    if (input.kind === "connection-live-latest") {
+      properties.setParameter("asof", `datetime(${canonicalUtc(input.asOf, now)})`);
+      return "declare query_parameters(asof:datetime); MiningConnectionLiveLatestV2(asof)";
+    }
+    const { D01_PLANT_CATALOG } = await import("@triathlon-twin/simulator/mining");
+    const streams = new Set(D01_PLANT_CATALOG.streams.map((stream) => stream.id));
+    const start = canonicalUtc(input.start, now);
+    const end = canonicalUtc(input.end, now);
+    if (
+      input.streamIds.length < 1 ||
+      input.streamIds.length > 3 ||
+      new Set(input.streamIds).size !== input.streamIds.length ||
+      input.streamIds.some((id) => !streams.has(id)) ||
+      Date.parse(end) <= Date.parse(start) ||
+      Date.parse(end) - Date.parse(start) > 900_000 ||
+      ![30, 60].includes(input.windowSeconds)
+    ) {
+      throw new MiningQueryError("invalid", "Invalid live flow trend request.");
+    }
+    properties.setParameter("start", `datetime(${start})`);
+    properties.setParameter("end", `datetime(${end})`);
+    properties.setParameter("streams", `dynamic(${JSON.stringify(input.streamIds)})`);
+    properties.setParameter("window", `${input.windowSeconds}s`);
+    return "declare query_parameters(start:datetime, end:datetime, window:timespan, streams:dynamic); MiningConnectionLiveTrendV2(start, end, window, streams)";
   }
   if (
     !uuid.test(input.runId) ||

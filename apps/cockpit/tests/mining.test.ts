@@ -39,6 +39,9 @@ describe("isolated mining BFF", () => {
     });
     await request(app).get(`/api/mining/connection-trend?${query}`).expect(200);
     expect(String(fetchImpl.mock.calls[0][0])).toContain("/api/mining/demo/connection-trend?");
+    query.delete("runId");
+    await request(app).get(`/api/mining/connection-trend?${query}`).expect(200);
+    expect(String(fetchImpl.mock.calls[1][0])).not.toContain("runId=");
     query.set("streamIds", "utility-A-fines,utility-A-fines");
     await request(app).get(`/api/mining/connection-trend?${query}`).expect(400);
     query.set("streamIds", "utility-A-fines");
@@ -49,7 +52,7 @@ describe("isolated mining BFF", () => {
     await request(disabled)
       .get("/api/mining/connection-latest?plantId=D01&runId=00000000-0000-4000-8000-000000000001")
       .expect(503);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("relays a full ten-minute demo signal history but still bounds oversized upstream status", async () => {

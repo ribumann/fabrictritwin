@@ -260,10 +260,18 @@ export function createMiningRouter(
         });
         return;
       }
+      const withRun = typeof req.query.runId === "string";
       const keys =
         route === "connection-latest"
-          ? ["plantId", "runId"]
-          : ["plantId", "runId", "streamIds", "start", "end", "windowSeconds"];
+          ? ["plantId", ...(withRun ? ["runId"] : [])]
+          : [
+              "plantId",
+              ...(withRun ? ["runId"] : []),
+              "streamIds",
+              "start",
+              "end",
+              "windowSeconds",
+            ];
       const values = req.query;
       const streams = typeof values.streamIds === "string" ? values.streamIds.split(",") : [];
       const duration =
@@ -274,10 +282,11 @@ export function createMiningRouter(
         Object.keys(values).length !== keys.length ||
         keys.some((key) => typeof values[key] !== "string") ||
         values.plantId !== "D01" ||
-        typeof values.runId !== "string" ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-          values.runId,
-        ) ||
+        (withRun &&
+          (typeof values.runId !== "string" ||
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+              values.runId,
+            ))) ||
         (route === "connection-trend" &&
           (streams.length < 1 ||
             streams.length > 3 ||

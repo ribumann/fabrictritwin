@@ -278,6 +278,7 @@ export async function readConnectionEvidenceSnapshot(
 
 export function configuredMiningConnectionEvidenceWorker(env: NodeJS.ProcessEnv = process.env) {
   if (
+    env.MINING_UNPINNED_STREAM_ENABLED === "true" ||
     env.MINING_PUBLIC_DEMO_ENABLED !== "true" ||
     env.MINING_PUBLIC_DEMO_READ_ENABLED !== "true" ||
     env.MINING_CONNECTION_FLOW_READ_ENABLED !== "true" ||

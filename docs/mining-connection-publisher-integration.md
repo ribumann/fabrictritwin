@@ -4,6 +4,44 @@ The shared physical-flow simulator is opt-in. The existing profile remains the
 default: omit `profileVersion` from a start request to run the legacy
 `PlantTelemetry` / `PlantStateEvent` publisher unchanged.
 
+## Run-independent live stream
+
+`MINING_UNPINNED_STREAM_ENABLED=true` selects the optional live stream. The
+publisher prepares its two sender connections, then starts the simulation
+without sending or awaiting a Fabric run-profile pin. Its first sample follows
+five seconds later. Connection measurements use schema version 2 and omit run,
+event and sequence IDs. The live latest and trend requests are plant-scoped and
+do not require a run ID. Missing readings and incomplete time windows remain
+missing or partial, not zero. Duplicate observations for one tag and timestamp
+use the latest receipt. Trend windows include observations that arrive after
+the end of the requested sample-time interval. While the five-minute throughput
+summary lacks coverage, the Cockpit shows the latest available line-feed sum,
+explicitly labeling partial and delayed readings.
+
+Simulation controls and the existing legacy telemetry path still use an
+internal run identifier. Run-specific connection reconciliation does not apply
+to the unpinned stream. Fabric ingestion remains asynchronous and can be
+delayed or unavailable; sender readiness is not proof of ingestion.
+The existing publisher still stops on missed tick deadlines or transport
+failures; missing readings do not stop the live read path.
+
+In one isolated regional canary, admission to simulator start took about
+1.2 seconds, the first sample was sent five seconds after start, and a
+Fabric-backed flow reading and trend were observed within 43 seconds of
+admission. These are observations, not latency guarantees.
+
+Before enabling this flag, install `MiningConnectionLiveStream.kql` and update
+the two connection materialization policies using
+`MiningConnectionMaterialization.kql`. Capture existing policy definitions
+first. Version 2 observations are read from the raw table, not the version 1
+validated or quarantine tables. To roll back, disable the flag and route
+traffic to the prior application revisions. Keep the v2 query functions while
+any v2 readers are active; restore captured policies only after v2 publication
+has stopped. Existing version 1 reads and pin handling remain available.
+
+The following sections describe the original pinned protocol, used when
+`MINING_UNPINNED_STREAM_ENABLED` is unset or false.
+
 ## Explicit selector and durable run record
 
 The delegated start request selects the new run explicitly:

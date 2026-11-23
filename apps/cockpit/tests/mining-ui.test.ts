@@ -46,6 +46,37 @@ import {
 } from "../src/ui/public/mining/data.js";
 
 describe("shared-flow preparation", () => {
+  it("keeps live polling connected without an approved run when unpinned flow is enabled", () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile("app.js", source, ts.ScriptTarget.Latest, true);
+    const configure = tree.statements.find(
+      (statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === "configurePolling",
+    );
+    if (!configure) throw new Error("Polling configuration not found");
+    const update = vi.fn();
+    const sandbox: any = {
+      mode: "live",
+      document: { hidden: false },
+      context: { readAvailable: true, approvedRun: null, capabilities: { unpinnedFlow: true } },
+      polling: { update },
+      plant3d: null,
+      $: () => ({}),
+      answerController: null,
+      selected: null,
+      selectedIncident: null,
+    };
+    runInNewContext(
+      `${configure.getText(tree)}; this.configurePolling = configurePolling;`,
+      sandbox,
+    );
+    sandbox.configurePolling();
+    expect(update).toHaveBeenLastCalledWith({ mode: "live", hidden: false, connected: true });
+    sandbox.context.capabilities.unpinnedFlow = false;
+    sandbox.configurePolling();
+    expect(update).toHaveBeenLastCalledWith({ mode: "live", hidden: false, connected: false });
+  });
+
   it("keeps a preparing or scheduled run cancellable and refreshes context on activation", () => {
     const preparing = { runId: "run", publisherStatus: "preparing" };
     const scheduled = { ...preparing, publisherStatus: "scheduled" };
@@ -151,8 +182,12 @@ describe("bounded live stream charts", () => {
         text: (id: string, value: string) => labels.set(id, value),
         reads: { read: vi.fn() },
         clearTimeout,
-        drawPlant: vi.fn(),
-        drawDrawer: vi.fn(),
+        drawOverview: vi.fn(),
+        validConnectionFlow: () => true,
+        scheduleFlowExpiry: vi.fn(),
+        connectionFlowStatus: () => "Synthetic flows",
+        catalogVersion: "catalog",
+        catalog: {},
       };
       runInNewContext(`${refresh.getText(tree)}; this.refresh = refreshConnectionFlow;`, sandbox);
       sandbox.reads.read.mockRejectedValueOnce({ category: "waiting" });
@@ -163,6 +198,10 @@ describe("bounded live stream charts", () => {
       expect(labels.get("flow-status")).toBe(
         "Connection flows unavailable. Plant layout remains available.",
       );
+      sandbox.drawOverview.mockClear();
+      sandbox.reads.read.mockResolvedValueOnce({ readings: [] });
+      await sandbox.refresh("overview");
+      expect(sandbox.drawOverview).toHaveBeenCalledOnce();
     });
   });
 
@@ -258,6 +297,25 @@ describe("connection flow browser scope", () => {
     expect(validConnectionFlow(delayed, "current", "pinned", catalog, now)).toBe(true);
     delayed.readings[0].stale = false;
     expect(validConnectionFlow(delayed, "current", "pinned", catalog, now)).toBe(false);
+  });
+  it("accepts partial run-free streaming data without fabricating missing flows", () => {
+    const live = {
+      plantId: "D01",
+      catalogVersion: data.catalogVersion,
+      asOf: data.asOf,
+      readings: [data.readings[0]],
+    };
+    expect(validConnectionFlow(live, undefined, "pinned", catalog, now)).toBe(true);
+    expect(validConnectionFlow(live, undefined, "other", catalog, now)).toBe(false);
+    expect(
+      validConnectionFlow(
+        { ...live, readings: [live.readings[0], live.readings[0]] },
+        undefined,
+        "pinned",
+        catalog,
+        now,
+      ),
+    ).toBe(false);
   });
   it("checks complete aligned trend grids rather than filling gaps", () => {
     const request = {
@@ -1160,7 +1218,10 @@ describe("cross-run chart validation", () => {
     expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
   });
   it("offers only the live Mining view without replay controls", () => {
-    const html = readFileSync(new URL("../src/ui/public/mining/index.html", import.meta.url), "utf8");
+    const html = readFileSync(
+      new URL("../src/ui/public/mining/index.html", import.meta.url),
+      "utf8",
+    );
     const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
     expect(html).not.toMatch(/id="(?:mode|replay-time|replay-label)"/);
     expect(source).not.toMatch(/\$\("(?:mode|replay-time|replay-label)"\)/);
@@ -1169,26 +1230,48 @@ describe("cross-run chart validation", () => {
   it.each(["bounded", "continuous", "unavailable"])(
     "shows the preparation notice only for a verified bounded status: %s",
     async (mode) => {
-      const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
-      const tree = ts.createSourceFile("app.js", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+      const source = readFileSync(
+        new URL("../src/ui/public/mining/app.js", import.meta.url),
+        "utf8",
+      );
+      const tree = ts.createSourceFile(
+        "app.js",
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.JS,
+      );
       const update = tree.statements.find(
-        (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === "updateDemoStatus",
+        (statement) =>
+          ts.isFunctionDeclaration(statement) && statement.name?.text === "updateDemoStatus",
       );
       if (!update) throw new Error("Missing demo status function");
       const elements: Record<string, { hidden?: boolean; disabled?: boolean }> = {};
       const sandbox = {
-        demoBusy: false, demoStatusEpoch: 0, demoRun: null,
-        nativeDemoLive: false, fastDemoStatus: false, fabricDemoSignal: false,
-        document: { hidden: false }, context: null, catalog: null,
-        demoRequest: mode === "unavailable"
-          ? vi.fn().mockRejectedValue(new Error("offline"))
-          : vi.fn().mockResolvedValue({ plantId: "D01", mode, run: null }),
+        demoBusy: false,
+        demoStatusEpoch: 0,
+        demoRun: null,
+        nativeDemoLive: false,
+        fastDemoStatus: false,
+        fabricDemoSignal: false,
+        document: { hidden: false },
+        context: null,
+        catalog: null,
+        demoRequest:
+          mode === "unavailable"
+            ? vi.fn().mockRejectedValue(new Error("offline"))
+            : vi.fn().mockResolvedValue({ plantId: "D01", mode, run: null }),
         $: (id: string) => (elements[id] ??= {}),
-        activePublisher: () => false, text: vi.fn(),
-        drawStartupPreview: vi.fn(), drawDemoRunStatus: vi.fn(),
+        activePublisher: () => false,
+        text: vi.fn(),
+        drawStartupPreview: vi.fn(),
+        drawDemoRunStatus: vi.fn(),
         updateDemoStatus: undefined as undefined | (() => Promise<void>),
       };
-      runInNewContext(`${update.getText(tree)}; this.updateDemoStatus = updateDemoStatus;`, sandbox);
+      runInNewContext(
+        `${update.getText(tree)}; this.updateDemoStatus = updateDemoStatus;`,
+        sandbox,
+      );
       await sandbox.updateDemoStatus!();
       expect(elements["run-warmup"].hidden).toBe(mode !== "bounded");
     },

@@ -4,6 +4,7 @@ import {
   buildupObservation,
   diagnosticAssets,
   investigationPrompt,
+  latestFeedTotal,
   orePaths,
   plantEvidence,
   possibleBuildup,
@@ -28,6 +29,42 @@ const at = (sample: number, level: number, feed: number) =>
   buildupObservation(readings(sample, level, feed), new Date(sample).toISOString());
 
 describe("Mining supervisor evidence", () => {
+  it("reports available live feed readings without turning missing lines into zero", () => {
+    const now = Date.parse("2026-01-01T12:00:30.000Z");
+    const feed = (line: string, value: number, sampleTime = "2026-01-01T12:00:25.000Z") => ({
+      streamId: `process-${line}-feed`,
+      quantity: "dry_solids_mass_flow",
+      unit: "t/h",
+      status: "OK",
+      quality: "good",
+      stale: false,
+      sampleTime,
+      value,
+    });
+    expect(latestFeedTotal([feed("A", 10), feed("B", 20)], now)).toEqual({
+      value: 30,
+      count: 2,
+      oldestSampleTime: "2026-01-01T12:00:25.000Z",
+      delayed: false,
+    });
+    expect(latestFeedTotal([feed("A", 10, "2026-01-01T11:57:00.000Z")], now)).toBeNull();
+    expect(
+      latestFeedTotal(
+        [
+          feed("A", 0),
+          { ...feed("B", 20), quality: "bad" },
+          feed("C", 30, "2026-01-01T11:59:30.000Z"),
+        ],
+        now,
+      ),
+    ).toEqual({
+      value: 30,
+      count: 2,
+      oldestSampleTime: "2026-01-01T11:59:30.000Z",
+      delayed: true,
+    });
+  });
+
   it("draws separate labeled solids and water lanes on an inspected connection", () => {
     class Element {
       attributes: Record<string, string> = {};
