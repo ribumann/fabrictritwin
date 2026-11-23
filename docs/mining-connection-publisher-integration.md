@@ -153,9 +153,10 @@ were deliberately backdated and cannot establish live freshness. A later
 real-clock canary matched all 2,109 observations at a common cutoff; its
 maximum observed raw receipt lag was 37.17 seconds. In a subsequent regional
 receipt-start canary, the start was about 54 seconds earlier than the fixed
-schedule, and live reads returned all 57 measurements. Timing varies with
-Fabric ingestion and preparation; it is not a latency guarantee. The gate is
-off by default.
+schedule, and live reads returned all 57 measurements. A public run started
+about 57 seconds earlier and also showed all 57 measurements. Timing varies
+with Fabric ingestion and preparation; it is not a latency guarantee. The gate
+is off by default.
 
 ## Separate transports and event contract
 
