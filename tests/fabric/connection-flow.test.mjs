@@ -119,6 +119,23 @@ function runRelativeWindowStarts(startedAt, fromTime, toTime, windowSeconds) {
   );
 }
 
+test("receipt-derived start remains aligned with Fabric's bounded start policy", () => {
+  const validation = kql("MiningConnectionValidation.kql");
+  const queries = kql("MiningConnectionQueries.kql");
+  for (const body of [validation, queries]) {
+    assert.ok(body.includes('start_policy == "fabric-receipt-v1"'));
+    assert.ok(body.includes("min_of(started_at, bin(pin_receipt, 1s) + 31s)"));
+    assert.ok(body.includes("datetime(null)"));
+  }
+  const latest = Date.parse("2026-01-01T00:02:05.000Z");
+  const start = (receipt) =>
+    new Date(
+      Math.min(latest, Math.floor(Date.parse(receipt) / 1000) * 1000 + 31_000),
+    ).toISOString();
+  assert.equal(start("2026-01-01T00:00:40.1234567Z"), "2026-01-01T00:01:11.000Z");
+  assert.equal(start("2026-01-01T00:01:59.9999999Z"), "2026-01-01T00:02:05.000Z");
+});
+
 function goodTicks(count = 6) {
   return Array.from({ length: count }, (_, index) => ({
     eventId: `event-${index}`,
@@ -304,7 +321,7 @@ test("classifier enforces the exact event family, versions, binding, time, quali
     "event_time > pinned_started_at",
     'datetime_diff("millisecond", event_time, pinned_started_at) % 5000 == 0',
     "event_time <= received_at",
-    "run_profile_received_at=take_any(ingestion_time())",
+    "run_profile_received_at=take_any(pin_receipt)",
     "run_profile_received_at < received_at",
     "isfinite(value) and value >= 0.0",
     'quality in ("good", "uncertain", "bad")',

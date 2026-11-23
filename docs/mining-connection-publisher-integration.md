@@ -76,8 +76,8 @@ interface MiningConnectionRunProfilePin {
 }
 ```
 
-`started_at` is the immutable future schedule anchor, set 125 seconds after
-`admittedAt`. The pin deadline is 120 seconds after admission, leaving a fixed
+Without receipt-based starts, `started_at` is the immutable future schedule
+anchor, set 125 seconds after `admittedAt`. The pin deadline is 120 seconds after admission, leaving a fixed
 5-second safety margin. The external writer owns the actual `pinned_at`; it is
 intentionally absent from this descriptor. After exact readback succeeds, both
 Eventstream sender links are prepared without sending an event. Only after
@@ -115,14 +115,47 @@ resends a sample. If pin confirmation is late, absent, ambiguous, or interrupted
 the run fails without sending measurements. A sender-preparation failure also
 prevents activation; any constructed publishers are closed.
 
+### Receipt-based start
+
+The optional `MINING_CONNECTION_RECEIPT_START_ENABLED=true` gate uses a
+versioned `fabric-receipt-v1` pin. The pin's `started_at` is the latest
+permitted start, not the actual start. Fabric and the publisher derive the
+actual start as the earlier of that timestamp and the pin's persisted
+`ingestion_time()` rounded down to a second plus 31 seconds. This allows
+preparation to finish early without waiting for the entire 125-second lead.
+The first sample remains five seconds after the derived start.
+
+The publisher sends the pin once, reads back its policy and actual Fabric
+receipt, prepares both senders, and records the derived start under the plant
+lease before publishing. A missing, mismatched, implausible or late receipt,
+stop request, lost lease, or insufficient activation margin fails the run
+without sending measurements. The original 120-second preparation deadline
+and admission-to-flush limit remain in force. Receipt time is approximate
+Fabric service-clock evidence, not an ordering guarantee for concurrent
+ingestions; the clock and remaining-margin checks are deliberately fail-closed.
+
+For an existing installation, apply `MiningConnectionReceiptStartUpgrade.kql`,
+the run-profile JSON mapping in `MiningConnectionSchema.kql`, and the updated
+validation and query functions before enabling the gate. Existing pins with no
+policy keep their original exact-start interpretation. Disable the gate to
+return new runs to the fixed-start protocol; keep the updated Fabric functions
+until all receipt-based runs have expired from retention. Older application
+revisions cannot read version-5 run state, so use an isolated state container
+for deployment and preserve the previous revision's container for rollback.
+Switch or roll back only while no publisher is active. The old container does
+not automatically receive runs created in the new container.
+
 An isolated canary confirmed one pin in about 45 seconds. Two separate
 57-measurement samples reached raw and validated tables; a warmed sender
 acknowledged one sample within the two-second send budget. These observations
 do not establish a latency guarantee or prove a complete run. The two samples
 were deliberately backdated and cannot establish live freshness. A later
 real-clock canary matched all 2,109 observations at a common cutoff; its
-maximum observed raw receipt lag was 37.17 seconds. This is not a latency
-guarantee. Public gates remain off pending end-to-end rollout verification.
+maximum observed raw receipt lag was 37.17 seconds. In a subsequent regional
+receipt-start canary, the start was about 54 seconds earlier than the fixed
+schedule, and live reads returned all 57 measurements. Timing varies with
+Fabric ingestion and preparation; it is not a latency guarantee. The gate is
+off by default.
 
 ## Separate transports and event contract
 

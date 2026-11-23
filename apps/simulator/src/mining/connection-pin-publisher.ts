@@ -6,6 +6,8 @@ import {
 } from "./connection-catalog.js";
 import { assertD01ConnectionEventstreamConfiguration } from "./connection-publisher.js";
 
+export const D01_RECEIPT_START_POLICY = "fabric-receipt-v1";
+
 export interface D01ConnectionRunPin {
   plant_id: "D01";
   run_id: string;
@@ -13,6 +15,7 @@ export interface D01ConnectionRunPin {
   measurement_catalog_version: typeof D01_CONNECTION_MEASUREMENT_CATALOG_VERSION;
   profile_version: typeof D01_CONNECTION_PROFILE_VERSION;
   started_at: string;
+  start_policy?: typeof D01_RECEIPT_START_POLICY;
 }
 
 type Producer = Pick<EventHubProducerClient, "createBatch" | "sendBatch" | "close">;
@@ -44,6 +47,7 @@ export class D01ConnectionRunPinPublisher {
       pin.catalog_version !== D01_CATALOG_VERSION ||
       pin.measurement_catalog_version !== D01_CONNECTION_MEASUREMENT_CATALOG_VERSION ||
       pin.profile_version !== D01_CONNECTION_PROFILE_VERSION ||
+      (pin.start_policy !== undefined && pin.start_policy !== D01_RECEIPT_START_POLICY) ||
       !Number.isFinite(started) ||
       new Date(started).toISOString() !== pin.started_at
     ) {
@@ -60,6 +64,7 @@ export class D01ConnectionRunPinPublisher {
       measurement_catalog_version: pin.measurement_catalog_version,
       profile_version: pin.profile_version,
       started_at: pin.started_at,
+      ...(pin.start_policy ? { start_policy: pin.start_policy } : {}),
       requested_at: new Date(requestedAt).toISOString(),
     };
     const batch = await this.client.createBatch({ abortSignal: signal });

@@ -8,6 +8,7 @@ import {
   D01_PUBLISH_PROFILE_VERSION,
   D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
   D01_LEGACY_FLOW_PROJECTION_PROFILE_VERSION,
+  D01_RECEIPT_START_POLICY,
 } from "@triathlon-twin/simulator/mining";
 import {
   assertD01RunContract,
@@ -25,6 +26,7 @@ export const SHARED_FLOW_PIN_TIMEOUT_MS = 120_000;
 export const SHARED_FLOW_ACTIVATION_MARGIN_MS = 5_000;
 export const SHARED_FLOW_PREPARE_LEAD_MS =
   SHARED_FLOW_PIN_TIMEOUT_MS + SHARED_FLOW_ACTIVATION_MARGIN_MS;
+export const SHARED_FLOW_RECEIPT_START_DELAY_MS = 31_000;
 export const MINING_OWNER_HEARTBEAT_INTERVAL_MS = 10_000;
 const SCENARIOS = [
   "normal",
@@ -94,6 +96,8 @@ interface RunLifecycle {
   admittedAt?: string;
   /** Absolute deadline for exact shared-flow pin confirmation. */
   pinDeadlineAt?: string;
+  startPolicy?: typeof D01_RECEIPT_START_POLICY;
+  pinReceivedAt?: string;
   authorityUntil: string;
   phase: RunPhase;
   /** Absent on legacy schema-1 records; never inferred from the current catalog. */
@@ -173,6 +177,18 @@ export interface MiningConnectionRunProfilePin {
   measurement_catalog_version: typeof D01_CONNECTION_MEASUREMENT_CATALOG_VERSION;
   profile_version: typeof D01_CONNECTION_PROFILE_VERSION;
   started_at: string;
+  start_policy?: typeof D01_RECEIPT_START_POLICY;
+}
+
+export function receiptAnchoredStart(receivedAt: string, latestStart: string): string {
+  const receipt = Date.parse(receivedAt);
+  const latest = Date.parse(latestStart);
+  if (!Number.isFinite(receipt) || !Number.isFinite(latest)) {
+    invalid("Invalid shared-flow pin receipt or latest start.");
+  }
+  return new Date(
+    Math.min(latest, Math.floor(receipt / 1_000) * 1_000 + SHARED_FLOW_RECEIPT_START_DELAY_MS),
+  ).toISOString();
 }
 
 /** Candidate row for an external immutable Fabric pin; pinned_at belongs to the writer. */
@@ -192,6 +208,9 @@ export function createMiningConnectionRunProfilePin(
   ) {
     invalid("A Fabric profile pin requires a verified shared-flow run record.");
   }
+  if (run.startPolicy && !run.admittedAt) {
+    invalid("A receipt-anchored pin requires a durable admission.");
+  }
   return {
     plant_id: run.plantId,
     run_id: run.runId,
@@ -199,7 +218,11 @@ export function createMiningConnectionRunProfilePin(
     measurement_catalog_version: run.connectionProfileContract
       .measurementCatalogVersion as typeof D01_CONNECTION_MEASUREMENT_CATALOG_VERSION,
     profile_version: run.connectionProfileContract.profileVersion,
-    started_at: run.startedAt,
+    started_at:
+      run.startPolicy && run.admittedAt
+        ? new Date(Date.parse(run.admittedAt) + SHARED_FLOW_PREPARE_LEAD_MS).toISOString()
+        : run.startedAt,
+    ...(run.startPolicy ? { start_policy: run.startPolicy } : {}),
   };
 }
 
@@ -413,14 +436,14 @@ function parseAdmission(value: unknown): Admission {
   return { spec: parseSpec(record.spec), admission: record.admission as Admission["admission"] };
 }
 
-function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
+function parseRun(value: unknown, version: 1 | 2 | 3 | 4 | 5): MiningRunRecord {
   const record = object(value);
   if (version !== 3 && "lifetime" in record) {
     invalid("Continuous Mining requires coordination schema 3.");
   }
   if (version === 1 && "contract" in record)
     invalid("Legacy mining records cannot claim a run contract.");
-  if (version === 2 || version === 3 || version === 4) {
+  if (version === 2 || version === 3 || version === 4 || version === 5) {
     const keys = new Set([
       "plantId",
       "runId",
@@ -438,7 +461,8 @@ function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
       "contract",
       "connectionProfileContract",
       ...(version === 3 ? ["lifetime"] : []),
-      ...(version === 4 ? ["admittedAt", "pinDeadlineAt"] : []),
+      ...(version === 4 || version === 5 ? ["admittedAt", "pinDeadlineAt"] : []),
+      ...(version === 5 ? ["startPolicy", "pinReceivedAt"] : []),
     ]);
     if (Object.keys(record).some((key) => !keys.has(key)))
       invalid("Unexpected persisted mining run field.");
@@ -463,7 +487,7 @@ function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
       ? record.connectionProfileContract
       : record.contract;
   if (
-    version === 4 &&
+    (version === 4 || version === 5) &&
     (isContinuousMiningRun(identity) || identityProfileVersion !== D01_CONNECTION_PROFILE_VERSION)
   ) {
     invalid("Coordination schema 4 is reserved for prepared shared-flow runs.");
@@ -482,7 +506,7 @@ function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
   if (version === 3 && !isContinuousMiningRun(identity)) {
     invalid("Mining schema 3 requires a continuous lifetime.");
   }
-  if (version === 4 && isContinuousMiningRun(identity)) {
+  if ((version === 4 || version === 5) && isContinuousMiningRun(identity)) {
     invalid("Mining schema 4 cannot contain a continuous lifetime.");
   }
   if (isContinuousMiningRun(identity)) {
@@ -510,7 +534,7 @@ function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
     "publisher_complete",
     "failed",
     "interrupted",
-    ...(version === 4 ? ["preparing", "scheduled"] : []),
+    ...(version === 4 || version === 5 ? ["preparing", "scheduled"] : []),
   ];
   if (
     !dates.every((date) => typeof date === "string" && Number.isFinite(Date.parse(date))) ||
@@ -521,7 +545,7 @@ function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
   const stopAt = record.stopAt as string;
   const admittedAt = record.admittedAt;
   const pinDeadlineAt = record.pinDeadlineAt;
-  if (version === 4) {
+  if (version === 4 || version === 5) {
     if (
       typeof admittedAt !== "string" ||
       typeof pinDeadlineAt !== "string" ||
@@ -533,9 +557,27 @@ function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
     const admittedAtMs = Date.parse(admittedAt);
     const pinDeadlineAtMs = Date.parse(pinDeadlineAt);
     const startedAtMs = Date.parse(startedAt);
+    const deadlineValid = [30_000, SHARED_FLOW_PIN_TIMEOUT_MS].includes(
+      pinDeadlineAtMs - admittedAtMs,
+    );
+    const latestStart = pinDeadlineAtMs + SHARED_FLOW_ACTIVATION_MARGIN_MS;
+    const receipt = record.pinReceivedAt;
+    const receiptMs = typeof receipt === "string" ? Date.parse(receipt) : NaN;
+    const receiptValid = Number.isFinite(receiptMs);
     if (
-      ![30_000, SHARED_FLOW_PIN_TIMEOUT_MS].includes(pinDeadlineAtMs - admittedAtMs) ||
-      startedAtMs - pinDeadlineAtMs !== SHARED_FLOW_ACTIVATION_MARGIN_MS
+      !deadlineValid ||
+      (version === 4 && startedAtMs !== latestStart) ||
+      (version === 5 &&
+        (record.startPolicy !== D01_RECEIPT_START_POLICY ||
+          pinDeadlineAtMs - admittedAtMs !== SHARED_FLOW_PIN_TIMEOUT_MS ||
+          (receipt !== undefined && !receiptValid) ||
+          (receiptValid &&
+            (receiptMs < admittedAtMs - 5_000 || receiptMs > pinDeadlineAtMs + 5_000)) ||
+          (["scheduled", "running", "publisher_complete"].includes(String(record.phase)) &&
+            !receiptValid) ||
+          (receiptValid && typeof receipt === "string"
+            ? startedAt !== receiptAnchoredStart(receipt, new Date(latestStart).toISOString())
+            : startedAtMs !== latestStart)))
     ) {
       invalid("Prepared shared-flow schedule violates its bounded pin lead.");
     }
@@ -545,9 +587,9 @@ function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
   }
   const finalFlushUntil = record.finalFlushUntil;
   const totalLifetimeAnchor =
-    version === 4 ? Date.parse(admittedAt as string) : Date.parse(startedAt);
+    version === 4 || version === 5 ? Date.parse(admittedAt as string) : Date.parse(startedAt);
   if (
-    (version === 4 && typeof finalFlushUntil !== "string") ||
+    ((version === 4 || version === 5) && typeof finalFlushUntil !== "string") ||
     (finalFlushUntil !== undefined &&
       (typeof finalFlushUntil !== "string" ||
         !Number.isFinite(Date.parse(finalFlushUntil)) ||
@@ -559,20 +601,29 @@ function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
   return {
     ...identity,
     startedAt,
-    ...(version === 4
+    ...(version === 4 || version === 5
       ? {
           admittedAt: admittedAt as string,
           pinDeadlineAt: pinDeadlineAt as string,
+        }
+      : {}),
+    ...(version === 5
+      ? {
+          startPolicy: D01_RECEIPT_START_POLICY,
+          ...(typeof record.pinReceivedAt === "string"
+            ? { pinReceivedAt: record.pinReceivedAt }
+            : {}),
         }
       : {}),
     stopAt,
     ...(typeof finalFlushUntil === "string" ? { finalFlushUntil } : {}),
     authorityUntil: record.authorityUntil as string,
     phase: record.phase as RunPhase,
-    ...((version === 2 || version === 4) && record.contract !== undefined
+    ...((version === 2 || version === 4 || version === 5) && record.contract !== undefined
       ? { contract: record.contract as D01RunContract }
       : {}),
-    ...((version === 2 || version === 4) && record.connectionProfileContract !== undefined
+    ...((version === 2 || version === 4 || version === 5) &&
+    record.connectionProfileContract !== undefined
       ? { connectionProfileContract: record.connectionProfileContract as D01SharedFlowRunContract }
       : {}),
   };
@@ -580,7 +631,13 @@ function parseRun(value: unknown, version: 1 | 2 | 3 | 4): MiningRunRecord {
 
 function parsePlant(value: unknown): MiningRunRecord | null {
   const record = object(value);
-  if (record.version !== 1 && record.version !== 2 && record.version !== 3 && record.version !== 4)
+  if (
+    record.version !== 1 &&
+    record.version !== 2 &&
+    record.version !== 3 &&
+    record.version !== 4 &&
+    record.version !== 5
+  )
     invalid("Unsupported mining coordination document version.");
   if (Object.keys(record).sort().join() !== "run,version")
     invalid("Invalid mining coordination document.");
@@ -591,7 +648,10 @@ function parseHistory(value: unknown): MiningRunRecord {
   const record = object(value);
   if ("version" in record) {
     if (
-      (record.version !== 2 && record.version !== 3 && record.version !== 4) ||
+      (record.version !== 2 &&
+        record.version !== 3 &&
+        record.version !== 4 &&
+        record.version !== 5) ||
       Object.keys(record).sort().join() !== "run,version"
     )
       invalid("Unsupported mining history document version.");
@@ -603,15 +663,17 @@ function parseHistory(value: unknown): MiningRunRecord {
 function history(run: MiningRunRecord): unknown {
   return isContinuousMiningRun(run)
     ? { version: 3, run }
-    : run.admittedAt
-      ? { version: 4, run }
-      : run.contract || run.connectionProfileContract
-        ? { version: 2, run }
-        : run;
+    : run.startPolicy
+      ? { version: 5, run }
+      : run.admittedAt
+        ? { version: 4, run }
+        : run.contract || run.connectionProfileContract
+          ? { version: 2, run }
+          : run;
 }
 
 const plantDocument = (run: MiningRunRecord) => ({
-  version: isContinuousMiningRun(run) ? 3 : run.admittedAt ? 4 : 2,
+  version: isContinuousMiningRun(run) ? 3 : run.startPolicy ? 5 : run.admittedAt ? 4 : 2,
   run,
 });
 
@@ -638,11 +700,16 @@ export class MiningRunCoordinator {
   }
   private readonly finalFlushMilliseconds: number;
   private readonly minimumStartIntervalMs: number;
+  private readonly receiptStartEnabled: boolean;
 
   constructor(
     private readonly store: MiningStore,
     private readonly clock: MiningClock = systemClock,
-    options: { finalFlushMilliseconds?: number; minimumStartIntervalMs?: number } = {},
+    options: {
+      finalFlushMilliseconds?: number;
+      minimumStartIntervalMs?: number;
+      receiptStartEnabled?: boolean;
+    } = {},
   ) {
     const budget = options.finalFlushMilliseconds ?? 0;
     if (!Number.isInteger(budget) || budget < 0 || budget > 5_000) {
@@ -654,6 +721,7 @@ export class MiningRunCoordinator {
       invalid("Mining minimum start interval must be between 0 and 86400000ms.");
     }
     this.minimumStartIntervalMs = interval;
+    this.receiptStartEnabled = options.receiptStartEnabled === true;
   }
 
   async currentStatus(signal?: AbortSignal): Promise<MiningRunStatus | undefined> {
@@ -834,7 +902,7 @@ export class MiningRunCoordinator {
       const preparedSharedFlow = sharedFlow;
       const admittedAt = new Date(acquiredAt).toISOString();
       const startedAtMs = acquiredAt + (preparedSharedFlow ? SHARED_FLOW_PREPARE_LEAD_MS : 0);
-      const lifecycle = {
+      const lifecycle: RunLifecycle = {
         startedAt: new Date(startedAtMs).toISOString(),
         authorityUntil: new Date(acquiredAt + AUTHORITY_MS).toISOString(),
         phase: (preparedSharedFlow ? "preparing" : "running") as RunPhase,
@@ -842,6 +910,7 @@ export class MiningRunCoordinator {
           ? {
               admittedAt,
               pinDeadlineAt: new Date(acquiredAt + SHARED_FLOW_PIN_TIMEOUT_MS).toISOString(),
+              ...(this.receiptStartEnabled ? { startPolicy: D01_RECEIPT_START_POLICY } : {}),
             }
           : {}),
       };
@@ -1186,7 +1255,7 @@ export class MiningRunOwner {
   }
 
   /** Transition preparing -> scheduled only after exact external pin readback has returned. */
-  async activatePreparedRun(): Promise<void> {
+  async activatePreparedRun(pinReceivedAt?: string): Promise<MiningRunRecord> {
     return this.exclusive(async () => {
       await this.refresh();
       if (this.signal.aborted) {
@@ -1205,8 +1274,42 @@ export class MiningRunOwner {
         await this.complete("failed");
         throw new MiningCoordinationError("cancelled", "Shared-flow profile pin timed out.");
       }
+      if (this.run.startPolicy === D01_RECEIPT_START_POLICY) {
+        const received = pinReceivedAt === undefined ? NaN : Date.parse(pinReceivedAt);
+        const admission = Date.parse(this.run.admittedAt);
+        if (
+          !Number.isFinite(received) ||
+          received < admission - 5_000 ||
+          received > this.clock.now() + 5_000
+        ) {
+          throw new MiningCoordinationError("invalid", "Shared-flow pin receipt time is invalid.");
+        }
+        if (pinReceivedAt === undefined) {
+          throw new MiningCoordinationError("invalid", "Shared-flow pin receipt is missing.");
+        }
+        const startedAt = receiptAnchoredStart(pinReceivedAt, this.run.startedAt);
+        const startMs = Date.parse(startedAt);
+        if (
+          startMs - this.clock.now() < SHARED_FLOW_ACTIVATION_MARGIN_MS ||
+          this.startTick + startMs - admission - this.clock.monotonic() <
+            SHARED_FLOW_ACTIVATION_MARGIN_MS
+        ) {
+          throw new MiningCoordinationError("cancelled", "Shared-flow start preparation was late.");
+        }
+        const flushBudget = Date.parse(this.run.finalFlushUntil) - Date.parse(this.run.stopAt);
+        const stopAtMs = startMs + this.run.durationSeconds * 1_000;
+        this.run = {
+          ...this.run,
+          pinReceivedAt,
+          startedAt,
+          stopAt: new Date(stopAtMs).toISOString(),
+          finalFlushUntil: new Date(stopAtMs + flushBudget).toISOString(),
+        };
+      }
       this.run = { ...this.run, phase: "scheduled" };
       await this.persist();
+      this.armDeadline();
+      return structuredClone(this.run);
     });
   }
 

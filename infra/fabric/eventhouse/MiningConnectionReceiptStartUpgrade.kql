@@ -1,0 +1,5 @@
+// Additive upgrade for an existing connection-flow installation.
+// Apply the run-profile JSON mapping and updated validation/read functions
+// from MiningConnectionSchema.kql, MiningConnectionValidation.kql, and
+// MiningConnectionQueries.kql before enabling receipt-based starts.
+.alter-merge table mining_ConnectionRunProfile (start_policy:string)

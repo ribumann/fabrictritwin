@@ -97,7 +97,13 @@ MiningConnectionLatestV1(
             catalog_version == catalogVersion and
             measurement_catalog_version == measurementCatalogVersion and
             profile_version == profileVersion
-        | summarize run_profile_rows=count(), started_at=take_any(started_at);
+        | extend pin_receipt=ingestion_time()
+        | extend effective_start=case(
+            isempty(start_policy), started_at,
+            start_policy == "fabric-receipt-v1" and isnotnull(started_at) and isnotnull(pin_receipt),
+                min_of(started_at, bin(pin_receipt, 1s) + 31s),
+            datetime(null))
+        | summarize run_profile_rows=count(), started_at=take_any(effective_start);
     let run_profile_rows=toscalar(run_profile | project run_profile_rows);
     let run_started_at=toscalar(run_profile | where run_profile_rows == 1 | project started_at);
     let known_stream_ids=toscalar(
@@ -183,7 +189,13 @@ MiningConnectionTrendV1(
             catalog_version == catalogVersion and
             measurement_catalog_version == measurementCatalogVersion and
             profile_version == profileVersion
-        | summarize run_profile_rows=count(), started_at=take_any(started_at);
+        | extend pin_receipt=ingestion_time()
+        | extend effective_start=case(
+            isempty(start_policy), started_at,
+            start_policy == "fabric-receipt-v1" and isnotnull(started_at) and isnotnull(pin_receipt),
+                min_of(started_at, bin(pin_receipt, 1s) + 31s),
+            datetime(null))
+        | summarize run_profile_rows=count(), started_at=take_any(effective_start);
     let run_profile_rows=toscalar(run_profile | project run_profile_rows);
     let run_started_at=toscalar(run_profile | where run_profile_rows == 1 | project started_at);
     let known_stream_ids=toscalar(

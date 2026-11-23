@@ -325,6 +325,94 @@ describe("D01 real-clock publisher", () => {
     });
   }, 15_000);
 
+  it("starts on the confirmed receipt schedule instead of waiting for the fixed 125-second lead", async () => {
+    const receiptCoordinator = new MiningRunCoordinator(store, clock, {
+      finalFlushMilliseconds: 5_000,
+      receiptStartEnabled: true,
+    });
+    const connectionPublish = vi.fn(
+      async (_events: readonly D01ConnectionMeasurementEvent[]) => {},
+    );
+    const legacyPublish = vi.fn(async () => {});
+    let confirm!: () => void;
+    const profilePin = vi.fn(async (pin: MiningConnectionRunProfilePin) => {
+      expect(pin.start_policy).toBe("fabric-receipt-v1");
+      expect(pin.started_at).toBe("2026-01-01T00:02:05.000Z");
+      await new Promise<void>((resolve) => {
+        confirm = resolve;
+      });
+      return "2026-01-01T00:00:40.1234567Z";
+    });
+    const adaptive = new MiningPublisherRuntime(
+      receiptCoordinator,
+      () => ({ prepare: async () => {}, publish: legacyPublish, close: async () => {} }),
+      clock,
+      scheduler,
+      () => ({ prepare: async () => {}, publish: connectionPublish, close: async () => {} }),
+      profilePin,
+    );
+    const execution = adaptive.run({
+      plantId: "D01",
+      requestId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    await settle();
+    await vi.advanceTimersByTimeAsync(40_500);
+    confirm();
+    await settle();
+    expect(await receiptCoordinator.currentStatus()).toMatchObject({
+      phase: "scheduled",
+      run: {
+        startPolicy: "fabric-receipt-v1",
+        pinReceivedAt: "2026-01-01T00:00:40.1234567Z",
+        startedAt: "2026-01-01T00:01:11.000Z",
+        stopAt: "2026-01-01T00:04:16.000Z",
+      },
+    });
+    expect(connectionPublish).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(35_500);
+    expect(connectionPublish).toHaveBeenCalledOnce();
+    expect(connectionPublish.mock.calls[0][0][0].sample_time).toBe("2026-01-01T00:01:16.000Z");
+    await vi.advanceTimersByTimeAsync(180_000);
+    await expect(execution).resolves.toMatchObject({ phase: "publisher_complete" });
+    expect(await receiptCoordinator.currentStatus()).toMatchObject({
+      phase: "publisher_complete",
+      run: { startedAt: "2026-01-01T00:01:11.000Z" },
+    });
+  }, 15_000);
+
+  it("fails closed when receipt-based preparation finishes too late", async () => {
+    const receiptCoordinator = new MiningRunCoordinator(store, clock, {
+      finalFlushMilliseconds: 5_000,
+      receiptStartEnabled: true,
+    });
+    const connectionPublish = vi.fn(async () => {});
+    const adaptive = new MiningPublisherRuntime(
+      receiptCoordinator,
+      () => ({
+        prepare: async (signal: AbortSignal) => scheduler.wait(27_000, signal),
+        publish: async () => {},
+        close: async () => {},
+      }),
+      clock,
+      scheduler,
+      () => ({ prepare: async () => {}, publish: connectionPublish, close: async () => {} }),
+      async () => "2026-01-01T00:00:00.0000000Z",
+    );
+    const execution = adaptive.run({
+      plantId: "D01",
+      requestId,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    const result = expect(execution).rejects.toThrow("start preparation was late");
+    await settle();
+    await vi.advanceTimersByTimeAsync(27_000);
+    await result;
+    expect(connectionPublish).not.toHaveBeenCalled();
+  });
+
   it("fails an admitted shared-flow run without constructing publishers when pin confirmation fails", async () => {
     const connectionFactory = vi.fn(() => ({
       publish: vi.fn(async () => {}),

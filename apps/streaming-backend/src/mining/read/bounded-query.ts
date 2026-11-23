@@ -396,7 +396,7 @@ async function prepare(
     if (input.maxRows !== 2) {
       throw new MiningQueryError("invalid", "Connection pin reads require the two-row limit.");
     }
-    return `${head}); mining_ConnectionRunProfile | where run_id == run | project plant_id, run_id, catalog_version, measurement_catalog_version, profile_version, started_at, pinned_at, received_at=ingestion_time() | take 3`;
+    return `${head}); mining_ConnectionRunProfile | where run_id == run | project plant_id, run_id, catalog_version, measurement_catalog_version, profile_version, started_at, start_policy=column_ifexists("start_policy", ""), pinned_at, received_at=ingestion_time() | take 3`;
   }
   if (input.kind === "connection-run-row-totals") {
     if (input.maxRows !== 1) {

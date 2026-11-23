@@ -75,7 +75,7 @@ export type MiningBatchObserver = (
 export type MiningConnectionRunProfilePinHandler = (
   profile: MiningConnectionRunProfilePin,
   signal: AbortSignal,
-) => void | Promise<void>;
+) => void | string | Promise<void | string>;
 
 const systemClock: MiningClock = { now: Date.now, monotonic: () => performance.now() };
 const systemScheduler: MiningScheduler = {
@@ -196,8 +196,8 @@ export class MiningPublisherRuntime {
       "profileVersion" in run &&
       run.profileVersion === D01_CONNECTION_PROFILE_VERSION;
     const durationMs = continuous ? null : run.durationSeconds * 1_000;
-    const startedAt = Date.parse(run.startedAt);
-    const firstTick = this.clock.monotonic() - (this.clock.now() - startedAt);
+    let startedAt = Date.parse(run.startedAt);
+    let firstTick = this.clock.monotonic() - (this.clock.now() - startedAt);
     const incidentFailure = new AbortController();
     const signal = AbortSignal.any(
       [owner.signal, cancellation, incidentFailure.signal].filter(
@@ -244,7 +244,10 @@ export class MiningPublisherRuntime {
         const pinSignalController = new AbortController();
         const pinSignal = AbortSignal.any([signal, pinSignalController.signal]);
         const pinWork = Promise.resolve().then(async () => {
-          await profilePin(createMiningConnectionRunProfilePin(run), pinSignal);
+          const pinReceivedAt = await profilePin(
+            createMiningConnectionRunProfilePin(run),
+            pinSignal,
+          );
           pinSignal.throwIfAborted();
           transport = this.publisher(true);
           connectionTransport = this.connectionPublisher!();
@@ -269,6 +272,7 @@ export class MiningPublisherRuntime {
           });
           await transportPreparation;
           pinSignal.throwIfAborted();
+          return pinReceivedAt;
         });
         // Keep a late rejected callback handled if timeout/stop wins the race.
         void pinWork.catch(() => undefined);
@@ -298,9 +302,12 @@ export class MiningPublisherRuntime {
                   throw error;
                 },
               );
-            const result = await Promise.race([pinWork.then(() => "confirmed" as const), wait]);
+            const result = await Promise.race([
+              pinWork.then((receipt) => ({ kind: "confirmed" as const, receipt })),
+              wait,
+            ]);
             waitController.abort();
-            if (result === "confirmed") {
+            if (typeof result === "object" && result.kind === "confirmed") {
               signal.throwIfAborted();
               if (
                 this.clock.now() >= pinDeadlineWall ||
@@ -311,7 +318,9 @@ export class MiningPublisherRuntime {
                   "Shared-flow profile pin confirmation arrived after its deadline.",
                 );
               }
-              await owner.activatePreparedRun();
+              const activated = await owner.activatePreparedRun(result.receipt || undefined);
+              startedAt = Date.parse(activated.startedAt);
+              firstTick = owner.scheduledStartMonotonic;
               break;
             }
             if (result === "cancelled") signal.throwIfAborted();
@@ -782,6 +791,13 @@ export function configuredMiningPublisherRuntime(
   ) {
     throw new Error("MINING_CONNECTION_FLOW_ENABLED must be true or false.");
   }
+  const receiptStartSetting = env.MINING_CONNECTION_RECEIPT_START_ENABLED;
+  if (receiptStartSetting !== undefined && !["true", "false"].includes(receiptStartSetting)) {
+    throw new Error("MINING_CONNECTION_RECEIPT_START_ENABLED must be true or false.");
+  }
+  if (receiptStartSetting === "true" && sharedFlowSetting !== "true") {
+    throw new Error("Receipt-based starts require shared connection flows.");
+  }
   let connectionPublisher: (() => D01ConnectionPublisher) | undefined;
   if (sharedFlowSetting === "true") {
     const connectionStringFlow =
@@ -805,6 +821,7 @@ export function configuredMiningPublisherRuntime(
     new MiningRunCoordinator(store, systemClock, {
       finalFlushMilliseconds: flushBudget === undefined ? 0 : Number(flushBudget),
       minimumStartIntervalMs: options.minimumStartIntervalMs,
+      receiptStartEnabled: receiptStartSetting === "true",
     }),
     (sharedFlow) =>
       new D01EventstreamPublisher(connectionString, undefined, sharedFlow ? 10_000 : 2_000),

@@ -62,12 +62,18 @@ mining_ClassifyConnectionMeasurementV1()
     let run_profiles =
         mining_ConnectionRunProfile
         | where plant_id == "D01"
+        | extend pin_receipt=ingestion_time()
+        | extend effective_start=case(
+            isempty(start_policy), started_at,
+            start_policy == "fabric-receipt-v1" and isnotnull(started_at) and isnotnull(pin_receipt),
+                min_of(started_at, bin(pin_receipt, 1s) + 31s),
+            datetime(null))
         | summarize run_profile_rows=count(),
             pinned_catalog_version=take_any(catalog_version),
             pinned_measurement_catalog_version=take_any(measurement_catalog_version),
             pinned_profile_version=take_any(profile_version),
-            pinned_started_at=take_any(started_at),
-            run_profile_received_at=take_any(ingestion_time())
+            pinned_started_at=take_any(effective_start),
+            run_profile_received_at=take_any(pin_receipt)
             by run_id;
     mining_ConnectionMeasurementRaw
     | extend received_at = ingestion_time()

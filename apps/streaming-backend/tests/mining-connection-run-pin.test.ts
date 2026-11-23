@@ -65,6 +65,20 @@ describe("connection run-pin confirmation", () => {
     }
   });
 
+  it("returns the exact Fabric receipt only for a matching start policy", async () => {
+    const f = fixture();
+    const receiptPin = { ...pin, start_policy: "fabric-receipt-v1" as const };
+    f.query.mockResolvedValueOnce([{ ...row, start_policy: "fabric-receipt-v1" }]);
+    await expect(f.handler(receiptPin, new AbortController().signal)).resolves.toBe(
+      "2026-01-01T12:00:15.0000000Z",
+    );
+    const mismatch = fixture();
+    mismatch.query.mockResolvedValueOnce([row]);
+    await expect(mismatch.handler(receiptPin, new AbortController().signal)).rejects.toThrow(
+      "does not match",
+    );
+  });
+
   it("never resends an ambiguous send and surfaces cleanup errors", async () => {
     const f = fixture();
     f.publish.mockRejectedValueOnce(new Error("delivery unknown"));

@@ -17,7 +17,7 @@
 .create table mining_ConnectionRunProfile (
     plant_id:string, run_id:string, catalog_version:string,
     measurement_catalog_version:string, profile_version:string,
-    started_at:datetime, pinned_at:datetime)
+    started_at:datetime, pinned_at:datetime, start_policy:string)
 .create table mining_ConnectionRunCompletion (
     plant_id:string, run_id:string, catalog_version:string,
     measurement_catalog_version:string, profile_version:string,
@@ -47,7 +47,7 @@
 // pinned_at is the sender's request time, not evidence that Fabric persisted the row.
 .create-or-alter table mining_ConnectionRunProfile ingestion json mapping
 'mining_connection_run_profile_v1_json_map'
-'[{"column":"plant_id","Properties":{"path":"$.plant_id"}},{"column":"run_id","Properties":{"path":"$.run_id"}},{"column":"catalog_version","Properties":{"path":"$.catalog_version"}},{"column":"measurement_catalog_version","Properties":{"path":"$.measurement_catalog_version"}},{"column":"profile_version","Properties":{"path":"$.profile_version"}},{"column":"started_at","Properties":{"path":"$.started_at"}},{"column":"pinned_at","Properties":{"path":"$.requested_at"}}]'
+'[{"column":"plant_id","Properties":{"path":"$.plant_id"}},{"column":"run_id","Properties":{"path":"$.run_id"}},{"column":"catalog_version","Properties":{"path":"$.catalog_version"}},{"column":"measurement_catalog_version","Properties":{"path":"$.measurement_catalog_version"}},{"column":"profile_version","Properties":{"path":"$.profile_version"}},{"column":"started_at","Properties":{"path":"$.started_at"}},{"column":"pinned_at","Properties":{"path":"$.requested_at"}},{"column":"start_policy","Properties":{"path":"$.start_policy"}}]'
 
 // Preserve actual Eventhouse ingestion time for receipt-time evidence.
 .alter table mining_ConnectionMeasurementRaw policy ingestiontime true

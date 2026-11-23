@@ -91,6 +91,7 @@ export function createConnectionRunPinHandler(
         row.catalog_version !== pin.catalog_version ||
         row.measurement_catalog_version !== pin.measurement_catalog_version ||
         row.profile_version !== pin.profile_version ||
+        (row.start_policy || undefined) !== pin.start_policy ||
         instant(row.started_at) !== instant(pin.started_at)
       ) {
         throw new MiningQueryError(
@@ -99,8 +100,7 @@ export function createConnectionRunPinHandler(
         );
       }
       instant(row.pinned_at);
-      instant(row.received_at);
-      return;
+      return instant(row.received_at);
     }
   };
 }

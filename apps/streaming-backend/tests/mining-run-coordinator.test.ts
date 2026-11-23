@@ -3,6 +3,7 @@ import {
   MiningRunCoordinator,
   assertBoundedMiningRun,
   createMiningConnectionRunProfilePin,
+  receiptAnchoredStart,
   type MiningClock,
   type StartMiningRun,
 } from "../src/mining/run-coordinator.js";
@@ -187,6 +188,73 @@ describe("mining durable run coordination", () => {
       code: "conflict",
     });
     await admission.owner.finish("failed");
+  });
+
+  it("persists the confirmed receipt schedule and rejects a corrupted version-5 record", async () => {
+    const coordinator = new MiningRunCoordinator(storage, clock, {
+      finalFlushMilliseconds: 5_000,
+      receiptStartEnabled: true,
+    });
+    const admission = await coordinator.start({
+      ...input,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    if (admission.kind !== "started") throw new Error("Missing shared-flow owner.");
+    vi.setSystemTime(new Date("2026-01-01T00:00:40.500Z"));
+    const activated = await admission.owner.activatePreparedRun("2026-01-01T00:00:40.1234567Z");
+    expect(activated).toMatchObject({
+      startedAt: "2026-01-01T00:01:11.000Z",
+      stopAt: "2026-01-01T00:04:16.000Z",
+      phase: "scheduled",
+    });
+    expect(storage.documents.get(plantPath)?.value).toMatchObject({
+      version: 5,
+      run: { pinReceivedAt: "2026-01-01T00:00:40.1234567Z", ...activated },
+    });
+    const document = storage.documents.get(plantPath)!;
+    const original = structuredClone(document.value);
+    document.value = { version: 5, run: { ...activated, startedAt: "2026-01-01T00:01:12.000Z" } };
+    await expect(coordinator.currentStatus()).rejects.toMatchObject({ code: "invalid" });
+    document.value = { version: 5, run: { ...activated, pinReceivedAt: undefined } };
+    await expect(coordinator.currentStatus()).rejects.toMatchObject({ code: "invalid" });
+    document.value = original;
+    await admission.owner.finish("failed");
+  });
+
+  it("fails closed on missing, implausible or unleased receipt activation", async () => {
+    const coordinator = new MiningRunCoordinator(storage, clock, {
+      finalFlushMilliseconds: 5_000,
+      receiptStartEnabled: true,
+    });
+    const admission = await coordinator.start({
+      ...input,
+      profileVersion: D01_CONNECTION_PROFILE_VERSION,
+      durationSeconds: 185,
+    });
+    if (admission.kind !== "started") throw new Error("Missing shared-flow owner.");
+    for (const receipt of [undefined, "2025-12-31T23:59:54Z", "2026-01-01T00:00:06Z"]) {
+      await expect(admission.owner.activatePreparedRun(receipt)).rejects.toMatchObject({
+        code: "invalid",
+      });
+    }
+    storage.revoke();
+    await expect(admission.owner.activatePreparedRun("2026-01-01T00:00:00Z")).rejects.toMatchObject(
+      {
+        code: "lease_lost",
+      },
+    );
+    expect(storage.documents.get(plantPath)?.value).toMatchObject({
+      version: 5,
+      run: { phase: "preparing" },
+    });
+  });
+
+  it("caps receipt-derived starts at the original deadline and rejects invalid timestamps", () => {
+    expect(receiptAnchoredStart("2026-01-01T00:01:59.9999999Z", "2026-01-01T00:02:05.000Z")).toBe(
+      "2026-01-01T00:02:05.000Z",
+    );
+    expect(() => receiptAnchoredStart("invalid", "2026-01-01T00:02:05.000Z")).toThrow();
   });
 
   it("rejects shared-flow admission without a positive final-flush budget before persisting it", async () => {

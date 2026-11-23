@@ -66,6 +66,18 @@ describe("connection run-pin transport", () => {
     expect(f.sendBatch).not.toHaveBeenCalled();
   });
 
+  it("transmits the receipt-start policy only when explicitly selected", async () => {
+    const f = fixture();
+    await f.publisher.publish(
+      { ...pin, start_policy: "fabric-receipt-v1" },
+      new AbortController().signal,
+    );
+    expect(f.tryAdd.mock.calls[0][0].body).toMatchObject({
+      start_policy: "fabric-receipt-v1",
+      started_at: pin.started_at,
+    });
+  });
+
   it("does not retry an ambiguous send failure", async () => {
     const f = fixture();
     f.sendBatch.mockRejectedValueOnce(new Error("delivery unknown"));
