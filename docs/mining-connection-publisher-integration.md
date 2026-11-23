@@ -14,7 +14,9 @@ event and sequence IDs. The live latest and trend requests are plant-scoped and
 do not require a run ID. Missing readings and incomplete time windows remain
 missing or partial, not zero. Duplicate observations for one tag and timestamp
 use the latest receipt. Trend windows include observations that arrive after
-the end of the requested sample-time interval.
+the end of the requested sample-time interval. While the five-minute throughput
+summary lacks coverage, the Cockpit shows the latest available line-feed sum,
+explicitly labeling partial and delayed readings.
 
 Simulation controls and the existing legacy telemetry path still use an
 internal run identifier. Run-specific connection reconciliation does not apply

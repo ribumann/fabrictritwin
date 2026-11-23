@@ -4,6 +4,7 @@ import {
   connectionReadingState,
   diagnosticAssets,
   investigationPrompt,
+  latestFeedTotal,
   plantEvidence,
   possibleBuildup,
   usableConnectionReading,
@@ -508,6 +509,24 @@ function drawOverview() {
     const kpi = overview?.summary?.[key];
     const ratio = index >= 2;
     const good = valid && usable(kpi) && (!ratio || kpi.coverage >= 0.9);
+    const observedFeed =
+      index === 0 &&
+      !good &&
+      context?.capabilities?.unpinnedFlow === true &&
+      validConnectionFlow(connectionFlow, context?.approvedRun?.runId, catalogVersion, catalog)
+        ? latestFeedTotal(connectionFlow.readings)
+        : null;
+    if (observedFeed) {
+      text(
+        `kpi-${key}`,
+        `${observedFeed.count < 3 ? `Partial ${observedFeed.count}/3 · ` : ""}${number(observedFeed.value)} t/h`,
+      );
+      text(
+        `meta-${key}`,
+        `Latest observed feed · ${observedFeed.count}/3 lines${observedFeed.delayed ? " · delayed" : ""} · oldest sample ${timestamp(observedFeed.oldestSampleTime)}`,
+      );
+      return;
+    }
     text(`kpi-${key}`, good ? `${number(kpi.value)} ${kpi.unit}` : "Unknown");
     text(
       `meta-${key}`,
@@ -1357,8 +1376,7 @@ function scheduleFlowExpiry(data) {
   flowExpiryTimer = setTimeout(
     () => {
       if (connectionFlow !== data) return;
-      drawPlant();
-      drawDrawer();
+      drawOverview();
       if (
         !validConnectionFlow(data, context?.approvedRun?.runId, catalogVersion, catalog) ||
         !data.readings.some((reading) => usableConnectionReading(reading))

@@ -26,6 +26,27 @@ export function usableConnectionReading(reading, now = Date.now()) {
   return connectionReadingState(reading, now) !== "unavailable";
 }
 
+export function latestFeedTotal(readings, now = Date.now()) {
+  const feeds = ["A", "B", "C"].flatMap((line) => {
+    const reading = readings?.find(
+      (item) =>
+        item.streamId === `process-${line}-feed` &&
+        item.quantity === "dry_solids_mass_flow" &&
+        item.unit === "t/h",
+    );
+    return usableConnectionReading(reading, now) ? [reading] : [];
+  });
+  if (!feeds.length) return null;
+  return {
+    value: feeds.reduce((total, reading) => total + reading.value, 0),
+    count: feeds.length,
+    oldestSampleTime: new Date(
+      Math.min(...feeds.map((reading) => Date.parse(reading.sampleTime))),
+    ).toISOString(),
+    delayed: feeds.some((reading) => connectionReadingState(reading, now) === "delayed"),
+  };
+}
+
 export function plantEvidence(catalog, getReading, number, selected, connectionReadings, now) {
   const readings = new Map();
   for (const module of catalog.modules) {
