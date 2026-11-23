@@ -925,6 +925,22 @@ describe("D01 real-clock publisher", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("rejects invalid receipt-start settings and requires shared flows", () => {
+    const env = {
+      MINING_PUBLISHER_ENABLED: "true",
+      MINING_EVENTSTREAM_EVENTHUB_CONNECTION_STRING: "not-used-during-configuration",
+      MINING_RUN_COORDINATION_ENABLED: "true",
+      MINING_STATE_BLOB_ENDPOINT: "https://example.blob.core.windows.net/",
+      MINING_STATE_CONTAINER: "mining-state-test",
+    };
+    expect(() =>
+      configuredMiningPublisherRuntime({ ...env, MINING_CONNECTION_RECEIPT_START_ENABLED: "yes" }),
+    ).toThrow("must be true or false");
+    expect(() =>
+      configuredMiningPublisherRuntime({ ...env, MINING_CONNECTION_RECEIPT_START_ENABLED: "true" }),
+    ).toThrow("require shared connection flows");
+  });
+
   it("opt-in waits real 5s steps and 30s sends, then flushes the final partial batch", async () => {
     const acknowledged = vi.spyOn(D01PlantSimulator.prototype, "acknowledgeBatch");
     const sentAt: number[] = [];
