@@ -37,8 +37,9 @@ export function createMiningAnswer(env: NodeJS.ProcessEnv): MiningAnswer {
           "Identify synthetic connection flows as modeled demo data, not physical measurements. " +
           "Distinguish sample time from refresh time. Explicitly identify stale/missing/unknown " +
           "quality and incomplete ingestion; a recent refresh does not make old samples live. " +
-          "Connectivity and correlation are not proof of cause. No native Fabric Data Agent " +
-          "was invoked. If the evidence cannot answer the question, say what is missing.",
+          "Avoid implementation details unless asked. " +
+          "Connectivity and correlation are not proof of cause. " +
+          "If the evidence cannot answer the question, say what is missing.",
         input: JSON.stringify({ question, evidence: JSON.parse(evidence) as unknown }),
         tools: [],
         store: false,

@@ -42,13 +42,15 @@ flowchart TB
   end
   subgraph Fabric["Fabric workspace; separate scenario stores"]
     TH["Triathlon Eventstream"] --> TK["Triathlon Eventhouse"]
-    MH["Mining Eventstream"] --> MK["Mining realtime KQL database"]
+    MH["Mining telemetry Eventstream"] --> MK["Mining realtime KQL database"]
+    CH["Mining connection Eventstream"] --> MK
     Lake["Lakehouse / OneLake"] -->|"History shortcuts"| TK
     Static["Mining catalog / ontology / topology report"]
   end
   Job -->|"Files + load notebook"| Lake
   API -->|"Triathlon events"| TH
   API -->|"Mining events; distinct secret"| MH
+  API -->|"Connection observations; distinct secret"| CH
   API --> TK
   API --> MK
   MCP --> TK
@@ -92,7 +94,11 @@ consistent demo behavior until those responsibilities are externalized.
 flowchart LR
   Catalog["Pinned plant catalog + publish profile"] --> Generator["Bounded D01 generator"]
   Lease["Blob lease + ETag + authority deadline"] --> Generator
-  Generator --> Transport["Custom endpoint / derived streams"]
+  Generator --> Transport["Telemetry / state Eventstream"]
+  Generator --> Flow["Connection Eventstream"]
+  Flow --> FlowRaw["Raw v2 connection observations"]
+  FlowRaw --> Live["Binding checks, deduplication / live KQL"]
+  Live --> BFF["Bounded DTOs / public Cockpit"]
   Transport --> Raw["Raw telemetry / state"]
   Raw --> Validation["Catalog, shape, time and identity validation"]
   Validation --> Valid["Validated telemetry / state"]
@@ -106,8 +112,11 @@ flowchart LR
 ```
 
 A lease enforces one admitted writer; it does not create exactly-once transport.
-Expected IDs, distinct/copy counts and conflict checks establish bounded
-ingestion evidence. Continuous operation remains supported as an explicit
+The hosted run-independent connection path does not use a Fabric run pin or
+per-run connection reconciliation; its live reads deduplicate by tag and
+sample time. Expected IDs, distinct/copy counts and conflict checks establish
+bounded ingestion evidence for the run-scoped legacy and pinned-v1 paths.
+Continuous operation remains supported as an explicit
 operator-managed alternative; it must not be relabeled as a completed finite run.
 
 ## Full data architecture
@@ -116,10 +125,10 @@ operator-managed alternative; it must not be relabeled as a completed finite run
 | -------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Domain source        | Athlete, training block/phase/session, race, recovery, sleep, nutrition, equipment  | Plant D01, 24 modules, equipment, 56 tags, streams, pinned publish profile            |
 | History / catalog    | Generated JSONL -> notebook MERGE -> Lakehouse Delta                                | Versioned JSON catalog; separate static Lakehouse/ontology/topology projections       |
-| Transport            | `entityType`-routed session and race envelopes                                      | Separate telemetry/state envelopes and custom endpoint                                |
-| Raw/event facts      | `SessionMetric`, `RaceSplit`                                                        | `mining_TelemetryRaw`, `mining_PlantStateEvents`                                      |
-| Validated / rejected | Typed telemetry mappings and query logic                                            | `mining_ValidatedTelemetry`, `mining_ValidatedState`, `mining_Quarantine`             |
-| Serving              | KQL functions/materialized views, history shortcuts; optional semantic model/report | `MiningQueries.kql`, `MiningMaterialization.kql`, exact-run ingestion reconciliation  |
+| Transport            | `entityType`-routed session and race envelopes                                      | Separate telemetry/state and connection Eventstreams                                  |
+| Raw/event facts      | `SessionMetric`, `RaceSplit`                                                        | `mining_TelemetryRaw`, `mining_PlantStateEvents`, `mining_ConnectionMeasurementRaw`   |
+| Validated / rejected | Typed telemetry mappings and query logic                                            | Legacy validated/quarantine tables; v1 connection validated/quarantine tables         |
+| Serving              | KQL functions/materialized views, history shortcuts; optional semantic model/report | Run-scoped telemetry reads; run-free v2 latest/trend reads from raw connection events |
 | Operations           | Process-local stream/run state                                                      | Private Blob admission, plant lease, immutable generation holds and incident journals |
 | Retention            | Inspect deployed table/Delta policies; no blanket lifecycle guarantee               | Schema declares 7-day raw/validated/quarantine and 30-day alert/incident retention    |
 
@@ -135,10 +144,14 @@ erDiagram
   MINING_RUN ||--o{ TELEMETRY_EVENT : scopes
   TAG ||--o{ TELEMETRY_EVENT : measures
   MINING_RUN ||--o{ STATE_EVENT : scopes
+  PLANT ||--o{ STREAM : contains
+  STREAM ||--o{ MEASUREMENT_BINDING : defines
+  MEASUREMENT_BINDING ||--o{ CONNECTION_OBSERVATION : identifies
 ```
 
 The ER diagram is conceptual, not a claim that Kusto enforces relational foreign
-keys. Canonical field definitions and compatibility rules are linked in the
+keys. V2 connection observations are not scoped by a run ID on the wire.
+Canonical field definitions and compatibility rules are linked in the
 [Developer contract map](developer.md#contracts-and-models).
 
 ![Native Fabric ontology editor: retained static model capture from 15 November, not live telemetry binding](screenshots/fabric-ontology-editor-2026-11-15.png)

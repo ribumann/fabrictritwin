@@ -10,10 +10,10 @@ This is a demonstration, not medical advice or an industrial control system.
 · [Demo walkthrough](docs/business-user.md)
 · [Screenshot gallery](docs/screenshots.md)
 
-| Scenario       | What you can do                                                                                                               | Fabric's role                                                                                                  |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Triathlon**  | Explore training history, start a session or race, follow telemetry, inspect alerts and available explanations                | OneLake/Lakehouse history, Eventstream ingestion, Eventhouse analytics; optional Power BI and Foundry          |
-| **Mining D01** | Start a shared ten-minute simulation, explore equipment and trends, distinguish waiting from observed sample-to-receipt delay | Separate Eventstream/Eventhouse, validated telemetry/state, quality-aware KQL and completed-run reconciliation |
+| Scenario       | What you can do                                                                                                               | Fabric's role                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Triathlon**  | Explore training history, start a session or race, follow telemetry, inspect alerts and available explanations                | OneLake/Lakehouse history, Eventstream ingestion, Eventhouse analytics; optional Power BI and Foundry |
+| **Mining D01** | Start a shared ten-minute simulation, explore equipment and trends, distinguish waiting from observed sample-to-receipt delay | Separate Eventstreams and Eventhouse, quality-aware live flows and run-scoped telemetry               |
 
 ```mermaid
 flowchart LR
@@ -30,7 +30,9 @@ views. Model/report/delegated features have separate configuration and access
 requirements. Capacity suspension or an unavailable feed can interrupt the demo;
 trust its quality/freshness indicators, not a page load.
 Mining admits one shared writer, with a ten-minute start interval; join an
-existing run instead of repeatedly selecting Start.
+existing run instead of repeatedly selecting Start. The hosted live-flow path
+starts without waiting for a Fabric profile confirmation; Fabric readings
+arrive asynchronously. See the [Mining flow and data models](docs/mining-learning-guide.md).
 
 ## Run locally without accounts
 

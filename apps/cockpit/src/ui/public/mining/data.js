@@ -1131,8 +1131,8 @@ export function seriesQuery(
 const safeReadErrors = {
   mining_flow_pending: ["waiting", "Waiting for the first connection flow samples."],
   mining_demo_run_not_found: ["no_sample", "No public simulation is available yet."],
-  mining_run_not_found: ["no_sample", "No approved run is available yet."],
-  mining_admission_unavailable: ["waiting", "Waiting for run admission."],
+  mining_run_not_found: ["no_sample", "No simulation is available yet."],
+  mining_admission_unavailable: ["waiting", "Waiting for the simulation to start."],
   mining_read_configuration: ["not_configured", "Mining readings are not configured."],
   mining_demo_configuration: ["not_configured", "Mining readings are not configured."],
   mining_demo_read_disabled: ["not_configured", "Mining readings are not enabled."],
@@ -1158,7 +1158,11 @@ export class MiningReads {
     if (cached && this.now() - cached.at < 15_000) return Promise.resolve(cached.data);
     if (this.inflight.has(url)) return this.inflight.get(url).promise;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 10_000);
     const promise = this.fetch(url, { signal: controller.signal, credentials: "same-origin" })
       .then(async (response) => {
         if (!response.ok) {
@@ -1183,6 +1187,14 @@ export class MiningReads {
           throw new Error("Invalid mining response.");
         if (!controller.signal.aborted) this.cache.set(url, { at: this.now(), data });
         return data;
+      })
+      .catch((error) => {
+        if (timedOut || error instanceof TypeError) {
+          const failure = new Error("Readings unavailable. Check your connection and retry.");
+          failure.category = "service_failed";
+          throw failure;
+        }
+        throw error;
       })
       .finally(() => {
         clearTimeout(timeout);

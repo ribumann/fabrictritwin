@@ -60,14 +60,16 @@ data-pipeline delay?
 ```mermaid
 flowchart LR
   Start["Start shared 10-minute simulation"] --> Publish["One admitted D01 publisher"]
-  Publish --> Stream["Separate Mining Eventstream"]
-  Stream --> Raw["Eventhouse raw events"]
-  Raw --> Validate["Validate, quarantine and deduplicate"]
-  Validate --> Read["Bounded KQL reads"]
+  Publish --> Flow["Connection Eventstream"]
+  Publish --> Legacy["Telemetry and state Eventstream"]
+  Flow --> Raw["Raw flow observations"]
+  Raw --> Live["Latest and trend queries"]
+  Legacy --> Validate["Validated telemetry and state"]
+  Live --> Read["Bounded reads"]
+  Validate --> Read
   Read --> UI["Plant, trends and arrival timing"]
   Catalog["Authored plant catalog"] --> UI
-  Validate --> Reconcile["Completed-run ID reconciliation"]
-  Reconcile --> Evidence["Incident evidence / optional explanation"]
+  Read --> Evidence["Optional AI explanation"]
 ```
 
 1. Select **Start 10-minute simulation**. The run is shared: another visitor
@@ -84,20 +86,21 @@ flowchart LR
    **Top view** and the keyboard-accessible equipment list are alternatives.
 5. Compare A/B/C feed and the selected diagnostic. Missing, stale, bad-quality
    or insufficiently covered data remains unknown/unavailable, not healthy zero.
-6. Let the run finish. Completed-run reconciliation and incident evidence may
-   become available only after the remaining events arrive. **Stop simulation**
+6. Let the run finish. The live connection stream does not provide per-run
+   reconciliation; readings can still arrive afterward. **Stop simulation**
    requests a shared stop; it does not prove that the last batch has drained.
 
 ![Mining's shared simulation controls and actual receipt indicators](screenshots/mining-overview.png)
 
-Suggested evidence question after reconciliation:
+Suggested evidence question:
 
 > Compare the available A/B/C feed evidence. State the time window, coverage
 > and any missing evidence before explaining differences.
 
-The embedded read-only explanation uses Foundry and bounded server-selected
-evidence. It is **not** a native Fabric Data Agent and cannot operate equipment.
-Native Operations Agent automation is not accepted or enabled.
+The embedded read-only explanation uses Foundry and server-selected evidence.
+It cannot operate equipment. The separate native Data Agent covers static
+topology; the public live-data assistant does not invoke it. Native Operations
+Agent automation is not accepted or enabled.
 
 See the [screenshot walkthrough](screenshots.md#mining-plant-and-evidence) for
 desktop, mobile, equipment, trend and timing examples.

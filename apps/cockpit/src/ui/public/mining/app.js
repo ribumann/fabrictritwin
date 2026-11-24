@@ -32,7 +32,6 @@ import {
   validSeries,
   crossRunChartData,
   seriesQuery,
-  verifiedRunIngestion,
   validContinuousOverview,
   validContinuousAdvisories,
   continuousThroughputUsable,
@@ -619,7 +618,7 @@ function drawDiagnosticScope() {
   text(
     "diagnostic-scope",
     picker.value
-      ? `${picker.selectedOptions[0].textContent} · ${mode === "replay" ? "replay at " + timestamp(replayTime) : context?.mode === "continuous" ? "cross-run observed averages" : demoRun?.publisherStatus === "publisher_complete" && demoRun?.runId === context?.approvedRun?.runId ? "completed run ending " + timestamp(demoRun.stopAt) : "approved run trend"} · ${$("window").selectedOptions[0].textContent}`
+      ? `${picker.selectedOptions[0].textContent} · ${mode === "replay" ? "replay at " + timestamp(replayTime) : context?.mode === "continuous" ? "observed averages" : demoRun?.publisherStatus === "publisher_complete" && demoRun?.runId === context?.approvedRun?.runId ? "simulation ended " + timestamp(demoRun.stopAt) : "current simulation"} · ${$("window").selectedOptions[0].textContent}`
       : "No compatible diagnostic equipment is available.",
   );
 }
@@ -1635,7 +1634,7 @@ async function refresh(scope = "all") {
             "connection",
             mode === "replay"
               ? `REPLAY · evaluated at ${params.asOf} · publisher provenance is not verified.`
-              : "Fabric read succeeded · pinned catalog is the approved expected scope; publisher provenance is not verified.",
+              : "Connected to Fabric. Readings are simulated.",
           );
           drawOverview();
         } catch (error) {
@@ -1793,8 +1792,8 @@ async function loadContext() {
     text(
       "assistant-state",
       context.assistant.available && context.assistant.kind === "bounded-fabric-evidence"
-        ? "Read-only Foundry answers use bounded, server-read Fabric evidence from the current public run. Questions are not saved as a conversation."
-        : "The Mining evidence assistant is unavailable. No question is sent while disabled.",
+        ? "Ask about the current simulation. Answers use data from Fabric; questions are not saved."
+        : "The assistant is unavailable right now.",
     );
     if (context.assistant.available && url) {
       $("fabric-agent").href = url;
@@ -1986,8 +1985,8 @@ $("mining-ask").addEventListener("submit", async (event) => {
     text(
       "mining-answer-status",
       context.mode === "continuous"
-        ? `Generated interpretation for run ${runId}. Rolling event-time evidence ${timestamp(data.evidence.advisories.asOf)}; source captured ${timestamp(data.evidence.advisories.sourceObservedAt)}. Empty advisories are not proof of health or completeness. Not a native Data Agent answer.`
-        : `Generated interpretation for run ${runId}. Evidence cutoff ${timestamp(data.evidence.asOf)}; evidence quality ${data.evidence.quality}. Not a native Data Agent answer.`,
+        ? `AI answer · Data as of ${timestamp(data.evidence.advisories.asOf)} · Retrieved ${timestamp(data.evidence.advisories.sourceObservedAt)}. An empty advisory list does not confirm the plant is healthy.`
+        : `AI answer · Data as of ${timestamp(data.evidence.asOf)} · Quality: ${data.evidence.quality}.`,
     );
     text("mining-answer-source", JSON.stringify(data.evidence, null, 2));
     $("mining-answer-evidence").hidden = false;
@@ -2066,8 +2065,8 @@ function drawStreamWindow() {
         : window?.state === "arriving"
           ? "Data: numeric window closed; awaiting Fabric."
           : window
-            ? "Data: collecting the next numeric window."
-            : "Data: no active batch countdown; see run and receipt status.",
+            ? "Data: collecting readings."
+            : "Data: waiting for the simulation.",
   );
   $("buildup-status").hidden = mode === "replay" || window?.state === "overdue";
   if (!window) return;
@@ -2098,7 +2097,7 @@ function drawStartupPreview() {
   liveElement.dataset.runId = confirmed ? receipt.runId : "";
   liveElement.dataset.telemetryCount = confirmed ? String(receipt.telemetryCount) : "0";
   liveElement.textContent = confirmed
-    ? `Fabric live · ${reading ? `${reading.tagId}: ${number(reading.value)} ${reading.unit}. ` : ""}${receipt.stateCount} state and ${receipt.telemetryCount} telemetry events validated at ${timestamp(receipt.receivedAt)}.`
+    ? `Fabric received ${receipt.stateCount} state and ${receipt.telemetryCount} sensor events at ${timestamp(receipt.receivedAt)}.${reading ? ` ${reading.tagId}: ${number(reading.value)} ${reading.unit}.` : ""}`
     : "";
   const preview = demoRun?.startupPreview;
   const element = $("run-startup-preview");
@@ -2109,7 +2108,7 @@ function drawStartupPreview() {
     Number.isFinite(preview.hopperTonnes) &&
     preview.hopperTonnes >= 0;
   element.textContent = valid
-    ? `Simulator startup · Hopper: ${number(preview.hopperTonnes)} t at ${timestamp(preview.sampleTime)}. Plant state sent. Hopper preview only; not Fabric-validated.`
+    ? `Simulator preview · Hopper: ${number(preview.hopperTonnes)} t at ${timestamp(preview.sampleTime)}. Not yet confirmed by Fabric.`
     : "";
   element.dataset.runId = valid ? preview.runId : "";
   element.hidden = !valid;
@@ -2206,23 +2205,28 @@ function drawDemoRunStatus(notice = "") {
     "A shared ten-minute simulation sends synthetic D01 data through Fabric. Reopening this page never starts another run.",
   );
   const status = demoRun
-    ? `Publisher: ${demoRun.publisherStatus.replaceAll("_", " ")}${demoRun.stopRequested ? " · stop requested" : ""} · Fabric ingestion: ${verifiedRunIngestion(overview, demoRun)}. Shared by all visitors.`
+    ? `Simulation: ${demoRun.publisherStatus.replace("publisher_complete", "complete").replaceAll("_", " ")}${demoRun.stopRequested ? " · stop requested" : ""}. Shared by all visitors.`
     : "Ready when you are. A shared cooldown prevents repeated starts.";
   text("run-control-status", `${notice}${status}`);
 }
 async function demoRequest(path, body) {
-  const response = await fetch(`/api/mining/demo/runs/${path}`, {
-    ...(body
-      ? {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      : {}),
-    credentials: "same-origin",
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
+  let response;
+  try {
+    response = await fetch(`/api/mining/demo/runs/${path}`, {
+      ...(body
+        ? {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          }
+        : {}),
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new Error("Simulation request failed. Check your connection.");
+  }
   let data;
   try {
     data = await response.json();
@@ -2334,7 +2338,7 @@ async function demoAction(action) {
     if (action === "start") requestedSimulation = { runId: result.runId, at: Date.now() };
     text(
       "run-control-status",
-      `${action === "start" ? (result.publisherStatus === "preparing" ? "Preparing" : "Started") : "Stop requested"}: ${result.runId}. Fabric ingestion is not yet confirmed.`,
+      `${action === "start" ? (result.publisherStatus === "preparing" ? "Preparing simulation" : "Simulation started") : "Stop requested"}. Waiting for Fabric readings.`,
     );
   } catch (error) {
     notice = `${error.message} Check the run status before retrying. `;

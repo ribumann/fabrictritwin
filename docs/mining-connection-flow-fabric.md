@@ -1,5 +1,11 @@
 # D01 connection flow: Fabric-owned v1 integration
 
+This page documents the **pinned v1 path and its historical validation**. The
+hosted run-independent v2 path reads raw observations through separate
+functions and does not use v1 pin validation or run reconciliation. Start with
+the [current flow and data models](mining-learning-guide.md#simulation-and-data-models)
+and [v2 deployment and rollback](mining-connection-publisher-integration.md#run-independent-live-stream).
+
 This is an additive KQL implementation for the separate
 `ConnectionMeasurement` v1 event family. It uses the simulator's
 `d01-shared-flow-v1` profile (`D01_CONNECTION_PROFILE_VERSION`), five-second
