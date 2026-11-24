@@ -2,8 +2,10 @@
 
 Status: implemented behind default-off feature gates and enabled in the
 hosted Mining demo. The baseline and requirements below describe the starting
-point and the intended outcome; see `mining-connection-flow-fabric.md` for
-implementation details and verification limits.
+point and the original pinned-v1 design, not the current live contract. See
+[current flow and data models](mining-learning-guide.md#simulation-and-data-models)
+and [publisher integration](mining-connection-publisher-integration.md) for
+the run-independent v2 path and its limits.
 
 ## Outcome
 

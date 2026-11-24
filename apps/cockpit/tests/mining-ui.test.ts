@@ -46,6 +46,24 @@ import {
 } from "../src/ui/public/mining/data.js";
 
 describe("shared-flow preparation", () => {
+  it("explains simulation request timeouts without exposing browser errors", async () => {
+    const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
+    const tree = ts.createSourceFile("app.js", source, ts.ScriptTarget.Latest, true);
+    const request = tree.statements.find(
+      (statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === "demoRequest",
+    );
+    if (!request) throw new Error("Simulation request not found");
+    const sandbox: any = {
+      fetch: vi.fn().mockRejectedValue(new Error("signal timed out")),
+      AbortSignal,
+    };
+    runInNewContext(`${request.getText(tree)}; this.request = demoRequest;`, sandbox);
+    await expect(sandbox.request("status")).rejects.toThrow(
+      "Simulation request failed. Check your connection.",
+    );
+  });
+
   it("keeps live polling connected without an approved run when unpinned flow is enabled", () => {
     const source = readFileSync(new URL("../src/ui/public/mining/app.js", import.meta.url), "utf8");
     const tree = ts.createSourceFile("app.js", source, ts.ScriptTarget.Latest, true);
@@ -152,6 +170,33 @@ describe("bounded live stream charts", () => {
         category: "waiting",
         message: "Waiting for the first connection flow samples.",
       });
+    });
+
+    it("turns network errors and timeouts into a clear recovery message", async () => {
+      const disconnected = new MiningReads(async () => {
+        throw new TypeError("Failed to fetch");
+      });
+      await expect(disconnected.read("overview")).rejects.toMatchObject({
+        category: "service_failed",
+        message: "Readings unavailable. Check your connection and retry.",
+      });
+      vi.useFakeTimers();
+      const slow = new MiningReads(
+        (_url: string, { signal }: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) =>
+            signal.addEventListener("abort", () =>
+              reject(new DOMException("aborted", "AbortError")),
+            ),
+          ),
+      );
+      const pending = slow.read("overview");
+      const result = expect(pending).rejects.toMatchObject({
+        category: "service_failed",
+        message: "Readings unavailable. Check your connection and retry.",
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await result;
+      vi.useRealTimers();
     });
 
     it("shows a pending flow read as waiting, but reports a real read failure", async () => {
@@ -1282,7 +1327,7 @@ describe("cross-run chart validation", () => {
       "utf8",
     );
     expect(html).toMatch(
-      /id="latest-readings"[\s\S]*?<details>\s*<summary>Sensor readings and provenance<\/summary>/,
+      /id="latest-readings"[\s\S]*?<details>\s*<summary>Sensor readings<\/summary>/,
     );
     expect(html).toMatch(
       /id="diagnostic-chart"><\/div>\s*<\/article>\s*<div id="diagnostic-extra"/,

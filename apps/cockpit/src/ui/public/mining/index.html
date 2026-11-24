@@ -76,9 +76,7 @@
           </details>
         </div>
       </section>
-      <p id="connection" class="callout" role="status">
-        Connecting to the authorized mining backend…
-      </p>
+      <p id="connection" class="callout" role="status">Connecting to plant data…</p>
       <section class="mining-kpis" aria-label="Plant headline indicators">
         <article>
           <h2>Throughput</h2>
@@ -123,7 +121,7 @@
           <div class="card-header">
             <h2 id="plant-heading">Plant twin</h2>
             <label
-              >Line scope<select id="line-scope">
+              >Line<select id="line-scope">
                 <option value="all">All lines</option>
                 <option value="A">Line A</option>
                 <option value="B">Line B</option>
@@ -190,8 +188,8 @@
             <ul id="object-list" class="mining-objects" aria-label="Plant object selection"></ul>
           </details>
           <p class="muted">
-            Arrows show the modeled route. Sensor labels show the latest usable reading for this
-            view. Drag to orbit, scroll to zoom, or use the equipment list with a keyboard.
+            Arrows show the modeled route. Drag to rotate, scroll to zoom, or use the equipment
+            list.
           </p>
         </section>
         <aside
@@ -222,7 +220,7 @@
             aria-label="Latest equipment readings"
           ></div>
           <details>
-            <summary>Sensor readings and provenance</summary>
+            <summary>Sensor readings</summary>
             <div id="readings" class="mining-readings"></div>
           </details>
           <div class="mining-links">
@@ -270,20 +268,18 @@
         <div id="diagnostic-extra" class="diagnostic-extra"></div>
       </section>
       <section id="assistant" class="card" aria-labelledby="ask-heading">
-        <h2 id="ask-heading">AI evidence assistant</h2>
-        <p id="assistant-state">
-          Checking availability of the read-only Mining evidence assistant.
-        </p>
+        <h2 id="ask-heading">Ask about the plant</h2>
+        <p id="assistant-state">Checking assistant availability…</p>
         <form id="mining-ask">
-          <label for="mining-question">Question about the current public D01 run</label>
+          <label for="mining-question">Your question</label>
           <textarea id="mining-question" rows="3" maxlength="1000" required disabled></textarea>
-          <button id="mining-ask-submit" type="submit" disabled>Ask about this run</button>
+          <button id="mining-ask-submit" type="submit" disabled>Ask</button>
         </form>
         <p id="assistant-draft-context" role="status"></p>
         <p id="mining-answer-status" role="status"></p>
         <div id="mining-answer"></div>
         <details id="mining-answer-evidence" hidden>
-          <summary>Inspect the exact Fabric evidence supplied to the model</summary>
+          <summary>View source data</summary>
           <pre id="mining-answer-source"></pre>
         </details>
         <ul>
@@ -293,9 +289,8 @@
           <li>Show evidence for the bearing warning and compare it with normal load.</li>
         </ul>
         <p class="muted">
-          Generated interpretations can be wrong. Check the source times and quality below each
-          answer. This assistant cannot operate equipment and does not invoke a native Fabric Data
-          Agent. Do not enter personal information or secrets.
+          AI answers can be wrong. Check the source data and timestamps. Do not enter personal
+          information or secrets.
         </p>
         <a id="fabric-agent" hidden target="_blank" rel="noopener noreferrer"
           >Open data agent in Fabric</a
@@ -359,7 +354,7 @@
         </div>
       </details>
       <details class="mining-provenance">
-        <summary>Run identity &amp; source evidence</summary>
+        <summary>Data details</summary>
         <div class="mining-state" aria-label="Run and freshness">
           <strong id="mode-label">LIVE</strong><span>Plant D01</span
           ><span id="run">Approved run: unavailable</span>
