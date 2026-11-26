@@ -9,6 +9,7 @@ This is a demonstration, not medical advice or an industrial control system.
 · **[Try Mining](https://ontologydemo.liberatetheinnerchild.net/mining/)**
 · [Demo walkthrough](docs/business-user.md)
 · [Screenshot gallery](docs/screenshots.md)
+· [AI querying options in Fabric](docs/fabric-ai-query-options.md)
 
 | Scenario       | What you can do                                                                                                               | Fabric's role                                                                                                  |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
